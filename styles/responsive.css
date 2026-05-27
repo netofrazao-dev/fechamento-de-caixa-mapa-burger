@@ -1,0 +1,284 @@
+/*
+ * responsive.css — Mapa Burger
+ * Mobile-first. Breakpoints: sm 640px | md 768px | lg 1024px | xl 1280px
+ * Aplicar em: app/globals.css  →  @import './responsive.css'
+ */
+
+/* ============================================================
+   BASE — touch targets e acessibilidade
+   ============================================================ */
+
+/* Mínimo 44×44px para elementos interativos (WCAG 2.5.5) */
+button,
+[role="button"],
+a,
+input[type="checkbox"],
+input[type="radio"],
+select {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Inputs e textareas: tamanho confortável em mobile */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+input[type="search"],
+textarea,
+select {
+  font-size: 16px; /* evita zoom automático no iOS */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Foco visível para navegação por teclado */
+:focus-visible {
+  outline: 2px solid #10b981;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Scroll suave em iOS */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================================
+   LAYOUT — dashboard shell
+   ============================================================ */
+
+/* Previne overflow horizontal global */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Container principal do conteúdo */
+.dashboard-content {
+  padding: 1rem;
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (min-width: 640px) {
+  .dashboard-content {
+    padding: 1.25rem 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .dashboard-content {
+    padding: 1.5rem 2rem;
+  }
+}
+
+/* ============================================================
+   SIDEBAR — colapso mobile
+   ============================================================ */
+
+/* Garante que a sidebar não cause overflow em mobile */
+aside {
+  max-width: 240px;
+  will-change: transform;
+}
+
+/* Overlay da sidebar */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+}
+
+@media (min-width: 1024px) {
+  .sidebar-overlay {
+    display: none !important;
+  }
+}
+
+/* ============================================================
+   HEADER — ajustes mobile
+   ============================================================ */
+
+.dashboard-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* ============================================================
+   CARDS — grid responsivo
+   ============================================================ */
+
+/* Grid de cards de métricas */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Grid de cards de formulário (LC + Brandy) */
+.form-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 1024px) {
+  .form-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Grid de campos dentro dos cards */
+.fields-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.875rem;
+}
+
+@media (min-width: 480px) {
+  .fields-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ============================================================
+   INPUTS — altura e fonte ajustadas
+   ============================================================ */
+
+.input-currency {
+  height: 48px; /* maior que 44px para conforto */
+}
+
+@media (min-width: 640px) {
+  .input-currency {
+    height: 44px;
+  }
+}
+
+/* ============================================================
+   TABELAS — responsividade
+   ============================================================ */
+
+/* Wrapper com scroll horizontal suave */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 1rem;
+}
+
+/* Previne que colunas colem demais */
+.table-scroll table {
+  min-width: 480px;
+}
+
+/* Células não quebram em valores monetários */
+.tabular {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   MODAL — fullscreen em mobile
+   ============================================================ */
+
+.modal-overlay {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+
+@media (min-width: 640px) {
+  .modal-overlay {
+    align-items: center;
+    padding: 1rem;
+  }
+}
+
+.modal-sheet {
+  width: 100%;
+  max-height: 92dvh;
+  border-radius: 1rem 1rem 0 0;
+}
+
+@media (min-width: 640px) {
+  .modal-sheet {
+    max-width: 42rem;
+    max-height: 88vh;
+    border-radius: 1rem;
+  }
+}
+
+/* ============================================================
+   TOAST — posição mobile
+   ============================================================ */
+
+.toast-container {
+  position: fixed;
+  z-index: 50;
+  left: 1rem;
+  right: 1rem;
+  bottom: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .toast-container {
+    left: auto;
+    right: 1.25rem;
+    max-width: 24rem;
+  }
+}
+
+/* ============================================================
+   BOTÃO DE SUBMIT — largura total em mobile
+   ============================================================ */
+
+.btn-submit-mobile {
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .btn-submit-mobile {
+    width: auto;
+    align-self: flex-end;
+  }
+}
+
+/* ============================================================
+   TIPOGRAFIA — escala responsiva
+   ============================================================ */
+
+.page-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+@media (min-width: 640px) {
+  .page-title {
+    font-size: 1.125rem;
+  }
+}
+
+/* ============================================================
+   SAFE AREA — suporte a notch/home bar (iOS)
+   ============================================================ */
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
