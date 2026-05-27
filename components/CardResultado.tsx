@@ -65,19 +65,42 @@ export default function CardResultado() {
 
   const { control, formState: { errors } } = useFormContext<FullFormFields>()
 
-  const [
-    dinFech, pix_lc, deb_lc, cred_lc, cons_lc, ap_lc, tick_lc,
-    pix_b, deb_b, cred_b, credOn_b,
-    dinheiroBrandy, totalLCSistema, ajusteManual,
-  ] = useWatch({
-    control,
-    name: [
-      'dinheiro_fechamento_lc', 'pix_lc', 'debito_lc', 'credito_lc',
-      'consumo_loja_lc', 'a_prazo_lc', 'ticket_lc',
-      'pix_brandy', 'debito_brandy', 'credito_brandy', 'credito_online_brandy',
-      'dinheiro_brandy', 'total_lc_sistema', 'ajuste_manual',
-    ],
-  }).map(v => v ?? 0)
+const watched = useWatch({
+  control,
+  name: [
+    'dinheiro_fechamento_lc',
+    'pix_lc',
+    'debito_lc',
+    'credito_lc',
+    'consumo_loja_lc',
+    'a_prazo_lc',
+    'ticket_lc',
+    'pix_brandy',
+    'debito_brandy',
+    'credito_brandy',
+    'credito_online_brandy',
+    'dinheiro_brandy',
+    'total_lc_sistema',
+    'ajuste_manual',
+  ] as const,
+})
+
+const [
+  dinFech = 0,
+  pix_lc = 0,
+  deb_lc = 0,
+  cred_lc = 0,
+  cons_lc = 0,
+  ap_lc = 0,
+  tick_lc = 0,
+  pix_b = 0,
+  deb_b = 0,
+  cred_b = 0,
+  credOn_b = 0,
+  dinheiroBrandy = 0,
+  totalLCSistema = 0,
+  ajusteManual = 0,
+] = Array.isArray(watched) ? watched : []
 
   const totalLC = calcularTotalLC({
     dinheiro_fechamento_lc: dinFech, pix_lc, debito_lc: deb_lc,

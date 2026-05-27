@@ -7,13 +7,13 @@ import CurrencyInput from '@/components/ui/CurrencyInput'
 
 // ─── Tipos ────────────────────────────────────────────────────
 export interface LCFields {
-  dinheiro_lc: number
+  dinheiro_fechamento_lc: number
   pix_lc: number
   debito_lc: number
   credito_lc: number
   consumo_loja_lc: number
   a_prazo_lc: number
-  tickets_lc: number
+  ticket_lc: number
   sangria_lc: number
   total_lc: number
 }
@@ -31,13 +31,13 @@ const fields: {
   name: keyof Omit<LCFields, 'total_lc' | 'sangria_lc'>
   label: string
 }[] = [
-  { name: 'dinheiro_lc',    label: 'Dinheiro / Fechamento' },
+  { name: 'dinheiro_fechamento_lc',    label: 'Dinheiro / Fechamento' },
   { name: 'pix_lc',         label: 'PIX'                   },
   { name: 'debito_lc',      label: 'Débito'                },
   { name: 'credito_lc',     label: 'Crédito'               },
   { name: 'consumo_loja_lc',label: 'Consumo Loja'          },
   { name: 'a_prazo_lc',     label: 'A Prazo'               },
-  { name: 'tickets_lc',     label: 'Tickets'               },
+  { name: 'ticket_lc',     label: 'Tickets'               },
 ]
 
 // ─── Componente ───────────────────────────────────────────────
@@ -57,13 +57,13 @@ export default function CardLC() {
   ] = useWatch({
     control,
     name: [
-      'dinheiro_lc',
+      'dinheiro_fechamento_lc',
       'pix_lc',
       'debito_lc',
       'credito_lc',
       'consumo_loja_lc',
       'a_prazo_lc',
-      'tickets_lc',
+      'ticket_lc',
       'sangria_lc',
     ],
   })
