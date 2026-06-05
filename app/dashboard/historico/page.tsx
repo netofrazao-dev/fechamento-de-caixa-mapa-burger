@@ -21,7 +21,7 @@ const FILTROS: { label: string; value: 'TODOS' | StatusCaixa }[] = [
 
 // ─── Cupom térmico (58mm) ─────────────────────────────────────
 
-const COLS = 32
+const COLS = 40
 const SEP  = '-'.repeat(COLS)
 const SEP2 = '='.repeat(COLS)
 
@@ -102,7 +102,7 @@ function CupomContent({ f }: { f: Fechamento }) {
   ]
 
   return (
-    <div style={{ fontFamily: "'Courier New', monospace", fontSize: '9.5px', lineHeight: 1.45, color: '#000', background: '#fff', width: '52mm', padding: '3mm 3mm 4mm', whiteSpace: 'pre' }}>
+    <div style={{ fontFamily: "'Courier New', monospace", fontSize: '9.5px', lineHeight: 1.45, color: '#000', background: '#fff', width: '73mm', padding: '3mm 3mm 4mm', whiteSpace: 'pre' }}>
       {lines.map((l, i) => (
         <p key={i} style={{
           margin: 0,
@@ -127,7 +127,7 @@ function ModalDetalhes({ f, onClose }: { f: Fechamento; onClose: () => void }) {
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     documentTitle: `Fechamento_${f.data_fechamento}`,
-    pageStyle: `@page { size: 58mm auto; margin: 0; } @media print { html,body { width: 58mm; margin: 0; } .no-print { display: none !important; } }`,
+    pageStyle: `@page { size: 79mm auto; margin: 0; } @media print { html,body { width: 79mm; margin: 0; } .no-print { display: none !important; } }`,
   })
 
   useEffect(() => {
