@@ -79,3 +79,30 @@ export interface NovoFechamentoInput {
   ajuste: Ajuste
   observacoes: string
 }
+
+// ============================================================
+// Relatório livre — sem relação com o fechamento de caixa.
+// Modelo flexível: título + data + lista de campos livres
+// (rótulo + texto), pra caber em qualquer relatório escrito.
+// ============================================================
+
+export interface ItemRelatorio {
+  id?: string
+  label: string
+  valor: string
+}
+
+export interface Relatorio {
+  id: string
+  titulo: string
+  data: string // YYYY-MM-DD
+  itens: ItemRelatorio[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RelatorioInput {
+  titulo: string
+  data: string
+  itens: ItemRelatorio[]
+}

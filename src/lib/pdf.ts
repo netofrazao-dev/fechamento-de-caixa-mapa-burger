@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { Fechamento } from '../types/fechamento'
+import type { Fechamento, Relatorio } from '../types/fechamento'
 import { formatarMoeda, STATUS_LABEL } from './calculations'
 
 function formatarData(iso: string): string {
@@ -164,4 +164,55 @@ export function gerarPdfMensal(params: {
   })
 
   doc.save(`relatorio_mensal_${mesLabel.replace('/', '-')}.pdf`)
+}
+
+/** Gera um PDF simples (A4) a partir de um relatório livre. */
+export function gerarPdfRelatorio(r: Relatorio): void {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const margem = 16
+  let y = 20
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.text(r.titulo || 'Relatório', margem, y)
+  y += 6
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.setTextColor(120)
+  doc.text(formatarData(r.data), margem, y)
+  doc.setTextColor(0)
+  y += 8
+
+  doc.setLineWidth(0.2)
+  doc.line(margem, y, 210 - margem, y)
+  y += 8
+
+  for (const item of r.itens) {
+    if (y > 270) {
+      doc.addPage()
+      y = 20
+    }
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.text(item.label || '(sem título)', margem, y)
+    y += 6
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    const linhas = doc.splitTextToSize(item.valor || '-', 210 - margem * 2)
+    doc.text(linhas, margem, y)
+    y += linhas.length * 5 + 6
+  }
+
+  doc.save(`relatorio_${r.data}_${slugify(r.titulo)}.pdf`)
+}
+
+function slugify(texto: string): string {
+  return (texto || 'sem-titulo')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
 }

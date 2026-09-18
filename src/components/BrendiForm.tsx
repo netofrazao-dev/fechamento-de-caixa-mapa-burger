@@ -1,17 +1,20 @@
 import type { DadosBrendi } from '../types/fechamento'
+import { calcularTotalBrendi, formatarMoeda } from '../lib/calculations'
 import CampoMoeda from './CampoMoeda'
+import Secao from './Secao'
 
 interface Props {
   value: DadosBrendi
   onChange: (value: DadosBrendi) => void
+  defaultAberto?: boolean
 }
 
-export default function BrendiForm({ value, onChange }: Props) {
+export default function BrendiForm({ value, onChange, defaultAberto }: Props) {
   const set = <K extends keyof DadosBrendi>(key: K, v: number) => onChange({ ...value, [key]: v })
+  const total = calcularTotalBrendi(value)
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-      <h2 className="text-lg font-semibold text-gray-900">Brendi</h2>
+    <Secao titulo="Brendi" resumo={`Total: ${formatarMoeda(total)}`} defaultAberto={defaultAberto}>
       <div className="grid grid-cols-2 gap-3">
         <CampoMoeda label="PIX" value={value.pix} onChange={(v) => set('pix', v)} />
         <CampoMoeda label="Débito" value={value.debito} onChange={(v) => set('debito', v)} />
@@ -25,9 +28,13 @@ export default function BrendiForm({ value, onChange }: Props) {
           label="Dinheiro"
           value={value.dinheiro}
           onChange={(v) => set('dinheiro', v)}
-          helper="Não entra no Total Brendi (entra no Total Sistema)"
+          helper="Não entra no total Brendi"
         />
       </div>
-    </section>
+      <div className="flex justify-between items-center pt-1 text-sm">
+        <span className="text-gray-400">Total Brendi</span>
+        <span className="font-semibold text-gray-900">{formatarMoeda(total)}</span>
+      </div>
+    </Secao>
   )
 }

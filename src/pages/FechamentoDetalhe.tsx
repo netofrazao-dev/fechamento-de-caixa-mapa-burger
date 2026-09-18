@@ -43,7 +43,7 @@ export default function FechamentoDetalhe() {
             {formatarData(f.data)} — {TURNO_LABEL[f.turno]}
           </h1>
         </div>
-        <span className={`text-xs font-semibold rounded-full border px-3 py-1 ${STATUS_COLOR[f.resultado.status]}`}>
+        <span className={`text-xs font-semibold rounded-full border px-2.5 py-1 shrink-0 ${STATUS_COLOR[f.resultado.status]}`}>
           {STATUS_LABEL[f.resultado.status]}
         </span>
       </header>
@@ -103,7 +103,7 @@ export default function FechamentoDetalhe() {
       <button
         type="button"
         onClick={() => gerarPdfFechamento(f)}
-        className="w-full rounded-lg bg-gray-900 py-3 text-white font-semibold"
+        className="w-full rounded-xl bg-gray-900 py-3 text-white text-sm font-semibold"
       >
         Baixar PDF
       </button>
@@ -113,8 +113,8 @@ export default function FechamentoDetalhe() {
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 space-y-1">
-      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">{titulo}</h2>
+    <section className="rounded-2xl bg-white shadow-sm p-4 space-y-1">
+      <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{titulo}</h2>
       {children}
     </section>
   )

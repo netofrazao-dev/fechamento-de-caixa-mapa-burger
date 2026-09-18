@@ -1,23 +1,27 @@
 import type { DadosLC } from '../types/fechamento'
+import { calcularTotalLC, formatarMoeda } from '../lib/calculations'
 import CampoMoeda from './CampoMoeda'
+import Secao from './Secao'
 
 interface Props {
   value: DadosLC
   onChange: (value: DadosLC) => void
+  defaultAberto?: boolean
 }
 
-export default function LCForm({ value, onChange }: Props) {
+export default function LCForm({ value, onChange, defaultAberto }: Props) {
   const set = <K extends keyof DadosLC>(key: K, v: number) => onChange({ ...value, [key]: v })
+  const total = calcularTotalLC(value)
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-      <h2 className="text-lg font-semibold text-gray-900">LC</h2>
+    <Secao titulo="LC" resumo={`Total: ${formatarMoeda(total)}`} defaultAberto={defaultAberto}>
       <div className="grid grid-cols-2 gap-3">
         <CampoMoeda
           label="Dinheiro de abertura"
           value={value.dinheiroAbertura}
           onChange={(v) => set('dinheiroAbertura', v)}
-          helper="Informativo, não entra no total"
+          somavel={false}
+          helper="Não entra no total"
         />
         <CampoMoeda
           label="Dinheiro / fechamento"
@@ -35,6 +39,10 @@ export default function LCForm({ value, onChange }: Props) {
         <CampoMoeda label="A prazo" value={value.aPrazo} onChange={(v) => set('aPrazo', v)} />
         <CampoMoeda label="Ticket" value={value.ticket} onChange={(v) => set('ticket', v)} />
       </div>
-    </section>
+      <div className="flex justify-between items-center pt-1 text-sm">
+        <span className="text-gray-400">Total LC</span>
+        <span className="font-semibold text-gray-900">{formatarMoeda(total)}</span>
+      </div>
+    </Secao>
   )
 }

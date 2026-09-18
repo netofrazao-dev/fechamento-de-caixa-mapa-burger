@@ -95,36 +95,41 @@ export default function NovoFechamento() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-4 pb-24">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold text-gray-900">Novo Fechamento</h1>
-        <p className="text-sm text-gray-500">Preencha os dados do LC e do Brendi para este turno.</p>
+    <div className="max-w-2xl mx-auto p-4 space-y-3 pb-36">
+      <header>
+        <h1 className="text-xl font-bold text-gray-900">Novo Fechamento</h1>
       </header>
 
-      <section className="rounded-xl border border-gray-200 bg-white p-4 grid grid-cols-2 gap-3">
+      <section className="rounded-2xl bg-white shadow-sm p-4 grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-gray-700">Data</span>
+          <span className="text-[13px] font-medium text-gray-600">Data</span>
           <input
             type="date"
-            className="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-gray-900"
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
             value={data}
             onChange={(e) => setData(e.target.value)}
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-gray-700">Turno</span>
-          <select
-            className="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-gray-900"
-            value={turno}
-            onChange={(e) => setTurno(e.target.value as Turno)}
-          >
-            <option value="manha">Manhã</option>
-            <option value="noite">Noite</option>
-          </select>
+          <span className="text-[13px] font-medium text-gray-600">Turno</span>
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            {(['manha', 'noite'] as Turno[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTurno(t)}
+                className={`flex-1 py-2 text-sm font-medium ${
+                  turno === t ? 'bg-gray-900 text-white' : 'bg-white text-gray-500'
+                }`}
+              >
+                {t === 'manha' ? 'Manhã' : 'Noite'}
+              </button>
+            ))}
+          </div>
         </label>
       </section>
 
-      <LCForm value={lc} onChange={setLc} />
+      <LCForm value={lc} onChange={setLc} defaultAberto />
       <BrendiForm value={brendi} onChange={setBrendi} />
       <SangriaForm value={sangrias} onChange={setSangrias} />
       <ResultadoCard
@@ -138,20 +143,18 @@ export default function NovoFechamento() {
       />
 
       {erro && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {erro}
-        </div>
+        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{erro}</div>
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4">
+      <div className="fixed bottom-14 left-0 right-0 bg-white/95 backdrop-blur border-t border-gray-100 p-3">
         <div className="max-w-2xl mx-auto">
           <button
             type="button"
             disabled={salvando}
             onClick={salvar}
-            className="w-full rounded-lg bg-gray-900 py-3 text-white font-semibold disabled:opacity-50"
+            className="w-full rounded-xl bg-gray-900 py-3 text-white text-sm font-semibold disabled:opacity-50"
           >
-            {salvando ? 'Salvando...' : 'Salvar fechamento e gerar PDF'}
+            {salvando ? 'Salvando...' : 'Salvar e gerar PDF'}
           </button>
         </div>
       </div>
