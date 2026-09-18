@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background-color: #f4f5f7;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #recibo-print, #recibo-print * {
+    visibility: visible;
+  }
+  #recibo-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+  }
+}
