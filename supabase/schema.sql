@@ -116,9 +116,7 @@ create table if not exists public.relatorios (
 
   sangrias jsonb not null default '[]'::jsonb,
 
-  estoque_inicio jsonb not null default '{"dataHora": "", "itens": []}'::jsonb,
-  estoque_final jsonb not null default '{"dataHora": "", "itens": []}'::jsonb,
-  estoque_quente jsonb not null default '[]'::jsonb,
+  estoque_quente jsonb not null default '{"itens": []}'::jsonb,
 
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

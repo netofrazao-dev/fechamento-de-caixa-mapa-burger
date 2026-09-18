@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
+import { FileText } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { listarFechamentos } from '../lib/fechamentoService'
+import { listarRelatorios } from '../lib/relatorioService'
 import { formatarMoeda } from '../lib/calculations'
 import { gerarPdfMensal, type LinhaRelatorioMensal } from '../lib/pdf'
-import type { Fechamento } from '../types/fechamento'
+import type { Fechamento, RelatorioDiario } from '../types/fechamento'
 
 function mesAtual(): string {
   const d = new Date()
@@ -45,6 +47,7 @@ function agruparPorDia(fechamentos: Fechamento[]): LinhaRelatorioMensal[] {
 export default function RelatorioMensal() {
   const [mes, setMes] = useState(mesAtual())
   const [fechamentos, setFechamentos] = useState<Fechamento[]>([])
+  const [relatorios, setRelatorios] = useState<RelatorioDiario[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -53,9 +56,14 @@ export default function RelatorioMensal() {
     let ativo = true
     setCarregando(true)
     setErro(null)
-    listarFechamentos({ dataInicio: inicio, dataFim: fim })
-      .then((r) => {
-        if (ativo) setFechamentos(r)
+    Promise.all([
+      listarFechamentos({ dataInicio: inicio, dataFim: fim }),
+      listarRelatorios({ dataInicio: inicio, dataFim: fim }),
+    ])
+      .then(([f, r]) => {
+        if (!ativo) return
+        setFechamentos(f)
+        setRelatorios(r)
       })
       .catch((e) => {
         if (ativo) setErro(e instanceof Error ? e.message : 'Erro ao carregar relatório.')
@@ -67,6 +75,12 @@ export default function RelatorioMensal() {
       ativo = false
     }
   }, [mes])
+
+  const relatorioPorData = useMemo(() => {
+    const mapa = new Map<string, RelatorioDiario>()
+    relatorios.forEach((r) => mapa.set(r.data, r))
+    return mapa
+  }, [relatorios])
 
   const linhas = useMemo(() => agruparPorDia(fechamentos), [fechamentos])
 
@@ -125,27 +139,40 @@ export default function RelatorioMensal() {
                 <th className="text-right px-3 py-2">Caixa</th>
                 <th className="text-right px-3 py-2">Sistema</th>
                 <th className="text-right px-3 py-2">Diferença</th>
+                <th className="text-center px-3 py-2">Relatório</th>
               </tr>
             </thead>
             <tbody>
-              {linhas.map((l) => (
-                <tr key={l.data} className="border-t border-gray-100">
-                  <td className="px-3 py-2">{formatarData(l.data)}</td>
-                  <td className="px-3 py-2 text-right">{formatarMoeda(l.totalCaixaDia)}</td>
-                  <td className="px-3 py-2 text-right">{formatarMoeda(l.totalSistemaDia)}</td>
-                  <td
-                    className={`px-3 py-2 text-right font-medium ${
-                      Math.abs(l.diferencaFinalDia) < 0.005
-                        ? 'text-green-600'
-                        : l.diferencaFinalDia > 0
-                          ? 'text-blue-600'
-                          : 'text-red-600'
-                    }`}
-                  >
-                    {formatarMoeda(l.diferencaFinalDia)}
-                  </td>
-                </tr>
-              ))}
+              {linhas.map((l) => {
+                const rel = relatorioPorData.get(l.data)
+                return (
+                  <tr key={l.data} className="border-t border-gray-100">
+                    <td className="px-3 py-2">{formatarData(l.data)}</td>
+                    <td className="px-3 py-2 text-right">{formatarMoeda(l.totalCaixaDia)}</td>
+                    <td className="px-3 py-2 text-right">{formatarMoeda(l.totalSistemaDia)}</td>
+                    <td
+                      className={`px-3 py-2 text-right font-medium ${
+                        Math.abs(l.diferencaFinalDia) < 0.005
+                          ? 'text-green-600'
+                          : l.diferencaFinalDia > 0
+                            ? 'text-blue-600'
+                            : 'text-red-600'
+                      }`}
+                    >
+                      {formatarMoeda(l.diferencaFinalDia)}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <Link
+                        to={rel ? `/relatorios/${rel.id}` : `/relatorios/novo?data=${l.data}`}
+                        className={rel ? 'text-gray-900' : 'text-gray-300'}
+                        title={rel ? 'Ver relatório' : 'Criar relatório'}
+                      >
+                        <FileText size={16} className="inline" />
+                      </Link>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
             <tfoot className="bg-gray-50 font-semibold border-t border-gray-200">
               <tr>
@@ -153,6 +180,7 @@ export default function RelatorioMensal() {
                 <td className="px-3 py-2 text-right">{formatarMoeda(totais.caixa)}</td>
                 <td className="px-3 py-2 text-right">{formatarMoeda(totais.sistema)}</td>
                 <td className="px-3 py-2 text-right">{formatarMoeda(totais.diferenca)}</td>
+                <td className="px-3 py-2" />
               </tr>
             </tfoot>
           </table>

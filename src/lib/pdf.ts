@@ -9,12 +9,6 @@ function formatarData(iso: string): string {
   return `${dia}/${mes}/${ano}`
 }
 
-function formatarDataHora(iso: string): string {
-  if (!iso) return '-'
-  const [data, hora] = iso.split('T')
-  return `${formatarData(data)} ${hora ?? ''}`.trim()
-}
-
 const TURNO_LABEL: Record<'manha' | 'noite', string> = {
   manha: 'Manhã',
   noite: 'Noite',
@@ -92,25 +86,21 @@ class ReciboTermico {
     this.y += mm
   }
 
-  quebrarPaginaSeNecessario() {
-    if (this.y > 280) {
+  quebrarPaginaSeNecessario(limite = 280) {
+    if (this.y > limite) {
       this.doc.addPage([this.larguraMM, 297])
       this.y = 8
     }
   }
+
+  salvar(nomeArquivo: string) {
+    this.doc.save(nomeArquivo)
+  }
 }
 
-/**
- * Recibo do fechamento de caixa, estilo cupom (80mm). Mesmo
- * layout de sempre — só sem acentos e com a contagem de marmitas.
- */
-export function gerarPdfFechamento(f: Fechamento): void {
-  const r = new ReciboTermico()
-
-  r.linha('MAPA BURGER', { negrito: true, tamanho: 12, centro: true })
-  r.linha('Fechamento de Caixa', { centro: true, tamanho: 9 })
-  r.espaco(1)
-  r.linha(`Data: ${formatarData(f.data)}  -  ${TURNO_LABEL[f.turno]}`, { centro: true })
+/** Escreve o bloco completo de um fechamento (LC, Brendi, Resultado) no recibo. */
+function escreverFechamento(r: ReciboTermico, f: Fechamento) {
+  r.linha(`Fechamento - ${TURNO_LABEL[f.turno]}`, { negrito: true, centro: true })
   r.separador()
 
   r.linha('LC', { negrito: true })
@@ -161,8 +151,98 @@ export function gerarPdfFechamento(f: Fechamento): void {
     r.linha('Observacoes:', { negrito: true })
     r.paragrafo(f.observacoes)
   }
+}
 
-  r.doc.save(`fechamento_${f.data}_${f.turno}.pdf`)
+/** Escreve o bloco completo do relatório diário escrito no recibo. */
+function escreverRelatorio(r: ReciboTermico, rel: RelatorioDiario) {
+  r.linha('RELATORIO DIARIO', { negrito: true, centro: true })
+  r.separador()
+
+  r.linhaValor('Abertura do caixa', rel.aberturaCaixa)
+  r.linhaValor('Fechamento do caixa', rel.fechamentoCaixa)
+  r.linhaTexto('Vendidas', String(rel.quantidadeVendida))
+  r.separador()
+
+  if (rel.estragou.length > 0) {
+    r.linha('ESTRAGOU', { negrito: true })
+    rel.estragou.forEach((item) => r.paragrafo(`- ${item}`))
+    r.separador()
+  }
+
+  if (rel.funcionariosQueComeram.length > 0) {
+    r.linha('FUNCIONARIOS QUE COMERAM', { negrito: true })
+    r.paragrafo(rel.funcionariosQueComeram.join(', '))
+    r.separador()
+  }
+
+  const listaConsumo = (titulo: string, itens: ConsumoItem[]) => {
+    if (itens.length === 0) return
+    r.linha(titulo, { negrito: true })
+    itens.forEach((it) => r.linhaTexto(`${it.pessoa} (${it.item})`, formatarMoeda(it.valor)))
+    r.separador()
+  }
+  listaConsumo('CONSUMO LOJA MENSAL', rel.consumoLojaMensal)
+  listaConsumo('CONSUMO LOJA MOTOBOYS', rel.consumoLojaMotoboys)
+  listaConsumo('CORTESIA CLIENTES', rel.cortesiaClientes)
+
+  if (rel.sangrias.length > 0) {
+    r.linha('SANGRIAS', { negrito: true })
+    rel.sangrias.forEach((s) => r.linhaTexto(s.motivo, formatarMoeda(s.valor)))
+    r.separador()
+  }
+
+  const itensEstoque = rel.estoqueQuente.itens.filter((i) => i.quantidade > 0)
+  if (itensEstoque.length > 0) {
+    r.linha('ESTOQUE QUENTE', { negrito: true })
+    itensEstoque.forEach((i) => r.linhaTexto(i.produto, String(i.quantidade)))
+  }
+}
+
+/**
+ * Recibo do fechamento de caixa, estilo cupom (80mm). Mesmo
+ * layout de sempre — só sem acentos e com a contagem de marmitas.
+ */
+export function gerarPdfFechamento(f: Fechamento): void {
+  const r = new ReciboTermico()
+  r.linha('MAPA BURGER', { negrito: true, tamanho: 12, centro: true })
+  r.linha('Fechamento de Caixa', { centro: true, tamanho: 9 })
+  r.espaco(1)
+  r.linha(`Data: ${formatarData(f.data)}`, { centro: true })
+  r.separador()
+  escreverFechamento(r, f)
+  r.salvar(`fechamento_${f.data}_${f.turno}.pdf`)
+}
+
+/**
+ * Impressão combinada (80mm): fechamento(s) de caixa do dia
+ * (manhã/noite, o que existir) + relatório diário completo,
+ * tudo num único recibo, sem acentos.
+ */
+export function imprimirDiaCompleto(params: { relatorio: RelatorioDiario; fechamentos: Fechamento[] }): void {
+  const { relatorio, fechamentos } = params
+  const r = new ReciboTermico()
+
+  r.linha('MAPA BURGER', { negrito: true, tamanho: 12, centro: true })
+  r.linha('Relatorio do Dia', { centro: true, tamanho: 9 })
+  r.espaco(1)
+  r.linha(`Data: ${formatarData(relatorio.data)}`, { centro: true })
+  r.separador()
+
+  if (fechamentos.length === 0) {
+    r.linha('(nenhum fechamento de caixa salvo para esta data)', { tamanho: 8 })
+    r.separador()
+  }
+
+  fechamentos.forEach((f) => {
+    r.quebrarPaginaSeNecessario(250)
+    escreverFechamento(r, f)
+    r.espaco(2)
+  })
+
+  r.quebrarPaginaSeNecessario(250)
+  escreverRelatorio(r, relatorio)
+
+  r.salvar(`relatorio_dia_completo_${relatorio.data}.pdf`)
 }
 
 export interface LinhaRelatorioMensal {
@@ -217,75 +297,9 @@ export function gerarPdfMensal(params: { mesLabel: string; linhas: LinhaRelatori
 }
 
 // ============================================================
-// Relatório diário escrito
-// ============================================================
-
-/** Recibo térmico (80mm, sem acento) do relatório diário — pra imprimir junto. */
-export function imprimirRelatorioDiario(rel: RelatorioDiario): void {
-  const r = new ReciboTermico()
-
-  r.linha('MAPA BURGER', { negrito: true, tamanho: 12, centro: true })
-  r.linha('Relatorio Diario', { centro: true, tamanho: 9 })
-  r.espaco(1)
-  r.linha(`Data: ${formatarData(rel.data)}`, { centro: true })
-  r.separador()
-
-  r.linhaValor('Abertura do caixa', rel.aberturaCaixa)
-  r.linhaValor('Fechamento do caixa', rel.fechamentoCaixa)
-  r.linhaTexto('Vendidas', String(rel.quantidadeVendida))
-  r.separador()
-
-  if (rel.estragou.length > 0) {
-    r.linha('ESTRAGOU', { negrito: true })
-    rel.estragou.forEach((item) => r.paragrafo(`- ${item}`))
-    r.separador()
-  }
-
-  if (rel.funcionariosQueComeram.length > 0) {
-    r.linha('FUNCIONARIOS QUE COMERAM', { negrito: true })
-    r.paragrafo(rel.funcionariosQueComeram.join(', '))
-    r.separador()
-  }
-
-  const listaConsumo = (titulo: string, itens: ConsumoItem[]) => {
-    if (itens.length === 0) return
-    r.linha(titulo, { negrito: true })
-    itens.forEach((it) => r.linhaTexto(`${it.pessoa} (${it.item})`, formatarMoeda(it.valor)))
-    r.separador()
-  }
-  listaConsumo('CONSUMO LOJA MENSAL', rel.consumoLojaMensal)
-  listaConsumo('CONSUMO LOJA MOTOBOYS', rel.consumoLojaMotoboys)
-  listaConsumo('CORTESIA CLIENTES', rel.cortesiaClientes)
-
-  if (rel.sangrias.length > 0) {
-    r.linha('SANGRIAS', { negrito: true })
-    rel.sangrias.forEach((s) => r.linhaTexto(s.motivo, formatarMoeda(s.valor)))
-    r.separador()
-  }
-
-  const listaEstoque = (titulo: string, snap: { dataHora: string; itens: { produto: string; quantidade: number }[] }) => {
-    const itensComQtd = snap.itens.filter((i) => i.quantidade > 0)
-    if (itensComQtd.length === 0 && !snap.dataHora) return
-    r.quebrarPaginaSeNecessario()
-    r.linha(titulo, { negrito: true })
-    if (snap.dataHora) r.linha(formatarDataHora(snap.dataHora), { tamanho: 8 })
-    itensComQtd.forEach((i) => r.linhaTexto(i.produto, String(i.quantidade)))
-    r.separador()
-  }
-  listaEstoque('ESTOQUE INICIO', rel.estoqueInicio)
-  listaEstoque('ESTOQUE FINAL', rel.estoqueFinal)
-
-  if (rel.estoqueQuente.length > 0) {
-    r.linha('ESTOQUE QUENTE', { negrito: true })
-    rel.estoqueQuente.forEach((item) => r.paragrafo(`- ${item}`))
-  }
-
-  r.doc.save(`relatorio_diario_${rel.data}.pdf`)
-}
-
-// ============================================================
 // PDF final consolidado (A4, com acentos, visual mais elaborado)
-// — pra enviar pra alguém.
+// — fechamento(s) de caixa DETALHADOS + relatório diário
+// completo, pra mandar pro contador.
 // ============================================================
 
 function tituloSecaoPdf(doc: jsPDF, texto: string, y: number, margem: number, larguraUtil: number): number {
@@ -299,12 +313,33 @@ function tituloSecaoPdf(doc: jsPDF, texto: string, y: number, margem: number, la
   return y + 11
 }
 
+function subtituloPdf(doc: jsPDF, texto: string, y: number, margem: number): number {
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
+  doc.setTextColor(60)
+  doc.text(texto, margem, y)
+  doc.setTextColor(0)
+  return y + 6
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function finalY(doc: any): number {
+  return doc.lastAutoTable.finalY
+}
+
 export function gerarPdfDiarioCompleto(params: { relatorio: RelatorioDiario; fechamentos: Fechamento[] }): void {
   const { relatorio: rel, fechamentos } = params
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const margem = 16
   const larguraUtil = 210 - margem * 2
   let y = 18
+
+  const quebrarSeNecessario = (limite = 255) => {
+    if (y > limite) {
+      doc.addPage()
+      y = 18
+    }
+  }
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(18)
@@ -313,55 +348,139 @@ export function gerarPdfDiarioCompleto(params: { relatorio: RelatorioDiario; fec
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)
   doc.setTextColor(110)
-  doc.text(`Relatório do dia — ${formatarData(rel.data)}`, margem, y)
+  doc.text(`Relatório completo do dia — ${formatarData(rel.data)}`, margem, y)
   doc.setTextColor(0)
-  y += 8
+  y += 9
 
-  // --- Resumo do fechamento de caixa (manhã/noite) ---
-  if (fechamentos.length > 0) {
+  // --- Fechamento de caixa, detalhado, por turno ---
+  if (fechamentos.length === 0) {
     y = tituloSecaoPdf(doc, 'Fechamento de Caixa', y, margem, larguraUtil)
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(9.5)
+    doc.setTextColor(130)
+    doc.text('Nenhum fechamento de caixa salvo para esta data.', margem, y)
+    doc.setTextColor(0)
+    y += 8
+  }
+
+  fechamentos.forEach((f) => {
+    quebrarSeNecessario(230)
+    y = tituloSecaoPdf(doc, `Fechamento de Caixa — ${TURNO_LABEL[f.turno]}`, y, margem, larguraUtil)
+
+    y = subtituloPdf(doc, 'LC', y, margem)
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
-      head: [['Turno', 'Total Caixa', 'Total Sistema', 'Diferença Final', 'Situação']],
-      body: fechamentos.map((f) => [
-        TURNO_LABEL[f.turno],
-        formatarMoeda(f.resultado.totalCaixa),
-        formatarMoeda(f.resultado.totalSistema),
-        formatarMoeda(f.resultado.diferencaFinal),
-        STATUS_LABEL[f.resultado.status],
-      ]),
-      styles: { fontSize: 9.5 },
-      headStyles: { fillColor: [24, 24, 27] },
+      theme: 'plain',
+      styles: { fontSize: 9.5, cellPadding: 1 },
+      body: [
+        ['Dinheiro abertura', formatarMoeda(f.lc.dinheiroAbertura)],
+        ['Dinheiro fechamento', formatarMoeda(f.lc.dinheiroFechamento)],
+        ['PIX', formatarMoeda(f.lc.pix)],
+        ['Débito', formatarMoeda(f.lc.debito)],
+        ['Crédito', formatarMoeda(f.lc.credito)],
+        ['Consumo loja', formatarMoeda(f.lc.consumoLoja)],
+        ['A prazo', formatarMoeda(f.lc.aPrazo)],
+        ['Ticket', formatarMoeda(f.lc.ticket)],
+        ['Total LC', formatarMoeda(f.resultado.totalLC)],
+      ],
+      columnStyles: { 1: { halign: 'right' } },
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable.finalY + 8
-  }
+    y = finalY(doc) + 4
 
-  // --- Resumo do dia (abertura/fechamento/vendidas/marmitas) ---
-  y = tituloSecaoPdf(doc, 'Resumo do Dia', y, margem, larguraUtil)
-  const totalMarmitas = fechamentos.reduce((acc, f) => acc + (f.marmitasVendidas || 0), 0)
+    if (f.sangrias.length > 0) {
+      quebrarSeNecessario(230)
+      y = subtituloPdf(doc, 'Sangrias', y, margem)
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margem, right: margem },
+        head: [['Motivo', 'Valor']],
+        body: f.sangrias.map((s) => [s.motivo, formatarMoeda(s.valor)]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [140, 140, 145] },
+        columnStyles: { 1: { halign: 'right' } },
+      })
+      y = finalY(doc) + 4
+    }
+
+    quebrarSeNecessario(230)
+    y = subtituloPdf(doc, 'Brendi', y, margem)
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      theme: 'plain',
+      styles: { fontSize: 9.5, cellPadding: 1 },
+      body: [
+        ['PIX', formatarMoeda(f.brendi.pix)],
+        ['Débito', formatarMoeda(f.brendi.debito)],
+        ['Crédito', formatarMoeda(f.brendi.credito)],
+        ['Crédito Online', formatarMoeda(f.brendi.creditoOnline)],
+        ['Dinheiro', formatarMoeda(f.brendi.dinheiro)],
+        ['Total Brendi', formatarMoeda(f.resultado.totalBrendi)],
+      ],
+      columnStyles: { 1: { halign: 'right' } },
+    })
+    y = finalY(doc) + 4
+
+    quebrarSeNecessario(230)
+    y = subtituloPdf(doc, 'Resultado', y, margem)
+    const linhasResultado: [string, string][] = [
+      ['Total Caixa', formatarMoeda(f.resultado.totalCaixa)],
+      ['Total LC Sistema', formatarMoeda(f.totalLCSistema)],
+      ['Total Sistema', formatarMoeda(f.resultado.totalSistema)],
+      ['Diferença original', formatarMoeda(f.resultado.diferencaOriginal)],
+    ]
+    if (f.ajuste.tipo) {
+      linhasResultado.push([
+        `Ajuste (${f.ajuste.tipo === 'adicionar' ? 'adicionado' : 'removido'})`,
+        formatarMoeda(f.resultado.ajusteAplicado),
+      ])
+    }
+    linhasResultado.push(['Diferença final', formatarMoeda(f.resultado.diferencaFinal)])
+    linhasResultado.push(['Situação', STATUS_LABEL[f.resultado.status]])
+    linhasResultado.push(['Marmitas vendidas', String(f.marmitasVendidas ?? 0)])
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      theme: 'plain',
+      styles: { fontSize: 9.5, cellPadding: 1, fontStyle: 'bold' },
+      body: linhasResultado,
+      columnStyles: { 1: { halign: 'right' } },
+    })
+    y = finalY(doc) + 4
+
+    if (f.observacoes) {
+      quebrarSeNecessario(240)
+      doc.setFont('helvetica', 'italic')
+      doc.setFontSize(9)
+      const linhas = doc.splitTextToSize(`Observações: ${f.observacoes}`, larguraUtil)
+      doc.text(linhas, margem, y)
+      y += linhas.length * 4.5 + 4
+    }
+
+    y += 4
+  })
+
+  // --- Resumo do relatório escrito ---
+  quebrarSeNecessario(230)
+  y = tituloSecaoPdf(doc, 'Resumo do Dia (Relatório)', y, margem, larguraUtil)
   autoTable(doc, {
     startY: y,
     margin: { left: margem, right: margem },
+    theme: 'plain',
+    styles: { fontSize: 9.5, cellPadding: 1 },
     body: [
       ['Abertura do caixa', formatarMoeda(rel.aberturaCaixa)],
       ['Fechamento do caixa', formatarMoeda(rel.fechamentoCaixa)],
       ['Quantidade vendida', String(rel.quantidadeVendida)],
-      ['Marmitas vendidas', String(totalMarmitas)],
     ],
-    styles: { fontSize: 9.5 },
-    theme: 'plain',
+    columnStyles: { 1: { halign: 'right' } },
   })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  y = (doc as any).lastAutoTable.finalY + 6
+  y = finalY(doc) + 6
 
   const secaoLista = (titulo: string, itens: string[]) => {
     if (itens.length === 0) return
-    if (y > 260) {
-      doc.addPage()
-      y = 18
-    }
+    quebrarSeNecessario(255)
     y = tituloSecaoPdf(doc, titulo, y, margem, larguraUtil)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(10)
@@ -376,10 +495,7 @@ export function gerarPdfDiarioCompleto(params: { relatorio: RelatorioDiario; fec
   secaoLista('Estragou', rel.estragou)
 
   if (rel.funcionariosQueComeram.length > 0) {
-    if (y > 260) {
-      doc.addPage()
-      y = 18
-    }
+    quebrarSeNecessario(255)
     y = tituloSecaoPdf(doc, 'Funcionários que comeram', y, margem, larguraUtil)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(10)
@@ -389,10 +505,7 @@ export function gerarPdfDiarioCompleto(params: { relatorio: RelatorioDiario; fec
 
   const secaoConsumo = (titulo: string, itens: ConsumoItem[]) => {
     if (itens.length === 0) return
-    if (y > 250) {
-      doc.addPage()
-      y = 18
-    }
+    quebrarSeNecessario(245)
     y = tituloSecaoPdf(doc, titulo, y, margem, larguraUtil)
     autoTable(doc, {
       startY: y,
@@ -402,19 +515,15 @@ export function gerarPdfDiarioCompleto(params: { relatorio: RelatorioDiario; fec
       styles: { fontSize: 9.5 },
       headStyles: { fillColor: [90, 90, 95] },
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable.finalY + 8
+    y = finalY(doc) + 8
   }
   secaoConsumo('Consumo loja mensal', rel.consumoLojaMensal)
   secaoConsumo('Consumo loja motoboys', rel.consumoLojaMotoboys)
   secaoConsumo('Cortesia clientes', rel.cortesiaClientes)
 
   if (rel.sangrias.length > 0) {
-    if (y > 250) {
-      doc.addPage()
-      y = 18
-    }
-    y = tituloSecaoPdf(doc, 'Sangrias', y, margem, larguraUtil)
+    quebrarSeNecessario(245)
+    y = tituloSecaoPdf(doc, 'Sangrias (relatório)', y, margem, larguraUtil)
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
@@ -423,41 +532,23 @@ export function gerarPdfDiarioCompleto(params: { relatorio: RelatorioDiario; fec
       styles: { fontSize: 9.5 },
       headStyles: { fillColor: [90, 90, 95] },
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable.finalY + 8
+    y = finalY(doc) + 8
   }
 
-  const secaoEstoque = (titulo: string, snap: { dataHora: string; itens: { produto: string; quantidade: number }[] }) => {
-    const itensComQtd = snap.itens.filter((i) => i.quantidade > 0)
-    if (itensComQtd.length === 0) return
-    if (y > 230) {
-      doc.addPage()
-      y = 18
-    }
-    y = tituloSecaoPdf(doc, titulo, y, margem, larguraUtil)
-    if (snap.dataHora) {
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(9)
-      doc.setTextColor(120)
-      doc.text(formatarDataHora(snap.dataHora), margem, y)
-      doc.setTextColor(0)
-      y += 5
-    }
+  const itensEstoque = rel.estoqueQuente.itens.filter((i) => i.quantidade > 0)
+  if (itensEstoque.length > 0) {
+    quebrarSeNecessario(230)
+    y = tituloSecaoPdf(doc, 'Estoque quente', y, margem, larguraUtil)
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
       head: [['Produto', 'Quantidade']],
-      body: itensComQtd.map((i) => [i.produto, String(i.quantidade)]),
+      body: itensEstoque.map((i) => [i.produto, String(i.quantidade)]),
       styles: { fontSize: 9 },
       headStyles: { fillColor: [90, 90, 95] },
       columnStyles: { 1: { halign: 'right' } },
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable.finalY + 8
   }
-  secaoEstoque('Estoque início', rel.estoqueInicio)
-  secaoEstoque('Estoque final', rel.estoqueFinal)
-  secaoLista('Estoque quente', rel.estoqueQuente)
 
   doc.save(`relatorio_completo_${rel.data}_${slugify('mapa-burger')}.pdf`)
 }

@@ -83,8 +83,9 @@ export interface NovoFechamentoInput {
 }
 
 // ============================================================
-// Relatório diário escrito — sem relação com o fechamento de
-// caixa. Estrutura fixa, igual ao modelo usado no dia a dia.
+// Relatório diário escrito — estrutura fixa, igual ao modelo
+// usado no dia a dia. Fica "ligado" ao fechamento de caixa pela
+// mesma data (sem misturar os dados dos dois).
 // ============================================================
 
 /** Uma pessoa (funcionário, cliente ou motoboy) consumindo algo da loja. */
@@ -101,9 +102,8 @@ export interface EstoqueItem {
   quantidade: number
 }
 
-/** Uma contagem de estoque (início ou final do expediente). */
+/** Uma contagem de estoque — usada só no "Estoque quente". */
 export interface EstoqueSnapshot {
-  dataHora: string // ISO datetime-local, ex: 2026-04-22T08:24
   itens: EstoqueItem[]
 }
 
@@ -124,9 +124,7 @@ export interface RelatorioDiario {
 
   sangrias: Sangria[]
 
-  estoqueInicio: EstoqueSnapshot
-  estoqueFinal: EstoqueSnapshot
-  estoqueQuente: string[]
+  estoqueQuente: EstoqueSnapshot
 
   createdAt: string
   updatedAt: string
@@ -143,9 +141,7 @@ export interface RelatorioDiarioInput {
   consumoLojaMotoboys: ConsumoItem[]
   cortesiaClientes: ConsumoItem[]
   sangrias: Sangria[]
-  estoqueInicio: EstoqueSnapshot
-  estoqueFinal: EstoqueSnapshot
-  estoqueQuente: string[]
+  estoqueQuente: EstoqueSnapshot
 }
 
 /** Um funcionário cadastrado (pra selecionar em vez de digitar o nome). */

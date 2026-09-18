@@ -13,14 +13,12 @@ interface RelatorioRow {
   consumo_loja_motoboys: ConsumoItem[]
   cortesia_clientes: ConsumoItem[]
   sangrias: Sangria[]
-  estoque_inicio: EstoqueSnapshot
-  estoque_final: EstoqueSnapshot
-  estoque_quente: string[]
+  estoque_quente: EstoqueSnapshot
   created_at: string
   updated_at: string
 }
 
-const ESTOQUE_VAZIO: EstoqueSnapshot = { dataHora: '', itens: [] }
+const ESTOQUE_VAZIO: EstoqueSnapshot = { itens: [] }
 
 function rowToRelatorio(row: RelatorioRow): RelatorioDiario {
   return {
@@ -35,9 +33,7 @@ function rowToRelatorio(row: RelatorioRow): RelatorioDiario {
     consumoLojaMotoboys: row.consumo_loja_motoboys ?? [],
     cortesiaClientes: row.cortesia_clientes ?? [],
     sangrias: row.sangrias ?? [],
-    estoqueInicio: row.estoque_inicio ?? ESTOQUE_VAZIO,
-    estoqueFinal: row.estoque_final ?? ESTOQUE_VAZIO,
-    estoqueQuente: row.estoque_quente ?? [],
+    estoqueQuente: row.estoque_quente ?? ESTOQUE_VAZIO,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -55,18 +51,16 @@ function inputToRow(input: RelatorioDiarioInput) {
     consumo_loja_motoboys: input.consumoLojaMotoboys,
     cortesia_clientes: input.cortesiaClientes,
     sangrias: input.sangrias,
-    estoque_inicio: input.estoqueInicio,
-    estoque_final: input.estoqueFinal,
     estoque_quente: input.estoqueQuente,
   }
 }
 
-export async function listarRelatorios(): Promise<RelatorioDiario[]> {
-  const { data, error } = await supabase
-    .from('relatorios')
-    .select('*')
-    .order('data', { ascending: false })
-    .order('created_at', { ascending: false })
+export async function listarRelatorios(params?: { dataInicio: string; dataFim: string }): Promise<RelatorioDiario[]> {
+  let query = supabase.from('relatorios').select('*')
+  if (params) {
+    query = query.gte('data', params.dataInicio).lte('data', params.dataFim)
+  }
+  const { data, error } = await query.order('data', { ascending: false }).order('created_at', { ascending: false })
   if (error) throw error
   return (data as unknown as RelatorioRow[]).map(rowToRelatorio)
 }

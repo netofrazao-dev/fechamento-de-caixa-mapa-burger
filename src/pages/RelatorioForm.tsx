@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Printer, Trash2 } from 'lucide-react'
 import {
   atualizarRelatorio,
@@ -8,27 +8,28 @@ import {
   excluirRelatorio,
 } from '../lib/relatorioService'
 import { listarFechamentos } from '../lib/fechamentoService'
-import { gerarPdfDiarioCompleto, imprimirRelatorioDiario } from '../lib/pdf'
+import { gerarPdfDiarioCompleto, imprimirDiaCompleto } from '../lib/pdf'
 import Secao from '../components/Secao'
 import SeletorFuncionarios from '../components/SeletorFuncionarios'
 import ListaLivre from '../components/ListaLivre'
 import ListaConsumo from '../components/ListaConsumo'
 import ListaValorMotivo from '../components/ListaValorMotivo'
 import EstoqueForm from '../components/EstoqueForm'
-import type { ConsumoItem, EstoqueSnapshot, Sangria } from '../types/fechamento'
+import type { ConsumoItem, EstoqueSnapshot, Fechamento, Sangria } from '../types/fechamento'
 
 function hoje(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-const ESTOQUE_VAZIO: EstoqueSnapshot = { dataHora: '', itens: [] }
+const ESTOQUE_VAZIO: EstoqueSnapshot = { itens: [] }
 
 export default function RelatorioForm() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const editando = Boolean(id)
 
-  const [data, setData] = useState(hoje())
+  const [data, setData] = useState(searchParams.get('data') || hoje())
   const [aberturaCaixa, setAberturaCaixa] = useState(0)
   const [fechamentoCaixa, setFechamentoCaixa] = useState(0)
   const [quantidadeVendida, setQuantidadeVendida] = useState(0)
@@ -38,12 +39,11 @@ export default function RelatorioForm() {
   const [consumoLojaMotoboys, setConsumoLojaMotoboys] = useState<ConsumoItem[]>([])
   const [cortesiaClientes, setCortesiaClientes] = useState<ConsumoItem[]>([])
   const [sangrias, setSangrias] = useState<Sangria[]>([])
-  const [estoqueInicio, setEstoqueInicio] = useState<EstoqueSnapshot>(ESTOQUE_VAZIO)
-  const [estoqueFinal, setEstoqueFinal] = useState<EstoqueSnapshot>(ESTOQUE_VAZIO)
-  const [estoqueQuente, setEstoqueQuente] = useState<string[]>([])
+  const [estoqueQuente, setEstoqueQuente] = useState<EstoqueSnapshot>(ESTOQUE_VAZIO)
 
   const [carregando, setCarregando] = useState(editando)
   const [salvando, setSalvando] = useState(false)
+  const [processando, setProcessando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
   useEffect(() => {
@@ -60,8 +60,6 @@ export default function RelatorioForm() {
         setConsumoLojaMotoboys(r.consumoLojaMotoboys)
         setCortesiaClientes(r.cortesiaClientes)
         setSangrias(r.sangrias)
-        setEstoqueInicio(r.estoqueInicio)
-        setEstoqueFinal(r.estoqueFinal)
         setEstoqueQuente(r.estoqueQuente)
       })
       .catch((e) => setErro(e instanceof Error ? e.message : 'Erro ao carregar relatório.'))
@@ -80,9 +78,7 @@ export default function RelatorioForm() {
       consumoLojaMotoboys: consumoLojaMotoboys.filter((c) => c.pessoa.trim() || c.item.trim() || c.valor),
       cortesiaClientes: cortesiaClientes.filter((c) => c.pessoa.trim() || c.item.trim() || c.valor),
       sangrias: sangrias.filter((s) => s.valor > 0 || s.motivo.trim()),
-      estoqueInicio,
-      estoqueFinal,
-      estoqueQuente: estoqueQuente.filter((s) => s.trim()),
+      estoqueQuente,
     }
   }
 
@@ -106,21 +102,40 @@ export default function RelatorioForm() {
     navigate('/relatorios', { replace: true })
   }
 
-  function imprimir() {
-    imprimirRelatorioDiario({
-      id: id ?? '',
-      ...payload(),
-      createdAt: '',
-      updatedAt: '',
-    })
+  async function buscarFechamentosDoDia(): Promise<Fechamento[]> {
+    return listarFechamentos({ dataInicio: data, dataFim: data })
+  }
+
+  async function imprimir() {
+    setErro(null)
+    setProcessando(true)
+    try {
+      const fechamentos = await buscarFechamentosDoDia()
+      imprimirDiaCompleto({
+        relatorio: { id: id ?? '', ...payload(), createdAt: '', updatedAt: '' },
+        fechamentos,
+      })
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao gerar impressão.')
+    } finally {
+      setProcessando(false)
+    }
   }
 
   async function baixarPdfCompleto() {
-    const fechamentos = await listarFechamentos({ dataInicio: data, dataFim: data })
-    gerarPdfDiarioCompleto({
-      relatorio: { id: id ?? '', ...payload(), createdAt: '', updatedAt: '' },
-      fechamentos,
-    })
+    setErro(null)
+    setProcessando(true)
+    try {
+      const fechamentos = await buscarFechamentosDoDia()
+      gerarPdfDiarioCompleto({
+        relatorio: { id: id ?? '', ...payload(), createdAt: '', updatedAt: '' },
+        fechamentos,
+      })
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao gerar PDF.')
+    } finally {
+      setProcessando(false)
+    }
   }
 
   if (carregando) {
@@ -192,16 +207,8 @@ export default function RelatorioForm() {
         <ListaValorMotivo value={sangrias} onChange={setSangrias} />
       </Secao>
 
-      <Secao titulo="Estoque início">
-        <EstoqueForm value={estoqueInicio} onChange={setEstoqueInicio} />
-      </Secao>
-
-      <Secao titulo="Estoque final">
-        <EstoqueForm value={estoqueFinal} onChange={setEstoqueFinal} />
-      </Secao>
-
-      <Secao titulo="Estoque quente" resumo={estoqueQuente.length > 0 ? `${estoqueQuente.length} item(ns)` : 'Nenhum'}>
-        <ListaLivre value={estoqueQuente} onChange={setEstoqueQuente} placeholder="Ex: 3 uva" />
+      <Secao titulo="Estoque quente">
+        <EstoqueForm value={estoqueQuente} onChange={setEstoqueQuente} />
       </Secao>
 
       {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{erro}</div>}
@@ -211,15 +218,17 @@ export default function RelatorioForm() {
           <button
             type="button"
             onClick={imprimir}
-            title="Imprimir (recibo)"
-            className="shrink-0 rounded-xl bg-gray-100 p-3 text-gray-700"
+            disabled={processando}
+            title="Imprimir (fechamento + relatório completos)"
+            className="shrink-0 rounded-xl bg-gray-100 p-3 text-gray-700 disabled:opacity-50"
           >
             <Printer size={18} />
           </button>
           <button
             type="button"
             onClick={baixarPdfCompleto}
-            className="flex-1 rounded-xl bg-gray-100 py-3 text-sm font-semibold text-gray-700"
+            disabled={processando}
+            className="flex-1 rounded-xl bg-gray-100 py-3 text-sm font-semibold text-gray-700 disabled:opacity-50"
           >
             PDF completo
           </button>
