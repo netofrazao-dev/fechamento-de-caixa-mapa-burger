@@ -40,6 +40,7 @@ export default function NovoFechamento() {
   const [lc, setLc] = useState<DadosLC>(LC_VAZIO)
   const [brendi, setBrendi] = useState<DadosBrendi>(BRENDI_VAZIO)
   const [sangrias, setSangrias] = useState<Sangria[]>([])
+  const [marmitasVendidas, setMarmitasVendidas] = useState(0)
   const [totalLCSistema, setTotalLCSistema] = useState(0)
   const [ajuste, setAjuste] = useState<Ajuste>({ tipo: null, valor: 0 })
   const [observacoes, setObservacoes] = useState('')
@@ -80,6 +81,7 @@ export default function NovoFechamento() {
         lc,
         brendi,
         sangrias: sangrias.filter((s) => s.valor > 0 || s.motivo.trim()),
+        marmitasVendidas,
         totalLCSistema,
         ajuste,
         observacoes,
@@ -126,6 +128,21 @@ export default function NovoFechamento() {
               </button>
             ))}
           </div>
+        </label>
+      </section>
+
+      <section className="rounded-2xl bg-white shadow-sm p-4">
+        <label className="flex flex-col gap-1">
+          <span className="text-[13px] font-medium text-gray-600">Marmitas vendidas</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400 w-32"
+            value={Number.isNaN(marmitasVendidas) ? '' : marmitasVendidas}
+            onChange={(e) => setMarmitasVendidas(e.target.value === '' ? 0 : parseInt(e.target.value, 10))}
+            onFocus={(e) => e.target.select()}
+          />
         </label>
       </section>
 

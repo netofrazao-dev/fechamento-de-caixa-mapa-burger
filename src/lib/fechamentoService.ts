@@ -33,6 +33,7 @@ interface FechamentoRow {
   diferenca_final: number
   status: 'fechou' | 'sobrou' | 'faltou'
   observacoes: string | null
+  marmitas_vendidas: number
   sangrias?: { id: string; valor: number; motivo: string }[]
 }
 
@@ -60,6 +61,7 @@ function rowToFechamento(row: FechamentoRow): Fechamento {
       dinheiro: row.dinheiro_brendi,
     },
     sangrias: (row.sangrias ?? []).map((s) => ({ id: s.id, valor: s.valor, motivo: s.motivo })),
+    marmitasVendidas: row.marmitas_vendidas ?? 0,
     totalLCSistema: row.total_lc_sistema,
     ajuste: { tipo: row.ajuste_tipo, valor: row.ajuste_valor },
     observacoes: row.observacoes ?? '',
@@ -117,6 +119,7 @@ export async function criarFechamento(input: NovoFechamentoInput): Promise<Fecha
       diferenca_final: resultado.diferencaFinal,
       status: resultado.status,
       observacoes: input.observacoes || null,
+      marmitas_vendidas: input.marmitasVendidas || 0,
     })
     .select('id')
     .single()

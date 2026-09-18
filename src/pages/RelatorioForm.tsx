@@ -1,27 +1,46 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Trash2 } from 'lucide-react'
+import { Printer, Trash2 } from 'lucide-react'
 import {
   atualizarRelatorio,
   buscarRelatorioPorId,
   criarRelatorio,
   excluirRelatorio,
 } from '../lib/relatorioService'
-import { gerarPdfRelatorio } from '../lib/pdf'
-import type { ItemRelatorio } from '../types/fechamento'
+import { listarFechamentos } from '../lib/fechamentoService'
+import { gerarPdfDiarioCompleto, imprimirRelatorioDiario } from '../lib/pdf'
+import Secao from '../components/Secao'
+import SeletorFuncionarios from '../components/SeletorFuncionarios'
+import ListaLivre from '../components/ListaLivre'
+import ListaConsumo from '../components/ListaConsumo'
+import ListaValorMotivo from '../components/ListaValorMotivo'
+import EstoqueForm from '../components/EstoqueForm'
+import type { ConsumoItem, EstoqueSnapshot, Sangria } from '../types/fechamento'
 
 function hoje(): string {
   return new Date().toISOString().slice(0, 10)
 }
+
+const ESTOQUE_VAZIO: EstoqueSnapshot = { dataHora: '', itens: [] }
 
 export default function RelatorioForm() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const editando = Boolean(id)
 
-  const [titulo, setTitulo] = useState('')
   const [data, setData] = useState(hoje())
-  const [itens, setItens] = useState<ItemRelatorio[]>([{ label: '', valor: '' }])
+  const [aberturaCaixa, setAberturaCaixa] = useState(0)
+  const [fechamentoCaixa, setFechamentoCaixa] = useState(0)
+  const [quantidadeVendida, setQuantidadeVendida] = useState(0)
+  const [estragou, setEstragou] = useState<string[]>([])
+  const [funcionariosQueComeram, setFuncionariosQueComeram] = useState<string[]>([])
+  const [consumoLojaMensal, setConsumoLojaMensal] = useState<ConsumoItem[]>([])
+  const [consumoLojaMotoboys, setConsumoLojaMotoboys] = useState<ConsumoItem[]>([])
+  const [cortesiaClientes, setCortesiaClientes] = useState<ConsumoItem[]>([])
+  const [sangrias, setSangrias] = useState<Sangria[]>([])
+  const [estoqueInicio, setEstoqueInicio] = useState<EstoqueSnapshot>(ESTOQUE_VAZIO)
+  const [estoqueFinal, setEstoqueFinal] = useState<EstoqueSnapshot>(ESTOQUE_VAZIO)
+  const [estoqueQuente, setEstoqueQuente] = useState<string[]>([])
 
   const [carregando, setCarregando] = useState(editando)
   const [salvando, setSalvando] = useState(false)
@@ -31,31 +50,47 @@ export default function RelatorioForm() {
     if (!id) return
     buscarRelatorioPorId(id)
       .then((r) => {
-        setTitulo(r.titulo)
         setData(r.data)
-        setItens(r.itens.length > 0 ? r.itens : [{ label: '', valor: '' }])
+        setAberturaCaixa(r.aberturaCaixa)
+        setFechamentoCaixa(r.fechamentoCaixa)
+        setQuantidadeVendida(r.quantidadeVendida)
+        setEstragou(r.estragou)
+        setFuncionariosQueComeram(r.funcionariosQueComeram)
+        setConsumoLojaMensal(r.consumoLojaMensal)
+        setConsumoLojaMotoboys(r.consumoLojaMotoboys)
+        setCortesiaClientes(r.cortesiaClientes)
+        setSangrias(r.sangrias)
+        setEstoqueInicio(r.estoqueInicio)
+        setEstoqueFinal(r.estoqueFinal)
+        setEstoqueQuente(r.estoqueQuente)
       })
       .catch((e) => setErro(e instanceof Error ? e.message : 'Erro ao carregar relatório.'))
       .finally(() => setCarregando(false))
   }, [id])
 
-  function atualizarItem(index: number, campo: keyof ItemRelatorio, valor: string) {
-    setItens((prev) => prev.map((it, i) => (i === index ? { ...it, [campo]: valor } : it)))
-  }
-  function adicionarItem() {
-    setItens((prev) => [...prev, { label: '', valor: '' }])
-  }
-  function removerItem(index: number) {
-    setItens((prev) => prev.filter((_, i) => i !== index))
+  function payload() {
+    return {
+      data,
+      aberturaCaixa,
+      fechamentoCaixa,
+      quantidadeVendida,
+      estragou: estragou.filter((s) => s.trim()),
+      funcionariosQueComeram,
+      consumoLojaMensal: consumoLojaMensal.filter((c) => c.pessoa.trim() || c.item.trim() || c.valor),
+      consumoLojaMotoboys: consumoLojaMotoboys.filter((c) => c.pessoa.trim() || c.item.trim() || c.valor),
+      cortesiaClientes: cortesiaClientes.filter((c) => c.pessoa.trim() || c.item.trim() || c.valor),
+      sangrias: sangrias.filter((s) => s.valor > 0 || s.motivo.trim()),
+      estoqueInicio,
+      estoqueFinal,
+      estoqueQuente: estoqueQuente.filter((s) => s.trim()),
+    }
   }
 
   async function salvar() {
     setErro(null)
     setSalvando(true)
     try {
-      const itensLimpos = itens.filter((it) => it.label.trim() || it.valor.trim())
-      const payload = { titulo, data, itens: itensLimpos }
-      const salvo = id ? await atualizarRelatorio(id, payload) : await criarRelatorio(payload)
+      const salvo = id ? await atualizarRelatorio(id, payload()) : await criarRelatorio(payload())
       navigate(`/relatorios/${salvo.id}`, { replace: true })
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao salvar relatório.')
@@ -71,14 +106,20 @@ export default function RelatorioForm() {
     navigate('/relatorios', { replace: true })
   }
 
-  function baixarPdf() {
-    gerarPdfRelatorio({
+  function imprimir() {
+    imprimirRelatorioDiario({
       id: id ?? '',
-      titulo,
-      data,
-      itens: itens.filter((it) => it.label.trim() || it.valor.trim()),
+      ...payload(),
       createdAt: '',
       updatedAt: '',
+    })
+  }
+
+  async function baixarPdfCompleto() {
+    const fechamentos = await listarFechamentos({ dataInicio: data, dataFim: data })
+    gerarPdfDiarioCompleto({
+      relatorio: { id: id ?? '', ...payload(), createdAt: '', updatedAt: '' },
+      fechamentos,
     })
   }
 
@@ -99,16 +140,6 @@ export default function RelatorioForm() {
 
       <section className="rounded-2xl bg-white shadow-sm p-4 space-y-3">
         <label className="flex flex-col gap-1">
-          <span className="text-[13px] font-medium text-gray-600">Título</span>
-          <input
-            type="text"
-            placeholder="Ex: Relatório semanal de compras"
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
-            value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
           <span className="text-[13px] font-medium text-gray-600">Data</span>
           <input
             type="date"
@@ -117,44 +148,61 @@ export default function RelatorioForm() {
             onChange={(e) => setData(e.target.value)}
           />
         </label>
+        <div className="grid grid-cols-2 gap-3">
+          <CampoDinheiro label="Abertura do caixa" value={aberturaCaixa} onChange={setAberturaCaixa} />
+          <CampoDinheiro label="Fechamento do caixa" value={fechamentoCaixa} onChange={setFechamentoCaixa} />
+        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-[13px] font-medium text-gray-600">Quantidade vendida</span>
+          <input
+            type="number"
+            min={0}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400 w-32"
+            value={Number.isNaN(quantidadeVendida) ? '' : quantidadeVendida}
+            onChange={(e) => setQuantidadeVendida(e.target.value === '' ? 0 : parseInt(e.target.value, 10))}
+            onFocus={(e) => e.target.select()}
+          />
+        </label>
       </section>
 
-      <section className="rounded-2xl bg-white shadow-sm p-4 space-y-3">
-        <h2 className="text-[15px] font-semibold text-gray-900">Conteúdo</h2>
-        <div className="space-y-3">
-          {itens.map((item, i) => (
-            <div key={i} className="rounded-xl bg-gray-50 p-3 space-y-2">
-              <div className="flex gap-2 items-center">
-                <input
-                  type="text"
-                  placeholder="Nome do campo (ex: Fornecedor)"
-                  className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm font-medium outline-none focus:border-gray-400"
-                  value={item.label}
-                  onChange={(e) => atualizarItem(i, 'label', e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => removerItem(i)}
-                  className="shrink-0 p-1.5 text-gray-300 hover:text-red-500"
-                  aria-label="Remover campo"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-              <textarea
-                placeholder="Preencha aqui..."
-                rows={2}
-                className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-gray-400"
-                value={item.valor}
-                onChange={(e) => atualizarItem(i, 'valor', e.target.value)}
-              />
-            </div>
-          ))}
-        </div>
-        <button type="button" onClick={adicionarItem} className="text-sm font-medium text-gray-900 hover:underline">
-          + Adicionar campo
-        </button>
-      </section>
+      <Secao titulo="Estragou" resumo={estragou.length > 0 ? `${estragou.length} item(ns)` : 'Nenhum'}>
+        <ListaLivre value={estragou} onChange={setEstragou} placeholder="Ex: 400g de arroz" />
+      </Secao>
+
+      <Secao
+        titulo="Funcionários que comeram"
+        resumo={funcionariosQueComeram.length > 0 ? funcionariosQueComeram.join(', ') : 'Nenhum'}
+      >
+        <SeletorFuncionarios value={funcionariosQueComeram} onChange={setFuncionariosQueComeram} />
+      </Secao>
+
+      <Secao titulo="Consumo loja mensal" resumo={`${consumoLojaMensal.length} lançamento(s)`}>
+        <ListaConsumo value={consumoLojaMensal} onChange={setConsumoLojaMensal} placeholderPessoa="Funcionário" />
+      </Secao>
+
+      <Secao titulo="Consumo loja motoboys" resumo={`${consumoLojaMotoboys.length} lançamento(s)`}>
+        <ListaConsumo value={consumoLojaMotoboys} onChange={setConsumoLojaMotoboys} placeholderPessoa="Motoboy" />
+      </Secao>
+
+      <Secao titulo="Cortesia clientes" resumo={`${cortesiaClientes.length} lançamento(s)`}>
+        <ListaConsumo value={cortesiaClientes} onChange={setCortesiaClientes} placeholderPessoa="Cliente" />
+      </Secao>
+
+      <Secao titulo="Sangrias" resumo={`${sangrias.length} sangria(s)`}>
+        <ListaValorMotivo value={sangrias} onChange={setSangrias} />
+      </Secao>
+
+      <Secao titulo="Estoque início">
+        <EstoqueForm value={estoqueInicio} onChange={setEstoqueInicio} />
+      </Secao>
+
+      <Secao titulo="Estoque final">
+        <EstoqueForm value={estoqueFinal} onChange={setEstoqueFinal} />
+      </Secao>
+
+      <Secao titulo="Estoque quente" resumo={estoqueQuente.length > 0 ? `${estoqueQuente.length} item(ns)` : 'Nenhum'}>
+        <ListaLivre value={estoqueQuente} onChange={setEstoqueQuente} placeholder="Ex: 3 uva" />
+      </Secao>
 
       {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{erro}</div>}
 
@@ -162,10 +210,18 @@ export default function RelatorioForm() {
         <div className="max-w-2xl mx-auto flex gap-2">
           <button
             type="button"
-            onClick={baixarPdf}
+            onClick={imprimir}
+            title="Imprimir (recibo)"
+            className="shrink-0 rounded-xl bg-gray-100 p-3 text-gray-700"
+          >
+            <Printer size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={baixarPdfCompleto}
             className="flex-1 rounded-xl bg-gray-100 py-3 text-sm font-semibold text-gray-700"
           >
-            Baixar PDF
+            PDF completo
           </button>
           <button
             type="button"
@@ -178,5 +234,32 @@ export default function RelatorioForm() {
         </div>
       </div>
     </div>
+  )
+}
+
+function CampoDinheiro({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: number
+  onChange: (v: number) => void
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[13px] font-medium text-gray-600">{label}</span>
+      <div className="flex items-center rounded-lg border border-gray-200 bg-white">
+        <span className="pl-2.5 text-gray-400 text-sm">R$</span>
+        <input
+          type="number"
+          step="0.01"
+          className="w-full px-2 py-2 text-sm outline-none"
+          value={Number.isNaN(value) ? '' : value}
+          onChange={(e) => onChange(e.target.value === '' ? 0 : parseFloat(e.target.value))}
+          onFocus={(e) => e.target.select()}
+        />
+      </div>
+    </label>
   )
 }

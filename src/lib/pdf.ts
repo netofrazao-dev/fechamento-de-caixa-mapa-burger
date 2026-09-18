@@ -1,11 +1,18 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { Fechamento, Relatorio } from '../types/fechamento'
+import type { ConsumoItem, Fechamento, RelatorioDiario } from '../types/fechamento'
 import { formatarMoeda, STATUS_LABEL } from './calculations'
+import { semAcento } from './texto'
 
 function formatarData(iso: string): string {
   const [ano, mes, dia] = iso.split('-')
   return `${dia}/${mes}/${ano}`
+}
+
+function formatarDataHora(iso: string): string {
+  if (!iso) return '-'
+  const [data, hora] = iso.split('T')
+  return `${formatarData(data)} ${hora ?? ''}`.trim()
 }
 
 const TURNO_LABEL: Record<'manha' | 'noite', string> = {
@@ -13,103 +20,149 @@ const TURNO_LABEL: Record<'manha' | 'noite', string> = {
   noite: 'Noite',
 }
 
+function slugify(texto: string): string {
+  return (texto || 'sem-titulo')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
+// ============================================================
+// Recibo térmico (80mm) — usado pro fechamento de caixa e pro
+// relatório diário. Sem acentos/cedilha (bugam na impressão
+// térmica); layout mantido igual ao que já funciona.
+// ============================================================
+
+class ReciboTermico {
+  doc: jsPDF
+  y = 8
+  margem = 4
+  larguraMM = 80
+
+  constructor() {
+    this.doc = new jsPDF({ unit: 'mm', format: [this.larguraMM, 297] })
+  }
+
+  linha(texto: string, opts?: { negrito?: boolean; tamanho?: number; centro?: boolean }) {
+    this.doc.setFont('helvetica', opts?.negrito ? 'bold' : 'normal')
+    this.doc.setFontSize(opts?.tamanho ?? 9)
+    const t = semAcento(texto)
+    if (opts?.centro) {
+      this.doc.text(t, this.larguraMM / 2, this.y, { align: 'center' })
+    } else {
+      this.doc.text(t, this.margem, this.y)
+    }
+    this.y += (opts?.tamanho ?? 9) / 2 + 1.6
+  }
+
+  linhaValor(label: string, valor: number) {
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setFontSize(9)
+    this.doc.text(semAcento(label), this.margem, this.y)
+    this.doc.text(formatarMoeda(valor), this.larguraMM - this.margem, this.y, { align: 'right' })
+    this.y += 5.2
+  }
+
+  linhaTexto(label: string, texto: string) {
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setFontSize(9)
+    this.doc.text(semAcento(label), this.margem, this.y)
+    this.doc.text(semAcento(texto), this.larguraMM - this.margem, this.y, { align: 'right' })
+    this.y += 5.2
+  }
+
+  paragrafo(texto: string) {
+    const largura = this.larguraMM - this.margem * 2
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setFontSize(8.5)
+    const linhas = this.doc.splitTextToSize(semAcento(texto), largura)
+    this.doc.text(linhas, this.margem, this.y)
+    this.y += linhas.length * 4
+  }
+
+  separador() {
+    this.doc.setLineWidth(0.1)
+    this.doc.line(this.margem, this.y, this.larguraMM - this.margem, this.y)
+    this.y += 4
+  }
+
+  espaco(mm = 2) {
+    this.y += mm
+  }
+
+  quebrarPaginaSeNecessario() {
+    if (this.y > 280) {
+      this.doc.addPage([this.larguraMM, 297])
+      this.y = 8
+    }
+  }
+}
+
 /**
- * Gera um PDF simples, estilo recibo (80mm de largura), com só o
- * necessário: valores de LC e Brendi, totais e resultado final.
+ * Recibo do fechamento de caixa, estilo cupom (80mm). Mesmo
+ * layout de sempre — só sem acentos e com a contagem de marmitas.
  */
 export function gerarPdfFechamento(f: Fechamento): void {
-  const larguraMM = 80
-  const doc = new jsPDF({ unit: 'mm', format: [larguraMM, 200] })
-  let y = 8
-  const margem = 4
-  const largura = larguraMM - margem * 2
+  const r = new ReciboTermico()
 
-  const linha = (texto: string, opts?: { negrito?: boolean; tamanho?: number; centro?: boolean }) => {
-    doc.setFont('helvetica', opts?.negrito ? 'bold' : 'normal')
-    doc.setFontSize(opts?.tamanho ?? 9)
-    if (opts?.centro) {
-      doc.text(texto, larguraMM / 2, y, { align: 'center' })
-    } else {
-      doc.text(texto, margem, y)
-    }
-    y += (opts?.tamanho ?? 9) / 2 + 1.6
-  }
+  r.linha('MAPA BURGER', { negrito: true, tamanho: 12, centro: true })
+  r.linha('Fechamento de Caixa', { centro: true, tamanho: 9 })
+  r.espaco(1)
+  r.linha(`Data: ${formatarData(f.data)}  -  ${TURNO_LABEL[f.turno]}`, { centro: true })
+  r.separador()
 
-  const linhaValor = (label: string, valor: number) => {
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
-    doc.text(label, margem, y)
-    doc.text(formatarMoeda(valor), larguraMM - margem, y, { align: 'right' })
-    y += 5.2
-  }
-
-  const separador = () => {
-    doc.setLineWidth(0.1)
-    doc.line(margem, y, larguraMM - margem, y)
-    y += 4
-  }
-
-  linha('MAPA BURGER', { negrito: true, tamanho: 12, centro: true })
-  linha('Fechamento de Caixa', { centro: true, tamanho: 9 })
-  y += 1
-  linha(`Data: ${formatarData(f.data)}  -  ${TURNO_LABEL[f.turno]}`, { centro: true })
-  separador()
-
-  linha('LC', { negrito: true })
-  linhaValor('Dinheiro abertura', f.lc.dinheiroAbertura)
-  linhaValor('Dinheiro fechamento', f.lc.dinheiroFechamento)
-  linhaValor('PIX', f.lc.pix)
-  linhaValor('Débito', f.lc.debito)
-  linhaValor('Crédito', f.lc.credito)
-  linhaValor('Consumo loja', f.lc.consumoLoja)
-  linhaValor('A prazo', f.lc.aPrazo)
-  linhaValor('Ticket', f.lc.ticket)
+  r.linha('LC', { negrito: true })
+  r.linhaValor('Dinheiro abertura', f.lc.dinheiroAbertura)
+  r.linhaValor('Dinheiro fechamento', f.lc.dinheiroFechamento)
+  r.linhaValor('PIX', f.lc.pix)
+  r.linhaValor('Debito', f.lc.debito)
+  r.linhaValor('Credito', f.lc.credito)
+  r.linhaValor('Consumo loja', f.lc.consumoLoja)
+  r.linhaValor('A prazo', f.lc.aPrazo)
+  r.linhaValor('Ticket', f.lc.ticket)
   if (f.sangrias.length > 0) {
     const totalSangria = f.sangrias.reduce((acc, s) => acc + s.valor, 0)
-    linhaValor('Sangria (total)', totalSangria)
+    r.linhaValor('Sangria (total)', totalSangria)
   }
-  y += 1
-  linhaValor('TOTAL LC', f.resultado.totalLC)
-  separador()
+  r.espaco(1)
+  r.linhaValor('TOTAL LC', f.resultado.totalLC)
+  r.separador()
 
-  linha('BRENDI', { negrito: true })
-  linhaValor('PIX', f.brendi.pix)
-  linhaValor('Débito', f.brendi.debito)
-  linhaValor('Crédito', f.brendi.credito)
-  linhaValor('Crédito Online', f.brendi.creditoOnline)
-  linhaValor('Dinheiro', f.brendi.dinheiro)
-  y += 1
-  linhaValor('TOTAL BRENDI', f.resultado.totalBrendi)
-  separador()
+  r.linha('BRENDI', { negrito: true })
+  r.linhaValor('PIX', f.brendi.pix)
+  r.linhaValor('Debito', f.brendi.debito)
+  r.linhaValor('Credito', f.brendi.credito)
+  r.linhaValor('Credito Online', f.brendi.creditoOnline)
+  r.linhaValor('Dinheiro', f.brendi.dinheiro)
+  r.espaco(1)
+  r.linhaValor('TOTAL BRENDI', f.resultado.totalBrendi)
+  r.separador()
 
-  linha('RESULTADO', { negrito: true })
-  linhaValor('Total Caixa', f.resultado.totalCaixa)
-  linhaValor('Total LC Sistema', f.totalLCSistema)
-  linhaValor('Total Sistema', f.resultado.totalSistema)
-  y += 1
-  linhaValor('Diferença', f.resultado.diferencaOriginal)
+  r.linha('RESULTADO', { negrito: true })
+  r.linhaValor('Total Caixa', f.resultado.totalCaixa)
+  r.linhaValor('Total LC Sistema', f.totalLCSistema)
+  r.linhaValor('Total Sistema', f.resultado.totalSistema)
+  r.espaco(1)
+  r.linhaValor('Diferenca', f.resultado.diferencaOriginal)
   if (f.ajuste.tipo) {
-    linhaValor(
-      `Ajuste (${f.ajuste.tipo === 'adicionar' ? '+' : '-'})`,
-      f.resultado.ajusteAplicado,
-    )
+    r.linhaValor(`Ajuste (${f.ajuste.tipo === 'adicionar' ? '+' : '-'})`, f.resultado.ajusteAplicado)
   }
-  y += 1
-  linha(`DIFERENÇA FINAL: ${formatarMoeda(f.resultado.diferencaFinal)}`, { negrito: true })
-  y += 1
-  linha(STATUS_LABEL[f.resultado.status], { negrito: true, centro: true, tamanho: 11 })
+  r.espaco(1)
+  r.linha(`DIFERENCA FINAL: ${formatarMoeda(f.resultado.diferencaFinal)}`, { negrito: true })
+  r.espaco(1)
+  r.linha(STATUS_LABEL[f.resultado.status], { negrito: true, centro: true, tamanho: 11 })
+  r.separador()
+  r.linhaTexto('Marmitas vendidas', String(f.marmitasVendidas ?? 0))
 
   if (f.observacoes) {
-    separador()
-    linha('Observações:', { negrito: true })
-    const linhasObs = doc.splitTextToSize(f.observacoes, largura)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8.5)
-    doc.text(linhasObs, margem, y)
-    y += linhasObs.length * 4
+    r.separador()
+    r.linha('Observacoes:', { negrito: true })
+    r.paragrafo(f.observacoes)
   }
 
-  doc.save(`fechamento_${f.data}_${f.turno}.pdf`)
+  r.doc.save(`fechamento_${f.data}_${f.turno}.pdf`)
 }
 
 export interface LinhaRelatorioMensal {
@@ -122,10 +175,7 @@ export interface LinhaRelatorioMensal {
 }
 
 /** Gera o PDF resumido do mês: uma linha por dia + totais do mês. */
-export function gerarPdfMensal(params: {
-  mesLabel: string
-  linhas: LinhaRelatorioMensal[]
-}): void {
+export function gerarPdfMensal(params: { mesLabel: string; linhas: LinhaRelatorioMensal[] }): void {
   const { mesLabel, linhas } = params
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
 
@@ -166,53 +216,248 @@ export function gerarPdfMensal(params: {
   doc.save(`relatorio_mensal_${mesLabel.replace('/', '-')}.pdf`)
 }
 
-/** Gera um PDF simples (A4) a partir de um relatório livre. */
-export function gerarPdfRelatorio(r: Relatorio): void {
+// ============================================================
+// Relatório diário escrito
+// ============================================================
+
+/** Recibo térmico (80mm, sem acento) do relatório diário — pra imprimir junto. */
+export function imprimirRelatorioDiario(rel: RelatorioDiario): void {
+  const r = new ReciboTermico()
+
+  r.linha('MAPA BURGER', { negrito: true, tamanho: 12, centro: true })
+  r.linha('Relatorio Diario', { centro: true, tamanho: 9 })
+  r.espaco(1)
+  r.linha(`Data: ${formatarData(rel.data)}`, { centro: true })
+  r.separador()
+
+  r.linhaValor('Abertura do caixa', rel.aberturaCaixa)
+  r.linhaValor('Fechamento do caixa', rel.fechamentoCaixa)
+  r.linhaTexto('Vendidas', String(rel.quantidadeVendida))
+  r.separador()
+
+  if (rel.estragou.length > 0) {
+    r.linha('ESTRAGOU', { negrito: true })
+    rel.estragou.forEach((item) => r.paragrafo(`- ${item}`))
+    r.separador()
+  }
+
+  if (rel.funcionariosQueComeram.length > 0) {
+    r.linha('FUNCIONARIOS QUE COMERAM', { negrito: true })
+    r.paragrafo(rel.funcionariosQueComeram.join(', '))
+    r.separador()
+  }
+
+  const listaConsumo = (titulo: string, itens: ConsumoItem[]) => {
+    if (itens.length === 0) return
+    r.linha(titulo, { negrito: true })
+    itens.forEach((it) => r.linhaTexto(`${it.pessoa} (${it.item})`, formatarMoeda(it.valor)))
+    r.separador()
+  }
+  listaConsumo('CONSUMO LOJA MENSAL', rel.consumoLojaMensal)
+  listaConsumo('CONSUMO LOJA MOTOBOYS', rel.consumoLojaMotoboys)
+  listaConsumo('CORTESIA CLIENTES', rel.cortesiaClientes)
+
+  if (rel.sangrias.length > 0) {
+    r.linha('SANGRIAS', { negrito: true })
+    rel.sangrias.forEach((s) => r.linhaTexto(s.motivo, formatarMoeda(s.valor)))
+    r.separador()
+  }
+
+  const listaEstoque = (titulo: string, snap: { dataHora: string; itens: { produto: string; quantidade: number }[] }) => {
+    const itensComQtd = snap.itens.filter((i) => i.quantidade > 0)
+    if (itensComQtd.length === 0 && !snap.dataHora) return
+    r.quebrarPaginaSeNecessario()
+    r.linha(titulo, { negrito: true })
+    if (snap.dataHora) r.linha(formatarDataHora(snap.dataHora), { tamanho: 8 })
+    itensComQtd.forEach((i) => r.linhaTexto(i.produto, String(i.quantidade)))
+    r.separador()
+  }
+  listaEstoque('ESTOQUE INICIO', rel.estoqueInicio)
+  listaEstoque('ESTOQUE FINAL', rel.estoqueFinal)
+
+  if (rel.estoqueQuente.length > 0) {
+    r.linha('ESTOQUE QUENTE', { negrito: true })
+    rel.estoqueQuente.forEach((item) => r.paragrafo(`- ${item}`))
+  }
+
+  r.doc.save(`relatorio_diario_${rel.data}.pdf`)
+}
+
+// ============================================================
+// PDF final consolidado (A4, com acentos, visual mais elaborado)
+// — pra enviar pra alguém.
+// ============================================================
+
+function tituloSecaoPdf(doc: jsPDF, texto: string, y: number, margem: number, larguraUtil: number): number {
+  doc.setFillColor(24, 24, 27)
+  doc.rect(margem, y, larguraUtil, 7, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10.5)
+  doc.text(texto.toUpperCase(), margem + 2.5, y + 5)
+  doc.setTextColor(0, 0, 0)
+  return y + 11
+}
+
+export function gerarPdfDiarioCompleto(params: { relatorio: RelatorioDiario; fechamentos: Fechamento[] }): void {
+  const { relatorio: rel, fechamentos } = params
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const margem = 16
-  let y = 20
+  const larguraUtil = 210 - margem * 2
+  let y = 18
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(14)
-  doc.text(r.titulo || 'Relatório', margem, y)
-  y += 6
-
+  doc.setFontSize(18)
+  doc.text('Mapa Burger', margem, y)
+  y += 7
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(10)
-  doc.setTextColor(120)
-  doc.text(formatarData(r.data), margem, y)
+  doc.setFontSize(11)
+  doc.setTextColor(110)
+  doc.text(`Relatório do dia — ${formatarData(rel.data)}`, margem, y)
   doc.setTextColor(0)
   y += 8
 
-  doc.setLineWidth(0.2)
-  doc.line(margem, y, 210 - margem, y)
-  y += 8
-
-  for (const item of r.itens) {
-    if (y > 270) {
-      doc.addPage()
-      y = 20
-    }
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(11)
-    doc.text(item.label || '(sem título)', margem, y)
-    y += 6
-
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
-    const linhas = doc.splitTextToSize(item.valor || '-', 210 - margem * 2)
-    doc.text(linhas, margem, y)
-    y += linhas.length * 5 + 6
+  // --- Resumo do fechamento de caixa (manhã/noite) ---
+  if (fechamentos.length > 0) {
+    y = tituloSecaoPdf(doc, 'Fechamento de Caixa', y, margem, larguraUtil)
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [['Turno', 'Total Caixa', 'Total Sistema', 'Diferença Final', 'Situação']],
+      body: fechamentos.map((f) => [
+        TURNO_LABEL[f.turno],
+        formatarMoeda(f.resultado.totalCaixa),
+        formatarMoeda(f.resultado.totalSistema),
+        formatarMoeda(f.resultado.diferencaFinal),
+        STATUS_LABEL[f.resultado.status],
+      ]),
+      styles: { fontSize: 9.5 },
+      headStyles: { fillColor: [24, 24, 27] },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable.finalY + 8
   }
 
-  doc.save(`relatorio_${r.data}_${slugify(r.titulo)}.pdf`)
-}
+  // --- Resumo do dia (abertura/fechamento/vendidas/marmitas) ---
+  y = tituloSecaoPdf(doc, 'Resumo do Dia', y, margem, larguraUtil)
+  const totalMarmitas = fechamentos.reduce((acc, f) => acc + (f.marmitasVendidas || 0), 0)
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margem, right: margem },
+    body: [
+      ['Abertura do caixa', formatarMoeda(rel.aberturaCaixa)],
+      ['Fechamento do caixa', formatarMoeda(rel.fechamentoCaixa)],
+      ['Quantidade vendida', String(rel.quantidadeVendida)],
+      ['Marmitas vendidas', String(totalMarmitas)],
+    ],
+    styles: { fontSize: 9.5 },
+    theme: 'plain',
+  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  y = (doc as any).lastAutoTable.finalY + 6
 
-function slugify(texto: string): string {
-  return (texto || 'sem-titulo')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
+  const secaoLista = (titulo: string, itens: string[]) => {
+    if (itens.length === 0) return
+    if (y > 260) {
+      doc.addPage()
+      y = 18
+    }
+    y = tituloSecaoPdf(doc, titulo, y, margem, larguraUtil)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    itens.forEach((item) => {
+      const linhas = doc.splitTextToSize(`•  ${item}`, larguraUtil)
+      doc.text(linhas, margem, y)
+      y += linhas.length * 5
+    })
+    y += 4
+  }
+
+  secaoLista('Estragou', rel.estragou)
+
+  if (rel.funcionariosQueComeram.length > 0) {
+    if (y > 260) {
+      doc.addPage()
+      y = 18
+    }
+    y = tituloSecaoPdf(doc, 'Funcionários que comeram', y, margem, larguraUtil)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    doc.text(rel.funcionariosQueComeram.join(', '), margem, y)
+    y += 9
+  }
+
+  const secaoConsumo = (titulo: string, itens: ConsumoItem[]) => {
+    if (itens.length === 0) return
+    if (y > 250) {
+      doc.addPage()
+      y = 18
+    }
+    y = tituloSecaoPdf(doc, titulo, y, margem, larguraUtil)
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [['Pessoa', 'Item', 'Valor']],
+      body: itens.map((it) => [it.pessoa, it.item, formatarMoeda(it.valor)]),
+      styles: { fontSize: 9.5 },
+      headStyles: { fillColor: [90, 90, 95] },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable.finalY + 8
+  }
+  secaoConsumo('Consumo loja mensal', rel.consumoLojaMensal)
+  secaoConsumo('Consumo loja motoboys', rel.consumoLojaMotoboys)
+  secaoConsumo('Cortesia clientes', rel.cortesiaClientes)
+
+  if (rel.sangrias.length > 0) {
+    if (y > 250) {
+      doc.addPage()
+      y = 18
+    }
+    y = tituloSecaoPdf(doc, 'Sangrias', y, margem, larguraUtil)
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [['Motivo', 'Valor']],
+      body: rel.sangrias.map((s) => [s.motivo, formatarMoeda(s.valor)]),
+      styles: { fontSize: 9.5 },
+      headStyles: { fillColor: [90, 90, 95] },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable.finalY + 8
+  }
+
+  const secaoEstoque = (titulo: string, snap: { dataHora: string; itens: { produto: string; quantidade: number }[] }) => {
+    const itensComQtd = snap.itens.filter((i) => i.quantidade > 0)
+    if (itensComQtd.length === 0) return
+    if (y > 230) {
+      doc.addPage()
+      y = 18
+    }
+    y = tituloSecaoPdf(doc, titulo, y, margem, larguraUtil)
+    if (snap.dataHora) {
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9)
+      doc.setTextColor(120)
+      doc.text(formatarDataHora(snap.dataHora), margem, y)
+      doc.setTextColor(0)
+      y += 5
+    }
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [['Produto', 'Quantidade']],
+      body: itensComQtd.map((i) => [i.produto, String(i.quantidade)]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [90, 90, 95] },
+      columnStyles: { 1: { halign: 'right' } },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable.finalY + 8
+  }
+  secaoEstoque('Estoque início', rel.estoqueInicio)
+  secaoEstoque('Estoque final', rel.estoqueFinal)
+  secaoLista('Estoque quente', rel.estoqueQuente)
+
+  doc.save(`relatorio_completo_${rel.data}_${slugify('mapa-burger')}.pdf`)
 }

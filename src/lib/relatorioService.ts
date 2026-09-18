@@ -1,27 +1,67 @@
 import { supabase } from './supabase'
-import type { ItemRelatorio, Relatorio, RelatorioInput } from '../types/fechamento'
+import type { ConsumoItem, EstoqueSnapshot, RelatorioDiario, RelatorioDiarioInput, Sangria } from '../types/fechamento'
 
 interface RelatorioRow {
   id: string
-  titulo: string
   data: string
-  itens: ItemRelatorio[]
+  abertura_caixa: number
+  fechamento_caixa: number
+  quantidade_vendida: number
+  estragou: string[]
+  funcionarios_que_comeram: string[]
+  consumo_loja_mensal: ConsumoItem[]
+  consumo_loja_motoboys: ConsumoItem[]
+  cortesia_clientes: ConsumoItem[]
+  sangrias: Sangria[]
+  estoque_inicio: EstoqueSnapshot
+  estoque_final: EstoqueSnapshot
+  estoque_quente: string[]
   created_at: string
   updated_at: string
 }
 
-function rowToRelatorio(row: RelatorioRow): Relatorio {
+const ESTOQUE_VAZIO: EstoqueSnapshot = { dataHora: '', itens: [] }
+
+function rowToRelatorio(row: RelatorioRow): RelatorioDiario {
   return {
     id: row.id,
-    titulo: row.titulo,
     data: row.data,
-    itens: row.itens ?? [],
+    aberturaCaixa: row.abertura_caixa ?? 0,
+    fechamentoCaixa: row.fechamento_caixa ?? 0,
+    quantidadeVendida: row.quantidade_vendida ?? 0,
+    estragou: row.estragou ?? [],
+    funcionariosQueComeram: row.funcionarios_que_comeram ?? [],
+    consumoLojaMensal: row.consumo_loja_mensal ?? [],
+    consumoLojaMotoboys: row.consumo_loja_motoboys ?? [],
+    cortesiaClientes: row.cortesia_clientes ?? [],
+    sangrias: row.sangrias ?? [],
+    estoqueInicio: row.estoque_inicio ?? ESTOQUE_VAZIO,
+    estoqueFinal: row.estoque_final ?? ESTOQUE_VAZIO,
+    estoqueQuente: row.estoque_quente ?? [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
 
-export async function listarRelatorios(): Promise<Relatorio[]> {
+function inputToRow(input: RelatorioDiarioInput) {
+  return {
+    data: input.data,
+    abertura_caixa: input.aberturaCaixa,
+    fechamento_caixa: input.fechamentoCaixa,
+    quantidade_vendida: input.quantidadeVendida,
+    estragou: input.estragou,
+    funcionarios_que_comeram: input.funcionariosQueComeram,
+    consumo_loja_mensal: input.consumoLojaMensal,
+    consumo_loja_motoboys: input.consumoLojaMotoboys,
+    cortesia_clientes: input.cortesiaClientes,
+    sangrias: input.sangrias,
+    estoque_inicio: input.estoqueInicio,
+    estoque_final: input.estoqueFinal,
+    estoque_quente: input.estoqueQuente,
+  }
+}
+
+export async function listarRelatorios(): Promise<RelatorioDiario[]> {
   const { data, error } = await supabase
     .from('relatorios')
     .select('*')
@@ -31,26 +71,29 @@ export async function listarRelatorios(): Promise<Relatorio[]> {
   return (data as unknown as RelatorioRow[]).map(rowToRelatorio)
 }
 
-export async function buscarRelatorioPorId(id: string): Promise<Relatorio> {
+export async function buscarRelatorioPorId(id: string): Promise<RelatorioDiario> {
   const { data, error } = await supabase.from('relatorios').select('*').eq('id', id).single()
   if (error) throw error
   return rowToRelatorio(data as unknown as RelatorioRow)
 }
 
-export async function criarRelatorio(input: RelatorioInput): Promise<Relatorio> {
-  const { data, error } = await supabase
-    .from('relatorios')
-    .insert({ titulo: input.titulo, data: input.data, itens: input.itens })
-    .select('*')
-    .single()
+export async function buscarRelatorioPorData(data: string): Promise<RelatorioDiario | null> {
+  const { data: rows, error } = await supabase.from('relatorios').select('*').eq('data', data).limit(1)
+  if (error) throw error
+  const row = (rows as unknown as RelatorioRow[])[0]
+  return row ? rowToRelatorio(row) : null
+}
+
+export async function criarRelatorio(input: RelatorioDiarioInput): Promise<RelatorioDiario> {
+  const { data, error } = await supabase.from('relatorios').insert(inputToRow(input)).select('*').single()
   if (error) throw error
   return rowToRelatorio(data as unknown as RelatorioRow)
 }
 
-export async function atualizarRelatorio(id: string, input: RelatorioInput): Promise<Relatorio> {
+export async function atualizarRelatorio(id: string, input: RelatorioDiarioInput): Promise<RelatorioDiario> {
   const { data, error } = await supabase
     .from('relatorios')
-    .update({ titulo: input.titulo, data: input.data, itens: input.itens })
+    .update(inputToRow(input))
     .eq('id', id)
     .select('*')
     .single()

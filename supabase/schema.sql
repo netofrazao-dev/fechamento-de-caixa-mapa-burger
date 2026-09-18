@@ -50,6 +50,8 @@ create table if not exists public.fechamentos (
 
   observacoes text,
 
+  marmitas_vendidas integer not null default 0,
+
   -- Um único fechamento por data + turno
   unique (data, turno)
 );
@@ -93,14 +95,31 @@ create policy "sangrias_all_access" on public.sangrias
   with check (true);
 
 -- ============================================================
--- Relatório livre (sem relação com o fechamento de caixa)
+-- Relatório diário escrito (sem relação com o fechamento de caixa)
+-- Estrutura fixa: cada seção fica em uma coluna jsonb.
 -- ============================================================
 
 create table if not exists public.relatorios (
   id uuid primary key default gen_random_uuid(),
-  titulo text not null default '',
   data date not null default current_date,
-  itens jsonb not null default '[]'::jsonb,
+
+  abertura_caixa numeric(12,2) not null default 0,
+  fechamento_caixa numeric(12,2) not null default 0,
+  quantidade_vendida integer not null default 0,
+
+  estragou jsonb not null default '[]'::jsonb,
+  funcionarios_que_comeram jsonb not null default '[]'::jsonb,
+
+  consumo_loja_mensal jsonb not null default '[]'::jsonb,
+  consumo_loja_motoboys jsonb not null default '[]'::jsonb,
+  cortesia_clientes jsonb not null default '[]'::jsonb,
+
+  sangrias jsonb not null default '[]'::jsonb,
+
+  estoque_inicio jsonb not null default '{"dataHora": "", "itens": []}'::jsonb,
+  estoque_final jsonb not null default '{"dataHora": "", "itens": []}'::jsonb,
+  estoque_quente jsonb not null default '[]'::jsonb,
+
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -122,7 +141,30 @@ create trigger trg_relatorios_updated_at
 
 alter table public.relatorios enable row level security;
 
+drop policy if exists "relatorios_all_access" on public.relatorios;
 create policy "relatorios_all_access" on public.relatorios
   for all
   using (true)
   with check (true);
+
+-- ============================================================
+-- Funcionários (pra selecionar por botão em vez de digitar nome)
+-- ============================================================
+
+create table if not exists public.funcionarios (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null unique,
+  created_at timestamptz not null default now()
+);
+
+alter table public.funcionarios enable row level security;
+
+drop policy if exists "funcionarios_all_access" on public.funcionarios;
+create policy "funcionarios_all_access" on public.funcionarios
+  for all
+  using (true)
+  with check (true);
+
+insert into public.funcionarios (nome)
+values ('Neto'), ('Pâmela'), ('Oneide'), ('Diogo'), ('Luciano')
+on conflict (nome) do nothing;

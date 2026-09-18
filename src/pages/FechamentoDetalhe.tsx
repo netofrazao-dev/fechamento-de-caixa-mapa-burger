@@ -82,6 +82,10 @@ export default function FechamentoDetalhe() {
 
       <Secao titulo="Resultado">
         <Linha label="Total Caixa" valor={f.resultado.totalCaixa} destaque />
+        <div className="flex justify-between text-sm py-1">
+          <span className="text-gray-500">Marmitas vendidas</span>
+          <span className="text-gray-700">{f.marmitasVendidas}</span>
+        </div>
         <Linha label="Total LC Sistema" valor={f.totalLCSistema} />
         <Linha label="Total Sistema" valor={f.resultado.totalSistema} destaque />
         <Linha label="Diferença original" valor={f.resultado.diferencaOriginal} />

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { FileText, Plus } from 'lucide-react'
 import { listarRelatorios } from '../lib/relatorioService'
-import type { Relatorio } from '../types/fechamento'
+import type { RelatorioDiario } from '../types/fechamento'
 
 function formatarData(iso: string): string {
   const [ano, mes, dia] = iso.split('-')
@@ -10,7 +10,7 @@ function formatarData(iso: string): string {
 }
 
 export default function Relatorios() {
-  const [relatorios, setRelatorios] = useState<Relatorio[]>([])
+  const [relatorios, setRelatorios] = useState<RelatorioDiario[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -49,9 +49,9 @@ export default function Relatorios() {
             to={`/relatorios/${r.id}`}
             className="block rounded-2xl bg-white shadow-sm p-4 hover:shadow transition"
           >
-            <p className="font-semibold text-gray-900">{r.titulo || 'Sem título'}</p>
+            <p className="font-semibold text-gray-900">{formatarData(r.data)}</p>
             <p className="text-xs text-gray-400 mt-0.5">
-              {formatarData(r.data)} · {r.itens.length} {r.itens.length === 1 ? 'campo' : 'campos'}
+              {r.quantidadeVendida} vendidas · {r.funcionariosQueComeram.length} funcionário(s) comeram
             </p>
           </Link>
         ))}

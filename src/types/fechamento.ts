@@ -60,6 +60,7 @@ export interface Fechamento {
   lc: DadosLC
   brendi: DadosBrendi
   sangrias: Sangria[]
+  marmitasVendidas: number
 
   totalLCSistema: number
   ajuste: Ajuste
@@ -75,34 +76,80 @@ export interface NovoFechamentoInput {
   lc: DadosLC
   brendi: DadosBrendi
   sangrias: Sangria[]
+  marmitasVendidas: number
   totalLCSistema: number
   ajuste: Ajuste
   observacoes: string
 }
 
 // ============================================================
-// Relatório livre — sem relação com o fechamento de caixa.
-// Modelo flexível: título + data + lista de campos livres
-// (rótulo + texto), pra caber em qualquer relatório escrito.
+// Relatório diário escrito — sem relação com o fechamento de
+// caixa. Estrutura fixa, igual ao modelo usado no dia a dia.
 // ============================================================
 
-export interface ItemRelatorio {
+/** Uma pessoa (funcionário, cliente ou motoboy) consumindo algo da loja. */
+export interface ConsumoItem {
   id?: string
-  label: string
-  valor: string
+  pessoa: string
+  item: string
+  valor: number
 }
 
-export interface Relatorio {
+/** Quantidade de um produto contado no estoque. */
+export interface EstoqueItem {
+  produto: string
+  quantidade: number
+}
+
+/** Uma contagem de estoque (início ou final do expediente). */
+export interface EstoqueSnapshot {
+  dataHora: string // ISO datetime-local, ex: 2026-04-22T08:24
+  itens: EstoqueItem[]
+}
+
+export interface RelatorioDiario {
   id: string
-  titulo: string
   data: string // YYYY-MM-DD
-  itens: ItemRelatorio[]
+
+  aberturaCaixa: number
+  fechamentoCaixa: number
+  quantidadeVendida: number
+
+  estragou: string[]
+  funcionariosQueComeram: string[]
+
+  consumoLojaMensal: ConsumoItem[]
+  consumoLojaMotoboys: ConsumoItem[]
+  cortesiaClientes: ConsumoItem[]
+
+  sangrias: Sangria[]
+
+  estoqueInicio: EstoqueSnapshot
+  estoqueFinal: EstoqueSnapshot
+  estoqueQuente: string[]
+
   createdAt: string
   updatedAt: string
 }
 
-export interface RelatorioInput {
-  titulo: string
+export interface RelatorioDiarioInput {
   data: string
-  itens: ItemRelatorio[]
+  aberturaCaixa: number
+  fechamentoCaixa: number
+  quantidadeVendida: number
+  estragou: string[]
+  funcionariosQueComeram: string[]
+  consumoLojaMensal: ConsumoItem[]
+  consumoLojaMotoboys: ConsumoItem[]
+  cortesiaClientes: ConsumoItem[]
+  sangrias: Sangria[]
+  estoqueInicio: EstoqueSnapshot
+  estoqueFinal: EstoqueSnapshot
+  estoqueQuente: string[]
+}
+
+/** Um funcionário cadastrado (pra selecionar em vez de digitar o nome). */
+export interface Funcionario {
+  id: string
+  nome: string
 }
