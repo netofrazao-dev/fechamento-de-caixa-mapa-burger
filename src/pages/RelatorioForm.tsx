@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ImagePlus, Printer, Trash2, X } from 'lucide-react'
+import { History, ImagePlus, Printer, Trash2, X } from 'lucide-react'
 import {
   atualizarRelatorio,
   buscarRelatorioPorId,
@@ -9,6 +9,7 @@ import {
 } from '../lib/relatorioService'
 import { listarFechamentos } from '../lib/fechamentoService'
 import { gerarPdfWhatsApp, imprimirDiaCompleto } from '../lib/pdf'
+import { formatarHoraRascunho, lerRascunho, limparRascunho, salvarRascunho } from '../lib/draft'
 import Secao from '../components/Secao'
 import SeletorFuncionarios from '../components/SeletorFuncionarios'
 import ListaLivre from '../components/ListaLivre'
@@ -23,33 +24,60 @@ function hoje(): string {
 
 const ESTOQUE_VAZIO: EstoqueSnapshot = { itens: [] }
 
+interface RascunhoRelatorio {
+  data: string
+  aberturaCaixa: number
+  fechamentoCaixa: number
+  quantidadeVendida: number
+  estragou: string[]
+  funcionariosQueComeram: string[]
+  consumoLojaMensal: ConsumoItem[]
+  consumoLojaMotoboys: ConsumoItem[]
+  cortesiaClientes: ConsumoItem[]
+  sangrias: Sangria[]
+  estoqueQuente: EstoqueSnapshot
+  imagem1: string | null
+  imagem2: string | null
+}
+
 export default function RelatorioForm() {
   const { id } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const editando = Boolean(id)
 
-  const [data, setData] = useState(searchParams.get('data') || hoje())
-  const [aberturaCaixa, setAberturaCaixa] = useState(0)
-  const [fechamentoCaixa, setFechamentoCaixa] = useState(0)
-  const [quantidadeVendida, setQuantidadeVendida] = useState(0)
-  const [estragou, setEstragou] = useState<string[]>([])
-  const [funcionariosQueComeram, setFuncionariosQueComeram] = useState<string[]>([])
-  const [consumoLojaMensal, setConsumoLojaMensal] = useState<ConsumoItem[]>([])
-  const [consumoLojaMotoboys, setConsumoLojaMotoboys] = useState<ConsumoItem[]>([])
-  const [cortesiaClientes, setCortesiaClientes] = useState<ConsumoItem[]>([])
-  const [sangrias, setSangrias] = useState<Sangria[]>([])
-  const [estoqueQuente, setEstoqueQuente] = useState<EstoqueSnapshot>(ESTOQUE_VAZIO)
-  const [imagem1, setImagem1] = useState<string | null>(null)
-  const [imagem2, setImagem2] = useState<string | null>(null)
+  const chaveRascunho = `mapa-burger-rascunho-relatorio-${id ?? 'novo'}`
+  const rascunho = useRef(lerRascunho<RascunhoRelatorio>(chaveRascunho)).current
+  const [avisoRascunho, setAvisoRascunho] = useState(Boolean(rascunho))
+  const pulandoPrimeiraGravacao = useRef(true)
 
-  const [carregando, setCarregando] = useState(editando)
+  const [data, setData] = useState(rascunho?.dados.data ?? searchParams.get('data') ?? hoje())
+  const [aberturaCaixa, setAberturaCaixa] = useState(rascunho?.dados.aberturaCaixa ?? 0)
+  const [fechamentoCaixa, setFechamentoCaixa] = useState(rascunho?.dados.fechamentoCaixa ?? 0)
+  const [quantidadeVendida, setQuantidadeVendida] = useState(rascunho?.dados.quantidadeVendida ?? 0)
+  const [estragou, setEstragou] = useState<string[]>(rascunho?.dados.estragou ?? [])
+  const [funcionariosQueComeram, setFuncionariosQueComeram] = useState<string[]>(
+    rascunho?.dados.funcionariosQueComeram ?? [],
+  )
+  const [consumoLojaMensal, setConsumoLojaMensal] = useState<ConsumoItem[]>(
+    rascunho?.dados.consumoLojaMensal ?? [],
+  )
+  const [consumoLojaMotoboys, setConsumoLojaMotoboys] = useState<ConsumoItem[]>(
+    rascunho?.dados.consumoLojaMotoboys ?? [],
+  )
+  const [cortesiaClientes, setCortesiaClientes] = useState<ConsumoItem[]>(rascunho?.dados.cortesiaClientes ?? [])
+  const [sangrias, setSangrias] = useState<Sangria[]>(rascunho?.dados.sangrias ?? [])
+  const [estoqueQuente, setEstoqueQuente] = useState<EstoqueSnapshot>(rascunho?.dados.estoqueQuente ?? ESTOQUE_VAZIO)
+  const [imagem1, setImagem1] = useState<string | null>(rascunho?.dados.imagem1 ?? null)
+  const [imagem2, setImagem2] = useState<string | null>(rascunho?.dados.imagem2 ?? null)
+
+  const [carregando, setCarregando] = useState(editando && !rascunho)
   const [salvando, setSalvando] = useState(false)
   const [processando, setProcessando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!id) return
+    if (!id || rascunho) return // se já tem rascunho local, ele manda (é mais recente que o banco)
     buscarRelatorioPorId(id)
       .then((r) => {
         setData(r.data)
@@ -68,6 +96,7 @@ export default function RelatorioForm() {
       })
       .catch((e) => setErro(e instanceof Error ? e.message : 'Erro ao carregar relatório.'))
       .finally(() => setCarregando(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   function payload() {
@@ -88,11 +117,93 @@ export default function RelatorioForm() {
     }
   }
 
+  // Salva o rascunho automaticamente a cada mudança, pra não perder o
+  // que já foi preenchido se a aba fechar no meio do expediente.
+  useEffect(() => {
+    if (carregando) return
+    if (pulandoPrimeiraGravacao.current) {
+      pulandoPrimeiraGravacao.current = false
+      return
+    }
+    salvarRascunho<RascunhoRelatorio>(chaveRascunho, {
+      data,
+      aberturaCaixa,
+      fechamentoCaixa,
+      quantidadeVendida,
+      estragou,
+      funcionariosQueComeram,
+      consumoLojaMensal,
+      consumoLojaMotoboys,
+      cortesiaClientes,
+      sangrias,
+      estoqueQuente,
+      imagem1,
+      imagem2,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    carregando,
+    data,
+    aberturaCaixa,
+    fechamentoCaixa,
+    quantidadeVendida,
+    estragou,
+    funcionariosQueComeram,
+    consumoLojaMensal,
+    consumoLojaMotoboys,
+    cortesiaClientes,
+    sangrias,
+    estoqueQuente,
+    imagem1,
+    imagem2,
+  ])
+
+  function descartarRascunho() {
+    limparRascunho(chaveRascunho)
+    setAvisoRascunho(false)
+    if (id) {
+      setCarregando(true)
+      buscarRelatorioPorId(id)
+        .then((r) => {
+          setData(r.data)
+          setAberturaCaixa(r.aberturaCaixa)
+          setFechamentoCaixa(r.fechamentoCaixa)
+          setQuantidadeVendida(r.quantidadeVendida)
+          setEstragou(r.estragou)
+          setFuncionariosQueComeram(r.funcionariosQueComeram)
+          setConsumoLojaMensal(r.consumoLojaMensal)
+          setConsumoLojaMotoboys(r.consumoLojaMotoboys)
+          setCortesiaClientes(r.cortesiaClientes)
+          setSangrias(r.sangrias)
+          setEstoqueQuente(r.estoqueQuente)
+          setImagem1(r.imagem1 ?? null)
+          setImagem2(r.imagem2 ?? null)
+        })
+        .catch((e) => setErro(e instanceof Error ? e.message : 'Erro ao carregar relatório.'))
+        .finally(() => setCarregando(false))
+    } else {
+      setData(searchParams.get('data') || hoje())
+      setAberturaCaixa(0)
+      setFechamentoCaixa(0)
+      setQuantidadeVendida(0)
+      setEstragou([])
+      setFuncionariosQueComeram([])
+      setConsumoLojaMensal([])
+      setConsumoLojaMotoboys([])
+      setCortesiaClientes([])
+      setSangrias([])
+      setEstoqueQuente(ESTOQUE_VAZIO)
+      setImagem1(null)
+      setImagem2(null)
+    }
+  }
+
   async function salvar() {
     setErro(null)
     setSalvando(true)
     try {
       const salvo = id ? await atualizarRelatorio(id, payload()) : await criarRelatorio(payload())
+      limparRascunho(chaveRascunho)
       navigate(`/relatorios/${salvo.id}`, { replace: true })
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao salvar relatório.')
@@ -159,6 +270,19 @@ export default function RelatorioForm() {
           </button>
         )}
       </header>
+
+      {avisoRascunho && (
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-300">
+          <span className="flex items-center gap-1.5">
+            <History size={14} className="shrink-0" />
+            Rascunho restaurado{rascunho ? ` (salvo às ${formatarHoraRascunho(rascunho.salvoEm)})` : ''} —
+            continue de onde parou.
+          </span>
+          <button type="button" onClick={descartarRascunho} className="shrink-0 font-semibold underline">
+            Descartar
+          </button>
+        </div>
+      )}
 
       <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-3">
         <label className="flex flex-col gap-1">
@@ -275,6 +399,28 @@ function lerComoBase64(file: File): Promise<string> {
   })
 }
 
+/** Redimensiona/comprime a imagem (canvas) antes de guardar, pra não pesar no banco. */
+function comprimirImagem(dataUrl: string, larguraMaxima = 1400, qualidade = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const escala = Math.min(larguraMaxima / img.naturalWidth, 1)
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.naturalWidth * escala)
+      canvas.height = Math.round(img.naturalHeight * escala)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        resolve(dataUrl)
+        return
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', qualidade))
+    }
+    img.onerror = reject
+    img.src = dataUrl
+  })
+}
+
 function AnexoImagem({
   valor,
   onChange,
@@ -291,7 +437,8 @@ function AnexoImagem({
     setCarregando(true)
     try {
       const dataUrl = await lerComoBase64(file)
-      onChange(dataUrl)
+      const comprimida = await comprimirImagem(dataUrl)
+      onChange(comprimida)
     } finally {
       setCarregando(false)
     }

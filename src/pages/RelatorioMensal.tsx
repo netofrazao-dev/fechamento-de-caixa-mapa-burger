@@ -153,10 +153,10 @@ export default function RelatorioMensal() {
                     <td
                       className={`px-3 py-2 text-right font-medium ${
                         Math.abs(l.diferencaFinalDia) < 0.005
-                          ? 'text-green-600'
+                          ? 'text-green-600 dark:text-green-400'
                           : l.diferencaFinalDia > 0
-                            ? 'text-blue-600'
-                            : 'text-red-600'
+                            ? 'text-blue-600 dark:text-blue-400'
+                            : 'text-red-600 dark:text-red-400'
                       }`}
                     >
                       {formatarMoeda(l.diferencaFinalDia)}

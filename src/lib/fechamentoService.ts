@@ -179,3 +179,8 @@ export async function existeFechamento(data: string, turno: 'manha' | 'noite'): 
   if (error) throw error
   return (count ?? 0) > 0
 }
+
+export async function excluirFechamento(id: string): Promise<void> {
+  const { error } = await supabase.from('fechamentos').delete().eq('id', id)
+  if (error) throw error
+}

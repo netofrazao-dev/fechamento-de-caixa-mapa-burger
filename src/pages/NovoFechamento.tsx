@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { History } from 'lucide-react'
 import LCForm from '../components/LCForm'
 import BrendiForm from '../components/BrendiForm'
 import SangriaForm from '../components/SangriaForm'
@@ -7,6 +8,7 @@ import ResultadoCard from '../components/ResultadoCard'
 import { calcularResultado } from '../lib/calculations'
 import { criarFechamento, existeFechamento } from '../lib/fechamentoService'
 import { gerarPdfFechamento } from '../lib/pdf'
+import { formatarHoraRascunho, lerRascunho, limparRascunho, salvarRascunho } from '../lib/draft'
 import type { Ajuste, DadosBrendi, DadosLC, Sangria, Turno } from '../types/fechamento'
 
 const LC_VAZIO: DadosLC = {
@@ -28,22 +30,43 @@ const BRENDI_VAZIO: DadosBrendi = {
   dinheiro: 0,
 }
 
+const AJUSTE_VAZIO: Ajuste = { tipo: null, valor: 0 }
+
 function hoje(): string {
   return new Date().toISOString().slice(0, 10)
+}
+
+const CHAVE_RASCUNHO = 'mapa-burger-rascunho-fechamento'
+
+interface RascunhoFechamento {
+  data: string
+  turno: Turno
+  lc: DadosLC
+  brendi: DadosBrendi
+  sangrias: Sangria[]
+  marmitasVendidas: number
+  totalLCSistema: number
+  ajuste: Ajuste
+  observacoes: string
 }
 
 export default function NovoFechamento() {
   const navigate = useNavigate()
 
-  const [data, setData] = useState(hoje())
-  const [turno, setTurno] = useState<Turno>('manha')
-  const [lc, setLc] = useState<DadosLC>(LC_VAZIO)
-  const [brendi, setBrendi] = useState<DadosBrendi>(BRENDI_VAZIO)
-  const [sangrias, setSangrias] = useState<Sangria[]>([])
-  const [marmitasVendidas, setMarmitasVendidas] = useState(0)
-  const [totalLCSistema, setTotalLCSistema] = useState(0)
-  const [ajuste, setAjuste] = useState<Ajuste>({ tipo: null, valor: 0 })
-  const [observacoes, setObservacoes] = useState('')
+  // Carrega o rascunho (se houver) uma única vez, antes de montar o estado.
+  const rascunho = useRef(lerRascunho<RascunhoFechamento>(CHAVE_RASCUNHO)).current
+  const [avisoRascunho, setAvisoRascunho] = useState(Boolean(rascunho))
+  const pulandoPrimeiraGravacao = useRef(true)
+
+  const [data, setData] = useState(rascunho?.dados.data ?? hoje())
+  const [turno, setTurno] = useState<Turno>(rascunho?.dados.turno ?? 'manha')
+  const [lc, setLc] = useState<DadosLC>(rascunho?.dados.lc ?? LC_VAZIO)
+  const [brendi, setBrendi] = useState<DadosBrendi>(rascunho?.dados.brendi ?? BRENDI_VAZIO)
+  const [sangrias, setSangrias] = useState<Sangria[]>(rascunho?.dados.sangrias ?? [])
+  const [marmitasVendidas, setMarmitasVendidas] = useState(rascunho?.dados.marmitasVendidas ?? 0)
+  const [totalLCSistema, setTotalLCSistema] = useState(rascunho?.dados.totalLCSistema ?? 0)
+  const [ajuste, setAjuste] = useState<Ajuste>(rascunho?.dados.ajuste ?? AJUSTE_VAZIO)
+  const [observacoes, setObservacoes] = useState(rascunho?.dados.observacoes ?? '')
 
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -52,6 +75,41 @@ export default function NovoFechamento() {
     () => calcularResultado({ lc, brendi, totalLCSistema, ajuste }),
     [lc, brendi, totalLCSistema, ajuste],
   )
+
+  // Salva o rascunho automaticamente a cada mudança (exceto na primeira
+  // renderização, pra não regravar o mesmo rascunho que acabou de ler).
+  useEffect(() => {
+    if (pulandoPrimeiraGravacao.current) {
+      pulandoPrimeiraGravacao.current = false
+      return
+    }
+    salvarRascunho<RascunhoFechamento>(CHAVE_RASCUNHO, {
+      data,
+      turno,
+      lc,
+      brendi,
+      sangrias,
+      marmitasVendidas,
+      totalLCSistema,
+      ajuste,
+      observacoes,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, turno, lc, brendi, sangrias, marmitasVendidas, totalLCSistema, ajuste, observacoes])
+
+  function descartarRascunho() {
+    limparRascunho(CHAVE_RASCUNHO)
+    setData(hoje())
+    setTurno('manha')
+    setLc(LC_VAZIO)
+    setBrendi(BRENDI_VAZIO)
+    setSangrias([])
+    setMarmitasVendidas(0)
+    setTotalLCSistema(0)
+    setAjuste(AJUSTE_VAZIO)
+    setObservacoes('')
+    setAvisoRascunho(false)
+  }
 
   async function salvar() {
     setErro(null)
@@ -87,6 +145,7 @@ export default function NovoFechamento() {
         observacoes,
       })
 
+      limparRascunho(CHAVE_RASCUNHO)
       gerarPdfFechamento(fechamento)
       navigate(`/fechamento/${fechamento.id}`)
     } catch (e) {
@@ -101,6 +160,19 @@ export default function NovoFechamento() {
       <header>
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Novo Fechamento</h1>
       </header>
+
+      {avisoRascunho && (
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-300">
+          <span className="flex items-center gap-1.5">
+            <History size={14} className="shrink-0" />
+            Rascunho restaurado{rascunho ? ` (salvo às ${formatarHoraRascunho(rascunho.salvoEm)})` : ''} —
+            continue de onde parou.
+          </span>
+          <button type="button" onClick={descartarRascunho} className="shrink-0 font-semibold underline">
+            Descartar
+          </button>
+        </div>
+      )}
 
       <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">

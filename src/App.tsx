@@ -27,6 +27,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen pb-16">
+      <header className="flex items-center gap-2 px-4 py-3 max-w-2xl mx-auto">
+        <img src="/logo.png" alt="Mapa Burger" className="w-8 h-8 rounded-full object-cover shrink-0" />
+        <span className="font-bold text-gray-900 dark:text-gray-100 tracking-tight">Mapa Burger</span>
+      </header>
+
       <Routes>
         <Route path="/" element={<Navigate to="/novo" replace />} />
         <Route path="/novo" element={<NovoFechamento />} />

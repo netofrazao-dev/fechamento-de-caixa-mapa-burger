@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { buscarFechamentoPorId } from '../lib/fechamentoService'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Trash2 } from 'lucide-react'
+import { buscarFechamentoPorId, excluirFechamento } from '../lib/fechamentoService'
 import { formatarMoeda, STATUS_COLOR, STATUS_LABEL } from '../lib/calculations'
 import { gerarPdfFechamento } from '../lib/pdf'
 import type { Fechamento } from '../types/fechamento'
@@ -14,6 +15,7 @@ function formatarData(iso: string): string {
 
 export default function FechamentoDetalhe() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [f, setF] = useState<Fechamento | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -24,8 +26,15 @@ export default function FechamentoDetalhe() {
       .catch((e) => setErro(e instanceof Error ? e.message : 'Erro ao carregar fechamento.'))
   }, [id])
 
+  async function excluir() {
+    if (!id) return
+    if (!confirm('Excluir este fechamento? Essa ação não pode ser desfeita.')) return
+    await excluirFechamento(id)
+    navigate('/historico', { replace: true })
+  }
+
   if (erro) {
-    return <div className="max-w-2xl mx-auto p-4 text-sm text-red-600">{erro}</div>
+    return <div className="max-w-2xl mx-auto p-4 text-sm text-red-600 dark:text-red-400">{erro}</div>
   }
   if (!f) {
     return <div className="max-w-2xl mx-auto p-4 text-sm text-gray-400 dark:text-gray-500">Carregando...</div>
@@ -47,6 +56,14 @@ export default function FechamentoDetalhe() {
           {STATUS_LABEL[f.resultado.status]}
         </span>
       </header>
+
+      <button
+        type="button"
+        onClick={excluir}
+        className="flex items-center gap-1.5 text-sm text-gray-400 dark:text-gray-500 hover:text-red-500"
+      >
+        <Trash2 size={14} /> Excluir fechamento
+      </button>
 
       <Secao titulo="LC">
         <Linha label="Dinheiro abertura" valor={f.lc.dinheiroAbertura} />

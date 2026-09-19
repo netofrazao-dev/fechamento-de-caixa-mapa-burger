@@ -1,8 +1,17 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { ConsumoItem, Fechamento, RelatorioDiario } from '../types/fechamento'
+import type { ConsumoItem, Fechamento, RelatorioDiario, StatusFechamento } from '../types/fechamento'
 import { formatarMoeda, STATUS_LABEL } from './calculations'
 import { semAcento } from './texto'
+import { LOGO_MAPA_BURGER_PNG } from './brand'
+
+const COR_ACCENT: [number, number, number] = [237, 137, 33] // laranja da marca
+const COR_HEADER_SECAO: [number, number, number] = [24, 24, 27]
+const COR_STATUS: Record<StatusFechamento, [number, number, number]> = {
+  fechou: [22, 130, 80],
+  sobrou: [37, 99, 220],
+  faltou: [214, 45, 45],
+}
 
 function formatarData(iso: string): string {
   const [ano, mes, dia] = iso.split('-')
@@ -303,23 +312,40 @@ export function gerarPdfMensal(params: { mesLabel: string; linhas: LinhaRelatori
 // ============================================================
 
 function tituloSecaoPdf(doc: jsPDF, texto: string, y: number, margem: number, larguraUtil: number): number {
-  doc.setFillColor(24, 24, 27)
-  doc.rect(margem, y, larguraUtil, 7, 'F')
+  doc.setFillColor(...COR_ACCENT)
+  doc.rect(margem, y, 2.2, 8, 'F')
+  doc.setFillColor(...COR_HEADER_SECAO)
+  doc.rect(margem + 2.2, y, larguraUtil - 2.2, 8, 'F')
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10.5)
-  doc.text(texto.toUpperCase(), margem + 2.5, y + 5)
+  doc.setFontSize(11)
+  doc.text(texto.toUpperCase(), margem + 5, y + 5.6)
   doc.setTextColor(0, 0, 0)
-  return y + 11
+  return y + 13
 }
 
 function subtituloPdf(doc: jsPDF, texto: string, y: number, margem: number): number {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10)
-  doc.setTextColor(60)
+  doc.setTextColor(50)
   doc.text(texto, margem, y)
   doc.setTextColor(0)
   return y + 6
+}
+
+/** Selo colorido de status (FECHOU/SOBROU/FALTOU) desenhado no PDF. */
+function seloStatusPdf(doc: jsPDF, status: StatusFechamento, x: number, y: number): number {
+  const texto = STATUS_LABEL[status]
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  const largura = doc.getTextWidth(texto) + 6
+  const [r, g, b] = COR_STATUS[status]
+  doc.setFillColor(r, g, b)
+  doc.roundedRect(x, y, largura, 6.5, 1.5, 1.5, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.text(texto, x + 3, y + 4.5)
+  doc.setTextColor(0, 0, 0)
+  return largura
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -353,7 +379,7 @@ export async function gerarPdfWhatsApp(params: {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const margem = 16
   const larguraUtil = 210 - margem * 2
-  let y = 18
+  let y = 16
 
   const quebrarSeNecessario = (limite = 255) => {
     if (y > limite) {
@@ -362,16 +388,65 @@ export async function gerarPdfWhatsApp(params: {
     }
   }
 
+  // --- Cabeçalho, com a logo do restaurante ---
+  const logoTam = 16
+  doc.addImage(LOGO_MAPA_BURGER_PNG, 'PNG', margem, y, logoTam, logoTam)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(18)
-  doc.text('Mapa Burger', margem, y)
-  y += 7
+  doc.setFontSize(19)
+  doc.setTextColor(20)
+  doc.text('Mapa Burger', margem + logoTam + 5, y + 8)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)
   doc.setTextColor(110)
-  doc.text(`Relatório completo do dia — ${formatarData(rel.data)}`, margem, y)
+  doc.text(`Relatório completo do dia — ${formatarData(rel.data)}`, margem + logoTam + 5, y + 14.5)
   doc.setTextColor(0)
-  y += 9
+  y += logoTam + 4
+
+  doc.setFillColor(...COR_ACCENT)
+  doc.rect(margem, y, larguraUtil, 1, 'F')
+  y += 8
+
+  // --- Resumo do dia em destaque ---
+  const totalCaixaDia = fechamentos.reduce((acc, f) => acc + f.resultado.totalCaixa, 0)
+  const totalSistemaDia = fechamentos.reduce((acc, f) => acc + f.resultado.totalSistema, 0)
+  const diferencaFinalDia = fechamentos.reduce((acc, f) => acc + f.resultado.diferencaFinal, 0)
+  const totalMarmitasDia = fechamentos.reduce((acc, f) => acc + (f.marmitasVendidas || 0), 0)
+  const statusDia: StatusFechamento =
+    Math.abs(diferencaFinalDia) < 0.005 ? 'fechou' : diferencaFinalDia > 0 ? 'sobrou' : 'faltou'
+
+  if (fechamentos.length > 0) {
+    seloStatusPdf(doc, statusDia, 210 - margem - 32, 16 + 2)
+  }
+
+  const alturaResumo = 26
+  doc.setDrawColor(225)
+  doc.setLineWidth(0.3)
+  doc.roundedRect(margem, y, larguraUtil, alturaResumo, 2, 2)
+
+  const colunas = [
+    { label: 'TOTAL CAIXA', valor: formatarMoeda(totalCaixaDia) },
+    { label: 'TOTAL SISTEMA', valor: formatarMoeda(totalSistemaDia) },
+    { label: 'DIFERENÇA', valor: formatarMoeda(diferencaFinalDia) },
+    { label: 'VENDIDAS / MARMITAS', valor: `${rel.quantidadeVendida} / ${totalMarmitasDia}` },
+  ]
+  const larguraColuna = larguraUtil / colunas.length
+  colunas.forEach((c, i) => {
+    const cx = margem + larguraColuna * i + larguraColuna / 2
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(140)
+    doc.text(c.label, cx, y + 9, { align: 'center' })
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(13)
+    doc.setTextColor(20)
+    doc.text(c.valor, cx, y + 18, { align: 'center' })
+    if (i > 0) {
+      doc.setDrawColor(230)
+      doc.line(margem + larguraColuna * i, y + 5, margem + larguraColuna * i, y + alturaResumo - 5)
+    }
+  })
+  doc.setTextColor(0)
+  y += alturaResumo + 10
 
   // --- Fechamento de caixa, detalhado, por turno ---
   if (fechamentos.length === 0) {
@@ -392,7 +467,8 @@ export async function gerarPdfWhatsApp(params: {
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
-      theme: 'plain',
+      theme: 'striped',
+      alternateRowStyles: { fillColor: [248, 248, 249] },
       styles: { fontSize: 9.5, cellPadding: 1 },
       body: [
         ['Dinheiro abertura', formatarMoeda(f.lc.dinheiroAbertura)],
@@ -418,7 +494,7 @@ export async function gerarPdfWhatsApp(params: {
         head: [['Motivo', 'Valor']],
         body: f.sangrias.map((s) => [s.motivo, formatarMoeda(s.valor)]),
         styles: { fontSize: 9 },
-        headStyles: { fillColor: [140, 140, 145] },
+        headStyles: { fillColor: [60, 60, 64] },
         columnStyles: { 1: { halign: 'right' } },
       })
       y = finalY(doc) + 4
@@ -429,7 +505,8 @@ export async function gerarPdfWhatsApp(params: {
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
-      theme: 'plain',
+      theme: 'striped',
+      alternateRowStyles: { fillColor: [248, 248, 249] },
       styles: { fontSize: 9.5, cellPadding: 1 },
       body: [
         ['PIX', formatarMoeda(f.brendi.pix)],
@@ -463,7 +540,8 @@ export async function gerarPdfWhatsApp(params: {
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
-      theme: 'plain',
+      theme: 'striped',
+      alternateRowStyles: { fillColor: [248, 248, 249] },
       styles: { fontSize: 9.5, cellPadding: 1, fontStyle: 'bold' },
       body: linhasResultado,
       columnStyles: { 1: { halign: 'right' } },
@@ -488,7 +566,8 @@ export async function gerarPdfWhatsApp(params: {
   autoTable(doc, {
     startY: y,
     margin: { left: margem, right: margem },
-    theme: 'plain',
+    theme: 'striped',
+      alternateRowStyles: { fillColor: [248, 248, 249] },
     styles: { fontSize: 9.5, cellPadding: 1 },
     body: [
       ['Abertura do caixa', formatarMoeda(rel.aberturaCaixa)],
@@ -534,7 +613,7 @@ export async function gerarPdfWhatsApp(params: {
       head: [['Pessoa', 'Item', 'Valor']],
       body: itens.map((it) => [it.pessoa, it.item, formatarMoeda(it.valor)]),
       styles: { fontSize: 9.5 },
-      headStyles: { fillColor: [90, 90, 95] },
+      headStyles: { fillColor: [60, 60, 64] },
     })
     y = finalY(doc) + 8
   }
@@ -551,7 +630,7 @@ export async function gerarPdfWhatsApp(params: {
       head: [['Motivo', 'Valor']],
       body: rel.sangrias.map((s) => [s.motivo, formatarMoeda(s.valor)]),
       styles: { fontSize: 9.5 },
-      headStyles: { fillColor: [90, 90, 95] },
+      headStyles: { fillColor: [60, 60, 64] },
     })
     y = finalY(doc) + 8
   }
@@ -566,30 +645,49 @@ export async function gerarPdfWhatsApp(params: {
       head: [['Produto', 'Quantidade']],
       body: itensEstoque.map((i) => [i.produto, String(i.quantidade)]),
       styles: { fontSize: 9 },
-      headStyles: { fillColor: [90, 90, 95] },
+      headStyles: { fillColor: [60, 60, 64] },
       columnStyles: { 1: { halign: 'right' } },
     })
   }
 
   // --- Anexos (prints enviados junto, cada um em sua própria página) ---
+  let indiceAnexo = 0
   for (const dataUrl of imagens) {
     if (!dataUrl) continue
+    indiceAnexo += 1
     const { largura, altura } = await dimensoesImagem(dataUrl)
     doc.addPage()
     const margemAnexo = 14
+    doc.setFillColor(...COR_ACCENT)
+    doc.rect(margemAnexo, margemAnexo, 2.2, 6, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(20)
+    doc.text(`Anexo ${indiceAnexo}`, margemAnexo + 5, margemAnexo + 4.8)
+    doc.setTextColor(0)
     const larguraDisp = 210 - margemAnexo * 2
-    const alturaDisp = 297 - margemAnexo * 2 - 10
+    const alturaDisp = 297 - margemAnexo * 2 - 14
     const escala = Math.min(larguraDisp / largura, alturaDisp / altura, 1)
     const wFinal = largura * escala
     const hFinal = altura * escala
     const xFinal = (210 - wFinal) / 2
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(10.5)
-    doc.setTextColor(110)
-    doc.text('Anexo', margemAnexo, margemAnexo)
-    doc.setTextColor(0)
     const formato = dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG'
-    doc.addImage(dataUrl, formato, xFinal, margemAnexo + 6, wFinal, hFinal)
+    doc.addImage(dataUrl, formato, xFinal, margemAnexo + 10, wFinal, hFinal)
+  }
+
+  // --- Rodapé (marca + página) em todas as páginas ---
+  const totalPaginas = doc.getNumberOfPages()
+  for (let p = 1; p <= totalPaginas; p++) {
+    doc.setPage(p)
+    doc.setDrawColor(230)
+    doc.setLineWidth(0.2)
+    doc.line(margem, 289, 210 - margem, 289)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(140)
+    doc.text(`Mapa Burger — Relatório do dia ${formatarData(rel.data)}`, margem, 293.5)
+    doc.text(`${p} / ${totalPaginas}`, 210 - margem, 293.5, { align: 'right' })
+    doc.setTextColor(0)
   }
 
   doc.save(`relatorio_whatsapp_${rel.data}_${slugify('mapa-burger')}.pdf`)
