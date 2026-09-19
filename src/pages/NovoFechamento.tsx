@@ -99,29 +99,29 @@ export default function NovoFechamento() {
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-3 pb-36">
       <header>
-        <h1 className="text-xl font-bold text-gray-900">Novo Fechamento</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Novo Fechamento</h1>
       </header>
 
-      <section className="rounded-2xl bg-white shadow-sm p-4 grid grid-cols-2 gap-3">
+      <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
-          <span className="text-[13px] font-medium text-gray-600">Data</span>
+          <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Data</span>
           <input
             type="date"
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm outline-none focus:border-gray-400"
             value={data}
             onChange={(e) => setData(e.target.value)}
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[13px] font-medium text-gray-600">Turno</span>
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+          <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Turno</span>
+          <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
             {(['manha', 'noite'] as Turno[]).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => setTurno(t)}
                 className={`flex-1 py-2 text-sm font-medium ${
-                  turno === t ? 'bg-gray-900 text-white' : 'bg-white text-gray-500'
+                  turno === t ? 'bg-gray-900 dark:bg-gray-700 text-white' : 'bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400'
                 }`}
               >
                 {t === 'manha' ? 'Manhã' : 'Noite'}
@@ -131,14 +131,14 @@ export default function NovoFechamento() {
         </label>
       </section>
 
-      <section className="rounded-2xl bg-white shadow-sm p-4">
+      <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4">
         <label className="flex flex-col gap-1">
-          <span className="text-[13px] font-medium text-gray-600">Marmitas vendidas</span>
+          <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Marmitas vendidas</span>
           <input
             type="number"
             inputMode="numeric"
             min={0}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400 w-32"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm outline-none focus:border-gray-400 w-32"
             value={Number.isNaN(marmitasVendidas) ? '' : marmitasVendidas}
             onChange={(e) => setMarmitasVendidas(e.target.value === '' ? 0 : parseInt(e.target.value, 10))}
             onFocus={(e) => e.target.select()}
@@ -160,16 +160,16 @@ export default function NovoFechamento() {
       />
 
       {erro && (
-        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{erro}</div>
+        <div className="rounded-xl bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-400">{erro}</div>
       )}
 
-      <div className="fixed bottom-14 left-0 right-0 bg-white/95 backdrop-blur border-t border-gray-100 p-3">
+      <div className="fixed bottom-14 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-100 dark:border-gray-800 p-3">
         <div className="max-w-2xl mx-auto">
           <button
             type="button"
             disabled={salvando}
             onClick={salvar}
-            className="w-full rounded-xl bg-gray-900 py-3 text-white text-sm font-semibold disabled:opacity-50"
+            className="w-full rounded-xl bg-gray-900 dark:bg-gray-700 py-3 text-white text-sm font-semibold disabled:opacity-50"
           >
             {salvando ? 'Salvando...' : 'Salvar e gerar PDF'}
           </button>

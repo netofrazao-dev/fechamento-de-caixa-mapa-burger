@@ -327,8 +327,29 @@ function finalY(doc: any): number {
   return doc.lastAutoTable.finalY
 }
 
-export function gerarPdfDiarioCompleto(params: { relatorio: RelatorioDiario; fechamentos: Fechamento[] }): void {
-  const { relatorio: rel, fechamentos } = params
+/** Descobre as dimensões (px) de uma imagem a partir do seu data URL. */
+function dimensoesImagem(dataUrl: string): Promise<{ largura: number; altura: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve({ largura: img.naturalWidth, altura: img.naturalHeight })
+    img.onerror = reject
+    img.src = dataUrl
+  })
+}
+
+/**
+ * PDF final pra enviar no WhatsApp (A4, com acentos, visual mais
+ * elaborado): fechamento(s) de caixa DETALHADOS + relatório diário
+ * completo + (opcional) os prints anexados como páginas extras —
+ * tudo num arquivo só. As imagens já vêm como data URL (base64),
+ * pois ficam salvas junto com o relatório.
+ */
+export async function gerarPdfWhatsApp(params: {
+  relatorio: RelatorioDiario
+  fechamentos: Fechamento[]
+  imagens?: (string | null | undefined)[]
+}): Promise<void> {
+  const { relatorio: rel, fechamentos, imagens = [] } = params
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const margem = 16
   const larguraUtil = 210 - margem * 2
@@ -550,5 +571,26 @@ export function gerarPdfDiarioCompleto(params: { relatorio: RelatorioDiario; fec
     })
   }
 
-  doc.save(`relatorio_completo_${rel.data}_${slugify('mapa-burger')}.pdf`)
+  // --- Anexos (prints enviados junto, cada um em sua própria página) ---
+  for (const dataUrl of imagens) {
+    if (!dataUrl) continue
+    const { largura, altura } = await dimensoesImagem(dataUrl)
+    doc.addPage()
+    const margemAnexo = 14
+    const larguraDisp = 210 - margemAnexo * 2
+    const alturaDisp = 297 - margemAnexo * 2 - 10
+    const escala = Math.min(larguraDisp / largura, alturaDisp / altura, 1)
+    const wFinal = largura * escala
+    const hFinal = altura * escala
+    const xFinal = (210 - wFinal) / 2
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10.5)
+    doc.setTextColor(110)
+    doc.text('Anexo', margemAnexo, margemAnexo)
+    doc.setTextColor(0)
+    const formato = dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG'
+    doc.addImage(dataUrl, formato, xFinal, margemAnexo + 6, wFinal, hFinal)
+  }
+
+  doc.save(`relatorio_whatsapp_${rel.data}_${slugify('mapa-burger')}.pdf`)
 }

@@ -25,10 +25,10 @@ export default function ResultadoCard({
 }: Props) {
   const [mostrarObs, setMostrarObs] = useState(false)
   return (
-    <section className="rounded-2xl bg-white shadow-sm p-4 space-y-4">
-      <h2 className="text-[15px] font-semibold text-gray-900">Conferência</h2>
+    <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-4">
+      <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Conferência</h2>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm rounded-xl bg-gray-50 p-3">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 p-3">
         <Linha label="Total LC" valor={resultado.totalLC} />
         <Linha label="Total Brendi" valor={resultado.totalBrendi} />
         <Linha label="Total Caixa" valor={resultado.totalCaixa} destaque />
@@ -43,12 +43,12 @@ export default function ResultadoCard({
       />
 
       <div className="flex justify-between items-center text-sm px-1">
-        <span className="text-gray-400">Diferença original</span>
-        <span className="font-medium text-gray-700">{formatarMoeda(resultado.diferencaOriginal)}</span>
+        <span className="text-gray-400 dark:text-gray-500">Diferença original</span>
+        <span className="font-medium text-gray-700 dark:text-gray-300">{formatarMoeda(resultado.diferencaOriginal)}</span>
       </div>
 
-      <div className="space-y-2 border-t border-gray-100 pt-3">
-        <span className="text-[13px] font-medium text-gray-600">Ajuste manual</span>
+      <div className="space-y-2 border-t border-gray-100 dark:border-gray-800 pt-3">
+        <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Ajuste manual</span>
         <div className="flex gap-2">
           <button
             type="button"
@@ -56,7 +56,7 @@ export default function ResultadoCard({
             className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors ${
               ajuste.tipo === 'adicionar'
                 ? 'bg-green-600 text-white'
-                : 'bg-gray-50 text-gray-500'
+                : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
             }`}
           >
             <Plus size={14} /> Adicionar
@@ -67,7 +67,7 @@ export default function ResultadoCard({
             className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors ${
               ajuste.tipo === 'remover'
                 ? 'bg-red-600 text-white'
-                : 'bg-gray-50 text-gray-500'
+                : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
             }`}
           >
             <Minus size={14} /> Remover
@@ -84,11 +84,11 @@ export default function ResultadoCard({
       </div>
 
       {(ajuste.tipo || observacoes || mostrarObs) && (
-        <label className="flex flex-col gap-1 border-t border-gray-100 pt-3">
-          <span className="text-[13px] font-medium text-gray-600">Observações</span>
+        <label className="flex flex-col gap-1 border-t border-gray-100 dark:border-gray-800 pt-3">
+          <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Observações</span>
           <textarea
             autoFocus={mostrarObs && !observacoes}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm outline-none focus:border-gray-400"
             rows={2}
             placeholder="Explique o motivo do ajuste, se houver."
             value={observacoes}
@@ -100,16 +100,16 @@ export default function ResultadoCard({
         <button
           type="button"
           onClick={() => setMostrarObs(true)}
-          className="text-sm text-gray-400 hover:text-gray-700 hover:underline"
+          className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-300 hover:underline"
         >
           + Adicionar observação
         </button>
       )}
 
-      <div className="border-t border-gray-100 pt-3 space-y-2">
+      <div className="border-t border-gray-100 dark:border-gray-800 pt-3 space-y-2">
         <div className="flex justify-between items-center text-sm px-1">
-          <span className="text-gray-400">Diferença final</span>
-          <span className="font-semibold text-gray-900">{formatarMoeda(resultado.diferencaFinal)}</span>
+          <span className="text-gray-400 dark:text-gray-500">Diferença final</span>
+          <span className="font-semibold text-gray-900 dark:text-gray-100">{formatarMoeda(resultado.diferencaFinal)}</span>
         </div>
         <div
           className={`rounded-xl px-4 py-3 text-center font-semibold ${STATUS_COLOR[resultado.status]}`}
@@ -124,8 +124,8 @@ export default function ResultadoCard({
 function Linha({ label, valor, destaque }: { label: string; valor: number; destaque?: boolean }) {
   return (
     <div className="flex flex-col">
-      <span className="text-[11px] text-gray-400">{label}</span>
-      <span className={destaque ? 'font-semibold text-gray-900' : 'text-gray-600'}>
+      <span className="text-[11px] text-gray-400 dark:text-gray-500">{label}</span>
+      <span className={destaque ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-300'}>
         {formatarMoeda(valor)}
       </span>
     </div>

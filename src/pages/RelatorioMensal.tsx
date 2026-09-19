@@ -101,15 +101,15 @@ export default function RelatorioMensal() {
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-4">
       <header>
-        <h1 className="text-2xl font-bold text-gray-900">Relatório Mensal</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Relatório Mensal</h1>
       </header>
 
-      <section className="rounded-2xl bg-white shadow-sm p-4 flex items-center justify-between gap-3">
+      <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 flex items-center justify-between gap-3">
         <label className="flex flex-col gap-1 flex-1">
-          <span className="text-[13px] font-medium text-gray-600">Mês</span>
+          <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Mês</span>
           <input
             type="month"
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm outline-none focus:border-gray-400"
             value={mes}
             onChange={(e) => setMes(e.target.value)}
           />
@@ -118,22 +118,22 @@ export default function RelatorioMensal() {
           type="button"
           disabled={linhas.length === 0}
           onClick={() => gerarPdfMensal({ mesLabel, linhas })}
-          className="rounded-xl bg-gray-900 px-4 py-2.5 text-white text-sm font-semibold disabled:opacity-40 self-end"
+          className="rounded-xl bg-gray-900 dark:bg-gray-700 px-4 py-2.5 text-white text-sm font-semibold disabled:opacity-40 self-end"
         >
           Exportar PDF
         </button>
       </section>
 
-      {erro && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{erro}</div>}
-      {carregando && <p className="text-sm text-gray-400">Carregando...</p>}
+      {erro && <div className="rounded-xl bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-400">{erro}</div>}
+      {carregando && <p className="text-sm text-gray-400 dark:text-gray-500">Carregando...</p>}
       {!carregando && linhas.length === 0 && (
-        <p className="text-sm text-gray-400">Nenhum fechamento nesse mês.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500">Nenhum fechamento nesse mês.</p>
       )}
 
       {linhas.length > 0 && (
-        <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
+        <div className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+            <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs uppercase">
               <tr>
                 <th className="text-left px-3 py-2">Dia</th>
                 <th className="text-right px-3 py-2">Caixa</th>
@@ -146,7 +146,7 @@ export default function RelatorioMensal() {
               {linhas.map((l) => {
                 const rel = relatorioPorData.get(l.data)
                 return (
-                  <tr key={l.data} className="border-t border-gray-100">
+                  <tr key={l.data} className="border-t border-gray-100 dark:border-gray-800">
                     <td className="px-3 py-2">{formatarData(l.data)}</td>
                     <td className="px-3 py-2 text-right">{formatarMoeda(l.totalCaixaDia)}</td>
                     <td className="px-3 py-2 text-right">{formatarMoeda(l.totalSistemaDia)}</td>
@@ -164,7 +164,7 @@ export default function RelatorioMensal() {
                     <td className="px-3 py-2 text-center">
                       <Link
                         to={rel ? `/relatorios/${rel.id}` : `/relatorios/novo?data=${l.data}`}
-                        className={rel ? 'text-gray-900' : 'text-gray-300'}
+                        className={rel ? 'text-gray-900 dark:text-gray-100' : 'text-gray-300 dark:text-gray-600'}
                         title={rel ? 'Ver relatório' : 'Criar relatório'}
                       >
                         <FileText size={16} className="inline" />
@@ -174,7 +174,7 @@ export default function RelatorioMensal() {
                 )
               })}
             </tbody>
-            <tfoot className="bg-gray-50 font-semibold border-t border-gray-200">
+            <tfoot className="bg-gray-50 dark:bg-gray-800 font-semibold border-t border-gray-200 dark:border-gray-700">
               <tr>
                 <td className="px-3 py-2">Total do mês</td>
                 <td className="px-3 py-2 text-right">{formatarMoeda(totais.caixa)}</td>
@@ -187,7 +187,7 @@ export default function RelatorioMensal() {
         </div>
       )}
 
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-gray-400 dark:text-gray-500">
         Clique num dia no <Link to="/historico" className="underline">histórico</Link> para ver o
         fechamento completo de manhã/noite.
       </p>

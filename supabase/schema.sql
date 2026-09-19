@@ -118,6 +118,10 @@ create table if not exists public.relatorios (
 
   estoque_quente jsonb not null default '{"itens": []}'::jsonb,
 
+  -- Prints anexados (base64), só usados no PDF de WhatsApp
+  imagem1 text,
+  imagem2 text,
+
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

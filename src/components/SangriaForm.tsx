@@ -20,7 +20,7 @@ export default function SangriaForm({ value, onChange }: Props) {
   return (
     <Secao titulo="Sangrias" resumo={resumo}>
       {value.length === 0 && (
-        <p className="text-sm text-gray-400">Nenhuma sangria registrada neste turno.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500">Nenhuma sangria registrada neste turno.</p>
       )}
 
       <div className="space-y-2">
@@ -30,21 +30,21 @@ export default function SangriaForm({ value, onChange }: Props) {
               type="number"
               step="0.01"
               placeholder="Valor"
-              className="w-24 rounded-lg border border-gray-200 px-2 py-2 text-sm outline-none focus:border-gray-400"
+              className="w-24 rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-2 text-sm outline-none focus:border-gray-400"
               value={Number.isNaN(s.valor) ? '' : s.valor}
               onChange={(e) => atualizar(i, 'valor', e.target.value === '' ? 0 : parseFloat(e.target.value))}
             />
             <input
               type="text"
               placeholder="Motivo"
-              className="flex-1 min-w-0 rounded-lg border border-gray-200 px-2 py-2 text-sm outline-none focus:border-gray-400"
+              className="flex-1 min-w-0 rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-2 text-sm outline-none focus:border-gray-400"
               value={s.motivo}
               onChange={(e) => atualizar(i, 'motivo', e.target.value)}
             />
             <button
               type="button"
               onClick={() => remover(i)}
-              className="shrink-0 p-2 text-gray-300 hover:text-red-500"
+              className="shrink-0 p-2 text-gray-300 dark:text-gray-600 hover:text-red-500"
               aria-label="Remover sangria"
             >
               <Trash2 size={16} />
@@ -56,7 +56,7 @@ export default function SangriaForm({ value, onChange }: Props) {
       <button
         type="button"
         onClick={adicionar}
-        className="text-sm font-medium text-gray-900 hover:underline"
+        className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:underline"
       >
         + Adicionar sangria
       </button>

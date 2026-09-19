@@ -14,6 +14,8 @@ interface RelatorioRow {
   cortesia_clientes: ConsumoItem[]
   sangrias: Sangria[]
   estoque_quente: EstoqueSnapshot
+  imagem1: string | null
+  imagem2: string | null
   created_at: string
   updated_at: string
 }
@@ -34,6 +36,8 @@ function rowToRelatorio(row: RelatorioRow): RelatorioDiario {
     cortesiaClientes: row.cortesia_clientes ?? [],
     sangrias: row.sangrias ?? [],
     estoqueQuente: row.estoque_quente ?? ESTOQUE_VAZIO,
+    imagem1: row.imagem1 ?? null,
+    imagem2: row.imagem2 ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -52,6 +56,8 @@ function inputToRow(input: RelatorioDiarioInput) {
     cortesia_clientes: input.cortesiaClientes,
     sangrias: input.sangrias,
     estoque_quente: input.estoqueQuente,
+    imagem1: input.imagem1 ?? null,
+    imagem2: input.imagem2 ?? null,
   }
 }
 

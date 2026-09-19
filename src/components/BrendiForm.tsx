@@ -32,8 +32,8 @@ export default function BrendiForm({ value, onChange, defaultAberto }: Props) {
         />
       </div>
       <div className="flex justify-between items-center pt-1 text-sm">
-        <span className="text-gray-400">Total Brendi</span>
-        <span className="font-semibold text-gray-900">{formatarMoeda(total)}</span>
+        <span className="text-gray-400 dark:text-gray-500">Total Brendi</span>
+        <span className="font-semibold text-gray-900 dark:text-gray-100">{formatarMoeda(total)}</span>
       </div>
     </Secao>
   )

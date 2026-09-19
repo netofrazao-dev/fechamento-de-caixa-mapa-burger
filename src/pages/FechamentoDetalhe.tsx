@@ -28,18 +28,18 @@ export default function FechamentoDetalhe() {
     return <div className="max-w-2xl mx-auto p-4 text-sm text-red-600">{erro}</div>
   }
   if (!f) {
-    return <div className="max-w-2xl mx-auto p-4 text-sm text-gray-400">Carregando...</div>
+    return <div className="max-w-2xl mx-auto p-4 text-sm text-gray-400 dark:text-gray-500">Carregando...</div>
   }
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-4">
-      <Link to="/historico" className="text-sm text-gray-500 hover:underline">
+      <Link to="/historico" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
         ← Voltar ao histórico
       </Link>
 
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
             {formatarData(f.data)} — {TURNO_LABEL[f.turno]}
           </h1>
         </div>
@@ -64,8 +64,8 @@ export default function FechamentoDetalhe() {
         <Secao titulo="Sangrias">
           {f.sangrias.map((s, i) => (
             <div key={s.id ?? i} className="flex justify-between text-sm py-1">
-              <span className="text-gray-600">{s.motivo}</span>
-              <span className="text-gray-900">{formatarMoeda(s.valor)}</span>
+              <span className="text-gray-600 dark:text-gray-300">{s.motivo}</span>
+              <span className="text-gray-900 dark:text-gray-100">{formatarMoeda(s.valor)}</span>
             </div>
           ))}
         </Secao>
@@ -83,8 +83,8 @@ export default function FechamentoDetalhe() {
       <Secao titulo="Resultado">
         <Linha label="Total Caixa" valor={f.resultado.totalCaixa} destaque />
         <div className="flex justify-between text-sm py-1">
-          <span className="text-gray-500">Marmitas vendidas</span>
-          <span className="text-gray-700">{f.marmitasVendidas}</span>
+          <span className="text-gray-500 dark:text-gray-400">Marmitas vendidas</span>
+          <span className="text-gray-700 dark:text-gray-300">{f.marmitasVendidas}</span>
         </div>
         <Linha label="Total LC Sistema" valor={f.totalLCSistema} />
         <Linha label="Total Sistema" valor={f.resultado.totalSistema} destaque />
@@ -98,8 +98,8 @@ export default function FechamentoDetalhe() {
         <Linha label="Diferença final" valor={f.resultado.diferencaFinal} destaque />
         {f.observacoes && (
           <div className="pt-2 text-sm">
-            <p className="text-gray-400 text-xs">Observações</p>
-            <p className="text-gray-700">{f.observacoes}</p>
+            <p className="text-gray-400 dark:text-gray-500 text-xs">Observações</p>
+            <p className="text-gray-700 dark:text-gray-300">{f.observacoes}</p>
           </div>
         )}
       </Secao>
@@ -107,9 +107,9 @@ export default function FechamentoDetalhe() {
       <button
         type="button"
         onClick={() => gerarPdfFechamento(f)}
-        className="w-full rounded-xl bg-gray-900 py-3 text-white text-sm font-semibold"
+        className="w-full rounded-xl bg-gray-900 dark:bg-gray-700 py-3 text-white text-sm font-semibold"
       >
-        Baixar PDF
+        PDF para impressão
       </button>
     </div>
   )
@@ -117,8 +117,8 @@ export default function FechamentoDetalhe() {
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl bg-white shadow-sm p-4 space-y-1">
-      <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{titulo}</h2>
+    <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-1">
+      <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">{titulo}</h2>
       {children}
     </section>
   )
@@ -127,8 +127,8 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
 function Linha({ label, valor, destaque }: { label: string; valor: number; destaque?: boolean }) {
   return (
     <div className="flex justify-between text-sm py-1">
-      <span className="text-gray-500">{label}</span>
-      <span className={destaque ? 'font-semibold text-gray-900' : 'text-gray-700'}>
+      <span className="text-gray-500 dark:text-gray-400">{label}</span>
+      <span className={destaque ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'}>
         {formatarMoeda(valor)}
       </span>
     </div>

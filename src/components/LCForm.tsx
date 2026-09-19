@@ -40,8 +40,8 @@ export default function LCForm({ value, onChange, defaultAberto }: Props) {
         <CampoMoeda label="Ticket" value={value.ticket} onChange={(v) => set('ticket', v)} />
       </div>
       <div className="flex justify-between items-center pt-1 text-sm">
-        <span className="text-gray-400">Total LC</span>
-        <span className="font-semibold text-gray-900">{formatarMoeda(total)}</span>
+        <span className="text-gray-400 dark:text-gray-500">Total LC</span>
+        <span className="font-semibold text-gray-900 dark:text-gray-100">{formatarMoeda(total)}</span>
       </div>
     </Secao>
   )

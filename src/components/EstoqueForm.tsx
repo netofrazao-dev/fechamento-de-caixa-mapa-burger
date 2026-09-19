@@ -23,12 +23,12 @@ export default function EstoqueForm({ value, onChange }: Props) {
   return (
     <div className="grid grid-cols-2 gap-2">
       {itens.map((item) => (
-        <label key={item.produto} className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 px-2.5 py-1.5">
-          <span className="text-xs text-gray-600 leading-tight">{item.produto}</span>
+        <label key={item.produto} className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800 px-2.5 py-1.5">
+          <span className="text-xs text-gray-600 dark:text-gray-300 leading-tight">{item.produto}</span>
           <input
             type="number"
             min={0}
-            className="w-14 rounded-md border border-gray-200 bg-white px-1.5 py-1 text-sm text-right outline-none focus:border-gray-400"
+            className="w-14 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5 py-1 text-sm text-right outline-none focus:border-gray-400"
             value={Number.isNaN(item.quantidade) ? '' : item.quantidade}
             onChange={(e) => atualizarQtd(item.produto, e.target.value === '' ? 0 : parseInt(e.target.value, 10))}
             onFocus={(e) => e.target.select()}

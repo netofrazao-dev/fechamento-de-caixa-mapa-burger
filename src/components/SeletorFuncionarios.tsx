@@ -48,7 +48,7 @@ export default function SeletorFuncionarios({ value, onChange }: Props) {
           type="button"
           onClick={() => toggle(f.nome)}
           className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-            value.includes(f.nome) ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'
+            value.includes(f.nome) ? 'bg-gray-900 dark:bg-gray-700 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
           }`}
         >
           {f.nome}
@@ -59,7 +59,7 @@ export default function SeletorFuncionarios({ value, onChange }: Props) {
         <button
           type="button"
           onClick={() => setMostrarNovo(true)}
-          className="rounded-full px-3 py-1.5 text-sm font-medium bg-white border border-dashed border-gray-300 text-gray-400 flex items-center gap-1"
+          className="rounded-full px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-900 border border-dashed border-gray-300 text-gray-400 dark:text-gray-500 flex items-center gap-1"
         >
           <Plus size={14} /> Pessoa
         </button>
@@ -71,7 +71,7 @@ export default function SeletorFuncionarios({ value, onChange }: Props) {
             autoFocus
             type="text"
             placeholder="Nome"
-            className="flex-1 min-w-0 rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm outline-none focus:border-gray-400"
+            className="flex-1 min-w-0 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-sm outline-none focus:border-gray-400"
             value={novoNome}
             onChange={(e) => setNovoNome(e.target.value)}
             onKeyDown={(e) => {
@@ -84,7 +84,7 @@ export default function SeletorFuncionarios({ value, onChange }: Props) {
           <button
             type="button"
             onClick={adicionarNovo}
-            className="shrink-0 rounded-lg bg-gray-900 px-3 text-xs font-medium text-white"
+            className="shrink-0 rounded-lg bg-gray-900 dark:bg-gray-700 px-3 text-xs font-medium text-white"
           >
             Adicionar
           </button>

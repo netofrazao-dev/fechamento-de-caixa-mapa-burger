@@ -126,6 +126,10 @@ export interface RelatorioDiario {
 
   estoqueQuente: EstoqueSnapshot
 
+  /** Prints/imagens anexadas (base64) — só entram no PDF de envio, não na impressão. */
+  imagem1?: string | null
+  imagem2?: string | null
+
   createdAt: string
   updatedAt: string
 }
@@ -142,6 +146,8 @@ export interface RelatorioDiarioInput {
   cortesiaClientes: ConsumoItem[]
   sangrias: Sangria[]
   estoqueQuente: EstoqueSnapshot
+  imagem1?: string | null
+  imagem2?: string | null
 }
 
 /** Um funcionário cadastrado (pra selecionar em vez de digitar o nome). */

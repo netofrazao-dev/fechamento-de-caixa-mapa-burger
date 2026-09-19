@@ -124,7 +124,7 @@ export const STATUS_LABEL: Record<StatusFechamento, string> = {
 }
 
 export const STATUS_COLOR: Record<StatusFechamento, string> = {
-  fechou: 'text-green-600 bg-green-50 border-green-200',
-  sobrou: 'text-blue-600 bg-blue-50 border-blue-200',
-  faltou: 'text-red-600 bg-red-50 border-red-200',
+  fechou: 'text-green-600 bg-green-50 border-green-200 dark:text-green-400 dark:bg-green-950/40 dark:border-green-800',
+  sobrou: 'text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/40 dark:border-blue-800',
+  faltou: 'text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-950/40 dark:border-red-800',
 }
