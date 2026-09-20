@@ -50,6 +50,18 @@ export interface ResultadoCalculado {
   status: StatusFechamento
 }
 
+/** Um lançamento de vendas de um prato específico (contador). */
+export interface MarmitaItem {
+  prato: string
+  quantidade: number
+}
+
+/** Um prato cadastrado (pra contar cliques em vez de digitar número). */
+export interface Prato {
+  id: string
+  nome: string
+}
+
 /** Um fechamento completo, como fica salvo no banco. */
 export interface Fechamento {
   id: string
@@ -60,7 +72,7 @@ export interface Fechamento {
   lc: DadosLC
   brendi: DadosBrendi
   sangrias: Sangria[]
-  marmitasVendidas: number
+  marmitas: MarmitaItem[]
 
   totalLCSistema: number
   ajuste: Ajuste
@@ -76,7 +88,7 @@ export interface NovoFechamentoInput {
   lc: DadosLC
   brendi: DadosBrendi
   sangrias: Sangria[]
-  marmitasVendidas: number
+  marmitas: MarmitaItem[]
   totalLCSistema: number
   ajuste: Ajuste
   observacoes: string

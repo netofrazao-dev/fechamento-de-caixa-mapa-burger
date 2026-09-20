@@ -117,6 +117,11 @@ export function formatarMoeda(valor: number): string {
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+/** Soma as quantidades de todos os pratos contados num fechamento. */
+export function totalMarmitas(itens: { quantidade: number }[]): number {
+  return itens.reduce((acc, m) => acc + (m.quantidade || 0), 0)
+}
+
 export const STATUS_LABEL: Record<StatusFechamento, string> = {
   fechou: 'CAIXA FECHOU',
   sobrou: 'SOBROU DINHEIRO',

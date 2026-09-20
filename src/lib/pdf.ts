@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { ConsumoItem, Fechamento, RelatorioDiario, StatusFechamento } from '../types/fechamento'
-import { formatarMoeda, STATUS_LABEL } from './calculations'
+import type { ConsumoItem, Fechamento, MarmitaItem, RelatorioDiario, StatusFechamento } from '../types/fechamento'
+import { formatarMoeda, STATUS_LABEL, totalMarmitas } from './calculations'
 import { semAcento } from './texto'
 import { LOGO_MAPA_BURGER_PNG } from './brand'
 
@@ -107,6 +107,17 @@ class ReciboTermico {
   }
 }
 
+/** Soma as vendas de cada prato entre vários fechamentos (manhã+noite), do maior pro menor. */
+function agregarVendasPorPrato(fechamentos: Fechamento[]): [string, number][] {
+  const mapa = new Map<string, number>()
+  fechamentos.forEach((f) => {
+    f.marmitas.forEach((m: MarmitaItem) => {
+      mapa.set(m.prato, (mapa.get(m.prato) ?? 0) + m.quantidade)
+    })
+  })
+  return Array.from(mapa.entries()).sort((a, b) => b[1] - a[1])
+}
+
 /** Escreve o bloco completo de um fechamento (LC, Brendi, Resultado) no recibo. */
 function escreverFechamento(r: ReciboTermico, f: Fechamento) {
   r.linha(`Fechamento - ${TURNO_LABEL[f.turno]}`, { negrito: true, centro: true })
@@ -153,7 +164,8 @@ function escreverFechamento(r: ReciboTermico, f: Fechamento) {
   r.espaco(1)
   r.linha(STATUS_LABEL[f.resultado.status], { negrito: true, centro: true, tamanho: 11 })
   r.separador()
-  r.linhaTexto('Marmitas vendidas', String(f.marmitasVendidas ?? 0))
+  r.linhaTexto('Marmitas vendidas', String(totalMarmitas(f.marmitas)))
+  f.marmitas.forEach((m) => r.linhaTexto(`  ${m.prato}`, String(m.quantidade)))
 
   if (f.observacoes) {
     r.separador()
@@ -247,6 +259,14 @@ export function imprimirDiaCompleto(params: { relatorio: RelatorioDiario; fecham
     escreverFechamento(r, f)
     r.espaco(2)
   })
+
+  const vendasPorPratoDia = agregarVendasPorPrato(fechamentos)
+  if (vendasPorPratoDia.length > 0) {
+    r.quebrarPaginaSeNecessario(250)
+    r.linha('VENDAS POR PRATO', { negrito: true })
+    vendasPorPratoDia.forEach(([prato, qtd]) => r.linhaTexto(prato, String(qtd)))
+    r.separador()
+  }
 
   r.quebrarPaginaSeNecessario(250)
   escreverRelatorio(r, relatorio)
@@ -410,7 +430,7 @@ export async function gerarPdfWhatsApp(params: {
   const totalCaixaDia = fechamentos.reduce((acc, f) => acc + f.resultado.totalCaixa, 0)
   const totalSistemaDia = fechamentos.reduce((acc, f) => acc + f.resultado.totalSistema, 0)
   const diferencaFinalDia = fechamentos.reduce((acc, f) => acc + f.resultado.diferencaFinal, 0)
-  const totalMarmitasDia = fechamentos.reduce((acc, f) => acc + (f.marmitasVendidas || 0), 0)
+  const totalMarmitasDia = fechamentos.reduce((acc, f) => acc + totalMarmitas(f.marmitas), 0)
   const statusDia: StatusFechamento =
     Math.abs(diferencaFinalDia) < 0.005 ? 'fechou' : diferencaFinalDia > 0 ? 'sobrou' : 'faltou'
 
@@ -536,7 +556,7 @@ export async function gerarPdfWhatsApp(params: {
     }
     linhasResultado.push(['Diferença final', formatarMoeda(f.resultado.diferencaFinal)])
     linhasResultado.push(['Situação', STATUS_LABEL[f.resultado.status]])
-    linhasResultado.push(['Marmitas vendidas', String(f.marmitasVendidas ?? 0)])
+    linhasResultado.push(['Marmitas vendidas', String(totalMarmitas(f.marmitas))])
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
@@ -559,6 +579,23 @@ export async function gerarPdfWhatsApp(params: {
 
     y += 4
   })
+
+  // --- Vendas por prato (agregado do dia, ajuda a ver o que vende mais) ---
+  const vendasPorPratoDia = agregarVendasPorPrato(fechamentos)
+  if (vendasPorPratoDia.length > 0) {
+    quebrarSeNecessario(230)
+    y = tituloSecaoPdf(doc, 'Vendas por Prato', y, margem, larguraUtil)
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [['Prato', 'Quantidade']],
+      body: vendasPorPratoDia.map(([prato, qtd]) => [prato, String(qtd)]),
+      styles: { fontSize: 9.5 },
+      headStyles: { fillColor: [60, 60, 64] },
+      columnStyles: { 1: { halign: 'right' } },
+    })
+    y = finalY(doc) + 8
+  }
 
   // --- Resumo do relatório escrito ---
   quebrarSeNecessario(230)

@@ -5,11 +5,13 @@ import LCForm from '../components/LCForm'
 import BrendiForm from '../components/BrendiForm'
 import SangriaForm from '../components/SangriaForm'
 import ResultadoCard from '../components/ResultadoCard'
+import ContadorPratos from '../components/ContadorPratos'
+import Secao from '../components/Secao'
 import { calcularResultado } from '../lib/calculations'
 import { criarFechamento, existeFechamento } from '../lib/fechamentoService'
 import { gerarPdfFechamento } from '../lib/pdf'
 import { formatarHoraRascunho, lerRascunho, limparRascunho, salvarRascunho } from '../lib/draft'
-import type { Ajuste, DadosBrendi, DadosLC, Sangria, Turno } from '../types/fechamento'
+import type { Ajuste, DadosBrendi, DadosLC, MarmitaItem, Sangria, Turno } from '../types/fechamento'
 
 const LC_VAZIO: DadosLC = {
   dinheiroAbertura: 0,
@@ -44,7 +46,7 @@ interface RascunhoFechamento {
   lc: DadosLC
   brendi: DadosBrendi
   sangrias: Sangria[]
-  marmitasVendidas: number
+  marmitas: MarmitaItem[]
   totalLCSistema: number
   ajuste: Ajuste
   observacoes: string
@@ -63,7 +65,7 @@ export default function NovoFechamento() {
   const [lc, setLc] = useState<DadosLC>(rascunho?.dados.lc ?? LC_VAZIO)
   const [brendi, setBrendi] = useState<DadosBrendi>(rascunho?.dados.brendi ?? BRENDI_VAZIO)
   const [sangrias, setSangrias] = useState<Sangria[]>(rascunho?.dados.sangrias ?? [])
-  const [marmitasVendidas, setMarmitasVendidas] = useState(rascunho?.dados.marmitasVendidas ?? 0)
+  const [marmitas, setMarmitas] = useState<MarmitaItem[]>(rascunho?.dados.marmitas ?? [])
   const [totalLCSistema, setTotalLCSistema] = useState(rascunho?.dados.totalLCSistema ?? 0)
   const [ajuste, setAjuste] = useState<Ajuste>(rascunho?.dados.ajuste ?? AJUSTE_VAZIO)
   const [observacoes, setObservacoes] = useState(rascunho?.dados.observacoes ?? '')
@@ -75,6 +77,8 @@ export default function NovoFechamento() {
     () => calcularResultado({ lc, brendi, totalLCSistema, ajuste }),
     [lc, brendi, totalLCSistema, ajuste],
   )
+
+  const totalMarmitas = marmitas.reduce((acc, m) => acc + m.quantidade, 0)
 
   // Salva o rascunho automaticamente a cada mudança (exceto na primeira
   // renderização, pra não regravar o mesmo rascunho que acabou de ler).
@@ -89,13 +93,13 @@ export default function NovoFechamento() {
       lc,
       brendi,
       sangrias,
-      marmitasVendidas,
+      marmitas,
       totalLCSistema,
       ajuste,
       observacoes,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, turno, lc, brendi, sangrias, marmitasVendidas, totalLCSistema, ajuste, observacoes])
+  }, [data, turno, lc, brendi, sangrias, marmitas, totalLCSistema, ajuste, observacoes])
 
   function descartarRascunho() {
     limparRascunho(CHAVE_RASCUNHO)
@@ -104,7 +108,7 @@ export default function NovoFechamento() {
     setLc(LC_VAZIO)
     setBrendi(BRENDI_VAZIO)
     setSangrias([])
-    setMarmitasVendidas(0)
+    setMarmitas([])
     setTotalLCSistema(0)
     setAjuste(AJUSTE_VAZIO)
     setObservacoes('')
@@ -139,7 +143,7 @@ export default function NovoFechamento() {
         lc,
         brendi,
         sangrias: sangrias.filter((s) => s.valor > 0 || s.motivo.trim()),
-        marmitasVendidas,
+        marmitas,
         totalLCSistema,
         ajuste,
         observacoes,
@@ -203,20 +207,9 @@ export default function NovoFechamento() {
         </label>
       </section>
 
-      <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4">
-        <label className="flex flex-col gap-1">
-          <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Marmitas vendidas</span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm outline-none focus:border-gray-400 w-32"
-            value={Number.isNaN(marmitasVendidas) ? '' : marmitasVendidas}
-            onChange={(e) => setMarmitasVendidas(e.target.value === '' ? 0 : parseInt(e.target.value, 10))}
-            onFocus={(e) => e.target.select()}
-          />
-        </label>
-      </section>
+      <Secao titulo="Marmitas vendidas" resumo={`Total: ${totalMarmitas}`}>
+        <ContadorPratos value={marmitas} onChange={setMarmitas} />
+      </Secao>
 
       <LCForm value={lc} onChange={setLc} defaultAberto />
       <BrendiForm value={brendi} onChange={setBrendi} />

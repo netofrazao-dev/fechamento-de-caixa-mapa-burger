@@ -101,8 +101,20 @@ export default function FechamentoDetalhe() {
         <Linha label="Total Caixa" valor={f.resultado.totalCaixa} destaque />
         <div className="flex justify-between text-sm py-1">
           <span className="text-gray-500 dark:text-gray-400">Marmitas vendidas</span>
-          <span className="text-gray-700 dark:text-gray-300">{f.marmitasVendidas}</span>
+          <span className="text-gray-700 dark:text-gray-300">
+            {f.marmitas.reduce((acc, m) => acc + m.quantidade, 0)}
+          </span>
         </div>
+        {f.marmitas.length > 0 && (
+          <div className="pl-3 space-y-0.5">
+            {f.marmitas.map((m) => (
+              <div key={m.prato} className="flex justify-between text-xs py-0.5">
+                <span className="text-gray-400 dark:text-gray-500">{m.prato}</span>
+                <span className="text-gray-500 dark:text-gray-400">{m.quantidade}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <Linha label="Total LC Sistema" valor={f.totalLCSistema} />
         <Linha label="Total Sistema" valor={f.resultado.totalSistema} destaque />
         <Linha label="Diferença original" valor={f.resultado.diferencaOriginal} />

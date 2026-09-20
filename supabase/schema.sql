@@ -50,7 +50,7 @@ create table if not exists public.fechamentos (
 
   observacoes text,
 
-  marmitas_vendidas integer not null default 0,
+  marmitas jsonb not null default '[]'::jsonb,
 
   -- Um único fechamento por data + turno
   unique (data, turno)
@@ -169,4 +169,27 @@ create policy "funcionarios_all_access" on public.funcionarios
 
 insert into public.funcionarios (nome)
 values ('Neto'), ('Pâmela'), ('Oneide'), ('Diogo'), ('Luciano')
+on conflict (nome) do nothing;
+
+-- ============================================================
+-- Pratos (contagem de marmitas vendidas por clique, em vez de
+-- digitar um número — também mostra o que vende mais no relatório)
+-- ============================================================
+
+create table if not exists public.pratos (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null unique,
+  created_at timestamptz not null default now()
+);
+
+alter table public.pratos enable row level security;
+
+drop policy if exists "pratos_all_access" on public.pratos;
+create policy "pratos_all_access" on public.pratos
+  for all
+  using (true)
+  with check (true);
+
+insert into public.pratos (nome)
+values ('Estrogonofe'), ('Frango Grelhado'), ('Bife Acebolado')
 on conflict (nome) do nothing;
