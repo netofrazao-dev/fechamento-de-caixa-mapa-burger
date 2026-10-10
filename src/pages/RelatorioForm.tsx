@@ -59,9 +59,7 @@ export default function RelatorioForm() {
   const [funcionariosQueComeram, setFuncionariosQueComeram] = useState<string[]>(
     rascunho?.dados.funcionariosQueComeram ?? [],
   )
-  const [consumoLojaMensal, setConsumoLojaMensal] = useState<ConsumoItem[]>(
-    rascunho?.dados.consumoLojaMensal ?? [],
-  )
+  const [consumoLojaMensal, setConsumoLojaMensal] = useState<ConsumoItem[]>(rascunho?.dados.consumoLojaMensal ?? [])
   const [consumoLojaMotoboys, setConsumoLojaMotoboys] = useState<ConsumoItem[]>(
     rascunho?.dados.consumoLojaMotoboys ?? [],
   )
@@ -76,24 +74,26 @@ export default function RelatorioForm() {
   const [processando, setProcessando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
+  function aplicarRelatorio(r: Awaited<ReturnType<typeof buscarRelatorioPorId>>) {
+    setData(r.data)
+    setAberturaCaixa(r.aberturaCaixa)
+    setFechamentoCaixa(r.fechamentoCaixa)
+    setQuantidadeVendida(r.quantidadeVendida)
+    setEstragou(r.estragou)
+    setFuncionariosQueComeram(r.funcionariosQueComeram)
+    setConsumoLojaMensal(r.consumoLojaMensal)
+    setConsumoLojaMotoboys(r.consumoLojaMotoboys)
+    setCortesiaClientes(r.cortesiaClientes)
+    setSangrias(r.sangrias)
+    setEstoqueQuente(r.estoqueQuente)
+    setImagem1(r.imagem1 ?? null)
+    setImagem2(r.imagem2 ?? null)
+  }
+
   useEffect(() => {
-    if (!id || rascunho) return // se já tem rascunho local, ele manda (é mais recente que o banco)
+    if (!id || rascunho) return // rascunho local é mais recente que o banco
     buscarRelatorioPorId(id)
-      .then((r) => {
-        setData(r.data)
-        setAberturaCaixa(r.aberturaCaixa)
-        setFechamentoCaixa(r.fechamentoCaixa)
-        setQuantidadeVendida(r.quantidadeVendida)
-        setEstragou(r.estragou)
-        setFuncionariosQueComeram(r.funcionariosQueComeram)
-        setConsumoLojaMensal(r.consumoLojaMensal)
-        setConsumoLojaMotoboys(r.consumoLojaMotoboys)
-        setCortesiaClientes(r.cortesiaClientes)
-        setSangrias(r.sangrias)
-        setEstoqueQuente(r.estoqueQuente)
-        setImagem1(r.imagem1 ?? null)
-        setImagem2(r.imagem2 ?? null)
-      })
+      .then(aplicarRelatorio)
       .catch((e) => setErro(e instanceof Error ? e.message : 'Erro ao carregar relatório.'))
       .finally(() => setCarregando(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -117,8 +117,7 @@ export default function RelatorioForm() {
     }
   }
 
-  // Salva o rascunho automaticamente a cada mudança, pra não perder o
-  // que já foi preenchido se a aba fechar no meio do expediente.
+  // Autosave do rascunho a cada mudança.
   useEffect(() => {
     if (carregando) return
     if (pulandoPrimeiraGravacao.current) {
@@ -164,21 +163,7 @@ export default function RelatorioForm() {
     if (id) {
       setCarregando(true)
       buscarRelatorioPorId(id)
-        .then((r) => {
-          setData(r.data)
-          setAberturaCaixa(r.aberturaCaixa)
-          setFechamentoCaixa(r.fechamentoCaixa)
-          setQuantidadeVendida(r.quantidadeVendida)
-          setEstragou(r.estragou)
-          setFuncionariosQueComeram(r.funcionariosQueComeram)
-          setConsumoLojaMensal(r.consumoLojaMensal)
-          setConsumoLojaMotoboys(r.consumoLojaMotoboys)
-          setCortesiaClientes(r.cortesiaClientes)
-          setSangrias(r.sangrias)
-          setEstoqueQuente(r.estoqueQuente)
-          setImagem1(r.imagem1 ?? null)
-          setImagem2(r.imagem2 ?? null)
-        })
+        .then(aplicarRelatorio)
         .catch((e) => setErro(e instanceof Error ? e.message : 'Erro ao carregar relatório.'))
         .finally(() => setCarregando(false))
     } else {
@@ -216,6 +201,7 @@ export default function RelatorioForm() {
     if (!id) return
     if (!confirm('Excluir este relatório? Essa ação não pode ser desfeita.')) return
     await excluirRelatorio(id)
+    limparRascunho(chaveRascunho)
     navigate('/relatorios', { replace: true })
   }
 
@@ -263,7 +249,9 @@ export default function RelatorioForm() {
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-3 pb-36">
       <header className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">{editando ? 'Editar relatório' : 'Novo relatório'}</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+          {editando ? 'Editar relatório' : 'Novo relatório'}
+        </h1>
         {editando && (
           <button type="button" onClick={excluir} className="p-2 text-gray-300 dark:text-gray-600 hover:text-red-500">
             <Trash2 size={18} />
@@ -275,8 +263,8 @@ export default function RelatorioForm() {
         <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-300">
           <span className="flex items-center gap-1.5">
             <History size={14} className="shrink-0" />
-            Rascunho restaurado{rascunho ? ` (salvo às ${formatarHoraRascunho(rascunho.salvoEm)})` : ''} —
-            continue de onde parou.
+            Rascunho restaurado{rascunho ? ` (salvo às ${formatarHoraRascunho(rascunho.salvoEm)})` : ''} — continue de
+            onde parou.
           </span>
           <button type="button" onClick={descartarRascunho} className="shrink-0 font-semibold underline">
             Descartar
@@ -289,7 +277,7 @@ export default function RelatorioForm() {
           <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Data</span>
           <input
             type="date"
-            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-gray-400"
             value={data}
             onChange={(e) => setData(e.target.value)}
           />
@@ -303,7 +291,7 @@ export default function RelatorioForm() {
           <input
             type="number"
             min={0}
-            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm outline-none focus:border-gray-400 w-32"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-gray-400 w-32"
             value={Number.isNaN(quantidadeVendida) ? '' : quantidadeVendida}
             onChange={(e) => setQuantidadeVendida(e.target.value === '' ? 0 : parseInt(e.target.value, 10))}
             onFocus={(e) => e.target.select()}
@@ -344,8 +332,8 @@ export default function RelatorioForm() {
 
       <Secao titulo="Anexos (PDF WhatsApp)" resumo={`${[imagem1, imagem2].filter(Boolean).length}/2 imagem(ns)`}>
         <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">
-          Os 2 prints que você manda por fora todo dia — entram como páginas extras só no PDF
-          para WhatsApp. Ficam salvos junto com o relatório, não precisa anexar de novo depois.
+          Os 2 prints que você manda por fora todo dia — entram como páginas extras só no PDF para WhatsApp. Ficam
+          salvos junto com o relatório, não precisa anexar de novo depois.
         </p>
         <div className="grid grid-cols-2 gap-3">
           <AnexoImagem valor={imagem1} onChange={setImagem1} label="Print 1" />
@@ -437,8 +425,7 @@ function AnexoImagem({
     setCarregando(true)
     try {
       const dataUrl = await lerComoBase64(file)
-      const comprimida = await comprimirImagem(dataUrl)
-      onChange(comprimida)
+      onChange(await comprimirImagem(dataUrl))
     } finally {
       setCarregando(false)
     }
@@ -475,15 +462,7 @@ function AnexoImagem({
   )
 }
 
-function CampoDinheiro({
-  label,
-  value,
-  onChange,
-}: {
-  label: string
-  value: number
-  onChange: (v: number) => void
-}) {
+function CampoDinheiro({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">{label}</span>
@@ -492,7 +471,7 @@ function CampoDinheiro({
         <input
           type="number"
           step="0.01"
-          className="w-full px-2 py-2 text-sm outline-none"
+          className="w-full px-2 py-2 text-sm outline-none bg-transparent"
           value={Number.isNaN(value) ? '' : value}
           onChange={(e) => onChange(e.target.value === '' ? 0 : parseFloat(e.target.value))}
           onFocus={(e) => e.target.select()}

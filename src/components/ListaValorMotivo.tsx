@@ -23,14 +23,14 @@ export default function ListaValorMotivo({ value, onChange }: Props) {
             type="number"
             step="0.01"
             placeholder="Valor"
-            className="w-24 rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-2 text-sm outline-none focus:border-gray-400"
+            className="w-24 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-2 py-2 text-sm outline-none focus:border-gray-400"
             value={Number.isNaN(s.valor) ? '' : s.valor}
             onChange={(e) => atualizar(i, 'valor', e.target.value === '' ? 0 : parseFloat(e.target.value))}
           />
           <input
             type="text"
             placeholder="Motivo"
-            className="flex-1 min-w-0 rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-2 text-sm outline-none focus:border-gray-400"
+            className="flex-1 min-w-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-2 py-2 text-sm outline-none focus:border-gray-400"
             value={s.motivo}
             onChange={(e) => atualizar(i, 'motivo', e.target.value)}
           />

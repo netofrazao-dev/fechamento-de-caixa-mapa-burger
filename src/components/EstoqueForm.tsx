@@ -8,9 +8,7 @@ interface Props {
 
 export default function EstoqueForm({ value, onChange }: Props) {
   const itens =
-    value.itens.length > 0
-      ? value.itens
-      : PRODUTOS_ESTOQUE_PADRAO.map((produto) => ({ produto, quantidade: 0 }))
+    value.itens.length > 0 ? value.itens : PRODUTOS_ESTOQUE_PADRAO.map((produto) => ({ produto, quantidade: 0 }))
 
   function atualizarQtd(produto: string, quantidade: number) {
     const existe = itens.some((i) => i.produto === produto)

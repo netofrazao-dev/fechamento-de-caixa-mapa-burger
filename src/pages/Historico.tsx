@@ -38,10 +38,7 @@ export default function Historico() {
     let ativo = true
     setCarregando(true)
     setErro(null)
-    Promise.all([
-      listarFechamentos({ dataInicio, dataFim }),
-      listarRelatorios({ dataInicio, dataFim }),
-    ])
+    Promise.all([listarFechamentos({ dataInicio, dataFim }), listarRelatorios({ dataInicio, dataFim })])
       .then(([f, r]) => {
         if (!ativo) return
         setFechamentos(f)
@@ -84,7 +81,7 @@ export default function Historico() {
           <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">De</span>
           <input
             type="date"
-            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-gray-400"
             value={dataInicio}
             onChange={(e) => setDataInicio(e.target.value)}
           />
@@ -93,7 +90,7 @@ export default function Historico() {
           <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Até</span>
           <input
             type="date"
-            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-gray-400"
             value={dataFim}
             onChange={(e) => setDataFim(e.target.value)}
           />
@@ -102,9 +99,7 @@ export default function Historico() {
 
       {erro && <div className="rounded-xl bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-400">{erro}</div>}
       {carregando && <p className="text-sm text-gray-400 dark:text-gray-500">Carregando...</p>}
-      {!carregando && dias.length === 0 && (
-        <p className="text-sm text-gray-400 dark:text-gray-500">Nada encontrado nesse período.</p>
-      )}
+      {!carregando && dias.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500">Nada encontrado nesse período.</p>}
 
       <div className="space-y-2">
         {dias.map((dia) => (
@@ -112,15 +107,17 @@ export default function Historico() {
             <p className="font-semibold text-gray-900 dark:text-gray-100">{formatarData(dia.data)}</p>
 
             <div className="flex flex-wrap gap-2">
-              {dia.fechamentos
+              {[...dia.fechamentos]
                 .sort((a, b) => a.turno.localeCompare(b.turno))
                 .map((f) => (
                   <Link
                     key={f.id}
                     to={`/fechamento/${f.id}`}
-                    className="flex items-center gap-2 rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2 hover:bg-gray-100 dark:bg-gray-800 transition"
+                    className="flex items-center gap-2 rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2 hover:bg-gray-100 transition"
                   >
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{TURNO_LABEL[f.turno]}</span>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {f.turno === 'manha' ? 'Caixa' : TURNO_LABEL[f.turno]}
+                    </span>
                     <span className="text-xs text-gray-400 dark:text-gray-500">{formatarMoeda(f.resultado.totalCaixa)}</span>
                     <span className={`text-[10px] font-semibold rounded-full border px-2 py-0.5 ${STATUS_COLOR[f.resultado.status]}`}>
                       {STATUS_LABEL[f.resultado.status]}
@@ -131,7 +128,9 @@ export default function Historico() {
               <Link
                 to={dia.relatorio ? `/relatorios/${dia.relatorio.id}` : `/relatorios/novo?data=${dia.data}`}
                 className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition ${
-                  dia.relatorio ? 'bg-gray-900 dark:bg-gray-700 text-white' : 'bg-white dark:bg-gray-900 border border-dashed border-gray-300 text-gray-400 dark:text-gray-500'
+                  dia.relatorio
+                    ? 'bg-gray-900 dark:bg-gray-700 text-white'
+                    : 'bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500'
                 }`}
               >
                 <FileText size={14} />

@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { FileText, History, Moon, PlusSquare, ScrollText, Sun } from 'lucide-react'
+import { FileText, History, Moon, PlusSquare, ScrollText, Sun, Wallet } from 'lucide-react'
 import NovoFechamento from './pages/NovoFechamento'
 import Historico from './pages/Historico'
 import FechamentoDetalhe from './pages/FechamentoDetalhe'
 import RelatorioMensal from './pages/RelatorioMensal'
 import Relatorios from './pages/Relatorios'
 import RelatorioForm from './pages/RelatorioForm'
+import Vales from './pages/Vales'
+import NovoVale from './pages/NovoVale'
 import { aplicarTema, lerTemaSalvo } from './lib/theme'
 
 const abas = [
@@ -14,6 +16,7 @@ const abas = [
   { to: '/historico', label: 'Histórico', icon: History },
   { to: '/mensal', label: 'Mensal', icon: FileText },
   { to: '/relatorios', label: 'Relatórios', icon: ScrollText },
+  { to: '/vales', label: 'Vales', icon: Wallet },
 ]
 
 export default function App() {
@@ -41,6 +44,8 @@ export default function App() {
         <Route path="/relatorios/novo" element={<RelatorioForm />} />
         <Route path="/relatorios/:id" element={<RelatorioForm />} />
         <Route path="/fechamento/:id" element={<FechamentoDetalhe />} />
+        <Route path="/vales" element={<Vales />} />
+        <Route path="/vales/novo" element={<NovoVale />} />
       </Routes>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex max-w-2xl mx-auto">
@@ -49,7 +54,7 @@ export default function App() {
             key={to}
             to={to}
             className={({ isActive }) =>
-              `flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium ${
+              `flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium ${
                 isActive ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'
               }`
             }
@@ -61,7 +66,7 @@ export default function App() {
         <button
           type="button"
           onClick={alternarTema}
-          className="flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium text-gray-400 dark:text-gray-500"
+          className="flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium text-gray-400 dark:text-gray-500"
         >
           {escuro ? <Sun size={19} /> : <Moon size={19} />}
           {escuro ? 'Claro' : 'Escuro'}

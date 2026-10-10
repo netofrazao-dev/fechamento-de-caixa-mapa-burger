@@ -7,7 +7,7 @@ import SangriaForm from '../components/SangriaForm'
 import ResultadoCard from '../components/ResultadoCard'
 import ContadorPratos from '../components/ContadorPratos'
 import Secao from '../components/Secao'
-import { calcularResultado } from '../lib/calculations'
+import { calcularResultado, totalMarmitas } from '../lib/calculations'
 import { criarFechamento, existeFechamento } from '../lib/fechamentoService'
 import { gerarPdfFechamento } from '../lib/pdf'
 import { formatarHoraRascunho, lerRascunho, limparRascunho, salvarRascunho } from '../lib/draft'
@@ -24,15 +24,11 @@ const LC_VAZIO: DadosLC = {
   ticket: 0,
 }
 
-const BRENDI_VAZIO: DadosBrendi = {
-  pix: 0,
-  debito: 0,
-  credito: 0,
-  creditoOnline: 0,
-  dinheiro: 0,
-}
-
+const BRENDI_VAZIO: DadosBrendi = { pix: 0, debito: 0, credito: 0, creditoOnline: 0, dinheiro: 0 }
 const AJUSTE_VAZIO: Ajuste = { tipo: null, valor: 0 }
+
+// Só o turno da manhã é usado por enquanto (o da noite foi desativado).
+const TURNO: Turno = 'manha'
 
 function hoje(): string {
   return new Date().toISOString().slice(0, 10)
@@ -42,7 +38,6 @@ const CHAVE_RASCUNHO = 'mapa-burger-rascunho-fechamento'
 
 interface RascunhoFechamento {
   data: string
-  turno: Turno
   lc: DadosLC
   brendi: DadosBrendi
   sangrias: Sangria[]
@@ -55,13 +50,11 @@ interface RascunhoFechamento {
 export default function NovoFechamento() {
   const navigate = useNavigate()
 
-  // Carrega o rascunho (se houver) uma única vez, antes de montar o estado.
   const rascunho = useRef(lerRascunho<RascunhoFechamento>(CHAVE_RASCUNHO)).current
   const [avisoRascunho, setAvisoRascunho] = useState(Boolean(rascunho))
   const pulandoPrimeiraGravacao = useRef(true)
 
   const [data, setData] = useState(rascunho?.dados.data ?? hoje())
-  const [turno, setTurno] = useState<Turno>(rascunho?.dados.turno ?? 'manha')
   const [lc, setLc] = useState<DadosLC>(rascunho?.dados.lc ?? LC_VAZIO)
   const [brendi, setBrendi] = useState<DadosBrendi>(rascunho?.dados.brendi ?? BRENDI_VAZIO)
   const [sangrias, setSangrias] = useState<Sangria[]>(rascunho?.dados.sangrias ?? [])
@@ -78,10 +71,7 @@ export default function NovoFechamento() {
     [lc, brendi, totalLCSistema, ajuste],
   )
 
-  const totalMarmitas = marmitas.reduce((acc, m) => acc + m.quantidade, 0)
-
-  // Salva o rascunho automaticamente a cada mudança (exceto na primeira
-  // renderização, pra não regravar o mesmo rascunho que acabou de ler).
+  // Salva o rascunho automaticamente a cada mudança.
   useEffect(() => {
     if (pulandoPrimeiraGravacao.current) {
       pulandoPrimeiraGravacao.current = false
@@ -89,7 +79,6 @@ export default function NovoFechamento() {
     }
     salvarRascunho<RascunhoFechamento>(CHAVE_RASCUNHO, {
       data,
-      turno,
       lc,
       brendi,
       sangrias,
@@ -98,13 +87,11 @@ export default function NovoFechamento() {
       ajuste,
       observacoes,
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, turno, lc, brendi, sangrias, marmitas, totalLCSistema, ajuste, observacoes])
+  }, [data, lc, brendi, sangrias, marmitas, totalLCSistema, ajuste, observacoes])
 
   function descartarRascunho() {
     limparRascunho(CHAVE_RASCUNHO)
     setData(hoje())
-    setTurno('manha')
     setLc(LC_VAZIO)
     setBrendi(BRENDI_VAZIO)
     setSangrias([])
@@ -118,8 +105,7 @@ export default function NovoFechamento() {
   async function salvar() {
     setErro(null)
 
-    const sangriaSemMotivo = sangrias.some((s) => s.valor > 0 && !s.motivo.trim())
-    if (sangriaSemMotivo) {
+    if (sangrias.some((s) => s.valor > 0 && !s.motivo.trim())) {
       setErro('Toda sangria com valor precisa ter um motivo escrito.')
       return
     }
@@ -130,16 +116,15 @@ export default function NovoFechamento() {
 
     setSalvando(true)
     try {
-      const jaExiste = await existeFechamento(data, turno)
-      if (jaExiste) {
-        setErro('Já existe um fechamento salvo para essa data e turno.')
+      if (await existeFechamento(data, TURNO)) {
+        setErro('Já existe um fechamento salvo para essa data.')
         setSalvando(false)
         return
       }
 
       const fechamento = await criarFechamento({
         data,
-        turno,
+        turno: TURNO,
         lc,
         brendi,
         sangrias: sangrias.filter((s) => s.valor > 0 || s.motivo.trim()),
@@ -169,8 +154,8 @@ export default function NovoFechamento() {
         <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-300">
           <span className="flex items-center gap-1.5">
             <History size={14} className="shrink-0" />
-            Rascunho restaurado{rascunho ? ` (salvo às ${formatarHoraRascunho(rascunho.salvoEm)})` : ''} —
-            continue de onde parou.
+            Rascunho restaurado{rascunho ? ` (salvo às ${formatarHoraRascunho(rascunho.salvoEm)})` : ''} — continue de
+            onde parou.
           </span>
           <button type="button" onClick={descartarRascunho} className="shrink-0 font-semibold underline">
             Descartar
@@ -178,36 +163,19 @@ export default function NovoFechamento() {
         </div>
       )}
 
-      <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 grid grid-cols-2 gap-3">
+      <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4">
         <label className="flex flex-col gap-1">
           <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Data</span>
           <input
             type="date"
-            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-gray-400"
             value={data}
             onChange={(e) => setData(e.target.value)}
           />
         </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Turno</span>
-          <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-            {(['manha', 'noite'] as Turno[]).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTurno(t)}
-                className={`flex-1 py-2 text-sm font-medium ${
-                  turno === t ? 'bg-gray-900 dark:bg-gray-700 text-white' : 'bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400'
-                }`}
-              >
-                {t === 'manha' ? 'Manhã' : 'Noite'}
-              </button>
-            ))}
-          </div>
-        </label>
       </section>
 
-      <Secao titulo="Marmitas vendidas" resumo={`Total: ${totalMarmitas}`}>
+      <Secao titulo="Marmitas vendidas" resumo={`Total: ${totalMarmitas(marmitas)}`}>
         <ContadorPratos value={marmitas} onChange={setMarmitas} />
       </Secao>
 

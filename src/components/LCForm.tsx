@@ -31,11 +31,7 @@ export default function LCForm({ value, onChange, defaultAberto }: Props) {
         <CampoMoeda label="PIX" value={value.pix} onChange={(v) => set('pix', v)} />
         <CampoMoeda label="Débito" value={value.debito} onChange={(v) => set('debito', v)} />
         <CampoMoeda label="Crédito" value={value.credito} onChange={(v) => set('credito', v)} />
-        <CampoMoeda
-          label="Consumo da loja"
-          value={value.consumoLoja}
-          onChange={(v) => set('consumoLoja', v)}
-        />
+        <CampoMoeda label="Consumo da loja" value={value.consumoLoja} onChange={(v) => set('consumoLoja', v)} />
         <CampoMoeda label="A prazo" value={value.aPrazo} onChange={(v) => set('aPrazo', v)} />
         <CampoMoeda label="Ticket" value={value.ticket} onChange={(v) => set('ticket', v)} />
       </div>

@@ -24,6 +24,7 @@ export default function ResultadoCard({
   onObservacoesChange,
 }: Props) {
   const [mostrarObs, setMostrarObs] = useState(false)
+
   return (
     <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-4">
       <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Conferência</h2>
@@ -54,9 +55,7 @@ export default function ResultadoCard({
             type="button"
             onClick={() => onAjusteChange({ ...ajuste, tipo: ajuste.tipo === 'adicionar' ? null : 'adicionar' })}
             className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors ${
-              ajuste.tipo === 'adicionar'
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+              ajuste.tipo === 'adicionar' ? 'bg-green-600 text-white' : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
             }`}
           >
             <Plus size={14} /> Adicionar
@@ -65,9 +64,7 @@ export default function ResultadoCard({
             type="button"
             onClick={() => onAjusteChange({ ...ajuste, tipo: ajuste.tipo === 'remover' ? null : 'remover' })}
             className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors ${
-              ajuste.tipo === 'remover'
-                ? 'bg-red-600 text-white'
-                : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+              ajuste.tipo === 'remover' ? 'bg-red-600 text-white' : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
             }`}
           >
             <Minus size={14} /> Remover
@@ -88,7 +85,7 @@ export default function ResultadoCard({
           <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Observações</span>
           <textarea
             autoFocus={mostrarObs && !observacoes}
-            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-gray-400"
             rows={2}
             placeholder="Explique o motivo do ajuste, se houver."
             value={observacoes}
@@ -100,7 +97,7 @@ export default function ResultadoCard({
         <button
           type="button"
           onClick={() => setMostrarObs(true)}
-          className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-300 hover:underline"
+          className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:underline"
         >
           + Adicionar observação
         </button>
@@ -111,9 +108,7 @@ export default function ResultadoCard({
           <span className="text-gray-400 dark:text-gray-500">Diferença final</span>
           <span className="font-semibold text-gray-900 dark:text-gray-100">{formatarMoeda(resultado.diferencaFinal)}</span>
         </div>
-        <div
-          className={`rounded-xl px-4 py-3 text-center font-semibold ${STATUS_COLOR[resultado.status]}`}
-        >
+        <div className={`rounded-xl border px-4 py-3 text-center font-semibold ${STATUS_COLOR[resultado.status]}`}>
           {STATUS_LABEL[resultado.status]}
         </div>
       </div>

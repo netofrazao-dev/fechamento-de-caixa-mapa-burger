@@ -2,11 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Trash2 } from 'lucide-react'
 import { buscarFechamentoPorId, excluirFechamento } from '../lib/fechamentoService'
-import { formatarMoeda, STATUS_COLOR, STATUS_LABEL } from '../lib/calculations'
+import { formatarMoeda, STATUS_COLOR, STATUS_LABEL, totalMarmitas } from '../lib/calculations'
 import { gerarPdfFechamento } from '../lib/pdf'
 import type { Fechamento } from '../types/fechamento'
-
-const TURNO_LABEL: Record<'manha' | 'noite', string> = { manha: 'Manhã', noite: 'Noite' }
 
 function formatarData(iso: string): string {
   const [ano, mes, dia] = iso.split('-')
@@ -33,25 +31,17 @@ export default function FechamentoDetalhe() {
     navigate('/historico', { replace: true })
   }
 
-  if (erro) {
-    return <div className="max-w-2xl mx-auto p-4 text-sm text-red-600 dark:text-red-400">{erro}</div>
-  }
-  if (!f) {
-    return <div className="max-w-2xl mx-auto p-4 text-sm text-gray-400 dark:text-gray-500">Carregando...</div>
-  }
+  if (erro) return <div className="max-w-2xl mx-auto p-4 text-sm text-red-600 dark:text-red-400">{erro}</div>
+  if (!f) return <div className="max-w-2xl mx-auto p-4 text-sm text-gray-400 dark:text-gray-500">Carregando...</div>
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-4">
+    <div className="max-w-2xl mx-auto p-4 space-y-4 pb-24">
       <Link to="/historico" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
         ← Voltar ao histórico
       </Link>
 
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            {formatarData(f.data)} — {TURNO_LABEL[f.turno]}
-          </h1>
-        </div>
+      <header className="flex items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatarData(f.data)}</h1>
         <span className={`text-xs font-semibold rounded-full border px-2.5 py-1 shrink-0 ${STATUS_COLOR[f.resultado.status]}`}>
           {STATUS_LABEL[f.resultado.status]}
         </span>
@@ -101,9 +91,7 @@ export default function FechamentoDetalhe() {
         <Linha label="Total Caixa" valor={f.resultado.totalCaixa} destaque />
         <div className="flex justify-between text-sm py-1">
           <span className="text-gray-500 dark:text-gray-400">Marmitas vendidas</span>
-          <span className="text-gray-700 dark:text-gray-300">
-            {f.marmitas.reduce((acc, m) => acc + m.quantidade, 0)}
-          </span>
+          <span className="text-gray-700 dark:text-gray-300">{totalMarmitas(f.marmitas)}</span>
         </div>
         {f.marmitas.length > 0 && (
           <div className="pl-3 space-y-0.5">

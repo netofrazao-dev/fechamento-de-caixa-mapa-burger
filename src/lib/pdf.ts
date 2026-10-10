@@ -5,14 +5,6 @@ import { formatarMoeda, STATUS_LABEL, totalMarmitas } from './calculations'
 import { semAcento } from './texto'
 import { LOGO_MAPA_BURGER_PNG } from './brand'
 
-const COR_ACCENT: [number, number, number] = [237, 137, 33] // laranja da marca
-const COR_HEADER_SECAO: [number, number, number] = [24, 24, 27]
-const COR_STATUS: Record<StatusFechamento, [number, number, number]> = {
-  fechou: [22, 130, 80],
-  sobrou: [37, 99, 220],
-  faltou: [214, 45, 45],
-}
-
 function formatarData(iso: string): string {
   const [ano, mes, dia] = iso.split('-')
   return `${dia}/${mes}/${ano}`
@@ -23,6 +15,14 @@ const TURNO_LABEL: Record<'manha' | 'noite', string> = {
   noite: 'Noite',
 }
 
+const COR_ACCENT: [number, number, number] = [230, 126, 34]
+const COR_ESCURO: [number, number, number] = [24, 24, 27]
+const COR_STATUS: Record<StatusFechamento, [number, number, number]> = {
+  fechou: [22, 130, 70],
+  sobrou: [37, 99, 235],
+  faltou: [205, 35, 35],
+}
+
 function slugify(texto: string): string {
   return (texto || 'sem-titulo')
     .toLowerCase()
@@ -30,6 +30,22 @@ function slugify(texto: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '')
+}
+
+function statusPorDiferenca(diferenca: number): StatusFechamento {
+  if (Math.abs(diferenca) < 0.005) return 'fechou'
+  return diferenca > 0 ? 'sobrou' : 'faltou'
+}
+
+/** Soma as vendas de cada prato entre vários fechamentos (manhã+noite), do maior pro menor. */
+function agregarVendasPorPrato(fechamentos: Fechamento[]): [string, number][] {
+  const mapa = new Map<string, number>()
+  fechamentos.forEach((f) => {
+    f.marmitas.forEach((m: MarmitaItem) => {
+      mapa.set(m.prato, (mapa.get(m.prato) ?? 0) + m.quantidade)
+    })
+  })
+  return Array.from(mapa.entries()).sort((a, b) => b[1] - a[1])
 }
 
 // ============================================================
@@ -105,17 +121,6 @@ class ReciboTermico {
   salvar(nomeArquivo: string) {
     this.doc.save(nomeArquivo)
   }
-}
-
-/** Soma as vendas de cada prato entre vários fechamentos (manhã+noite), do maior pro menor. */
-function agregarVendasPorPrato(fechamentos: Fechamento[]): [string, number][] {
-  const mapa = new Map<string, number>()
-  fechamentos.forEach((f) => {
-    f.marmitas.forEach((m: MarmitaItem) => {
-      mapa.set(m.prato, (mapa.get(m.prato) ?? 0) + m.quantidade)
-    })
-  })
-  return Array.from(mapa.entries()).sort((a, b) => b[1] - a[1])
 }
 
 /** Escreve o bloco completo de um fechamento (LC, Brendi, Resultado) no recibo. */
@@ -332,40 +337,25 @@ export function gerarPdfMensal(params: { mesLabel: string; linhas: LinhaRelatori
 // ============================================================
 
 function tituloSecaoPdf(doc: jsPDF, texto: string, y: number, margem: number, larguraUtil: number): number {
+  doc.setFillColor(...COR_ESCURO)
+  doc.rect(margem, y, larguraUtil, 7.5, 'F')
   doc.setFillColor(...COR_ACCENT)
-  doc.rect(margem, y, 2.2, 8, 'F')
-  doc.setFillColor(...COR_HEADER_SECAO)
-  doc.rect(margem + 2.2, y, larguraUtil - 2.2, 8, 'F')
+  doc.rect(margem, y, 2.2, 7.5, 'F')
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
-  doc.text(texto.toUpperCase(), margem + 5, y + 5.6)
+  doc.setFontSize(10.5)
+  doc.text(texto.toUpperCase(), margem + 5, y + 5.2)
   doc.setTextColor(0, 0, 0)
-  return y + 13
+  return y + 11.5
 }
 
 function subtituloPdf(doc: jsPDF, texto: string, y: number, margem: number): number {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10)
-  doc.setTextColor(50)
+  doc.setTextColor(60)
   doc.text(texto, margem, y)
   doc.setTextColor(0)
   return y + 6
-}
-
-/** Selo colorido de status (FECHOU/SOBROU/FALTOU) desenhado no PDF. */
-function seloStatusPdf(doc: jsPDF, status: StatusFechamento, x: number, y: number): number {
-  const texto = STATUS_LABEL[status]
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  const largura = doc.getTextWidth(texto) + 6
-  const [r, g, b] = COR_STATUS[status]
-  doc.setFillColor(r, g, b)
-  doc.roundedRect(x, y, largura, 6.5, 1.5, 1.5, 'F')
-  doc.setTextColor(255, 255, 255)
-  doc.text(texto, x + 3, y + 4.5)
-  doc.setTextColor(0, 0, 0)
-  return largura
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -381,6 +371,34 @@ function dimensoesImagem(dataUrl: string): Promise<{ largura: number; altura: nu
     img.onerror = reject
     img.src = dataUrl
   })
+}
+
+/** Desenha um "card" de destaque com um número grande e um rótulo embaixo. */
+function desenharCardResumo(
+  doc: jsPDF,
+  params: { x: number; y: number; largura: number; altura: number; label: string; valor: string; destaque?: boolean },
+) {
+  const { x, y, largura, altura, label, valor, destaque } = params
+  doc.setFillColor(248, 248, 249)
+  doc.roundedRect(x, y, largura, altura, 2, 2, 'F')
+  doc.setDrawColor(230)
+  doc.setLineWidth(0.2)
+  doc.roundedRect(x, y, largura, altura, 2, 2, 'S')
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  if (destaque) {
+    doc.setTextColor(...COR_ACCENT)
+  } else {
+    doc.setTextColor(20)
+  }
+  doc.text(valor, x + largura / 2, y + altura / 2 - 1, { align: 'center' })
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7.5)
+  doc.setTextColor(120)
+  doc.text(label.toUpperCase(), x + largura / 2, y + altura - 4, { align: 'center' })
+  doc.setTextColor(0)
 }
 
 /**
@@ -408,65 +426,65 @@ export async function gerarPdfWhatsApp(params: {
     }
   }
 
-  // --- Cabeçalho, com a logo do restaurante ---
-  const logoTam = 16
-  doc.addImage(LOGO_MAPA_BURGER_PNG, 'PNG', margem, y, logoTam, logoTam)
+  // --- Cabeçalho com a logo ---
+  try {
+    doc.addImage(LOGO_MAPA_BURGER_PNG, 'PNG', margem, y, 16, 16)
+  } catch {
+    // se a logo falhar por algum motivo, segue sem ela
+  }
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(19)
-  doc.setTextColor(20)
-  doc.text('Mapa Burger', margem + logoTam + 5, y + 8)
+  doc.setFontSize(18)
+  doc.text('Mapa Burger', margem + 20, y + 8)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)
   doc.setTextColor(110)
-  doc.text(`Relatório completo do dia — ${formatarData(rel.data)}`, margem + logoTam + 5, y + 14.5)
+  doc.text(`Relatório completo do dia — ${formatarData(rel.data)}`, margem + 20, y + 14.5)
   doc.setTextColor(0)
-  y += logoTam + 4
-
-  doc.setFillColor(...COR_ACCENT)
-  doc.rect(margem, y, larguraUtil, 1, 'F')
+  y += 22
+  doc.setDrawColor(...COR_ACCENT)
+  doc.setLineWidth(1)
+  doc.line(margem, y, 210 - margem, y)
   y += 8
 
-  // --- Resumo do dia em destaque ---
+  // --- Cards de resumo do dia ---
   const totalCaixaDia = fechamentos.reduce((acc, f) => acc + f.resultado.totalCaixa, 0)
   const totalSistemaDia = fechamentos.reduce((acc, f) => acc + f.resultado.totalSistema, 0)
   const diferencaFinalDia = fechamentos.reduce((acc, f) => acc + f.resultado.diferencaFinal, 0)
   const totalMarmitasDia = fechamentos.reduce((acc, f) => acc + totalMarmitas(f.marmitas), 0)
-  const statusDia: StatusFechamento =
-    Math.abs(diferencaFinalDia) < 0.005 ? 'fechou' : diferencaFinalDia > 0 ? 'sobrou' : 'faltou'
+
+  const larguraCard = (larguraUtil - 3 * 4) / 4
+  const alturaCard = 20
+  const cards = [
+    { label: 'Total Caixa', valor: formatarMoeda(totalCaixaDia) },
+    { label: 'Total Sistema', valor: formatarMoeda(totalSistemaDia) },
+    { label: 'Diferença', valor: formatarMoeda(diferencaFinalDia), destaque: true },
+    { label: 'Marmitas vendidas', valor: String(totalMarmitasDia) },
+  ]
+  cards.forEach((card, i) => {
+    desenharCardResumo(doc, {
+      x: margem + i * (larguraCard + 4),
+      y,
+      largura: larguraCard,
+      altura: alturaCard,
+      label: card.label,
+      valor: card.valor,
+      destaque: card.destaque,
+    })
+  })
+  y += alturaCard + 6
 
   if (fechamentos.length > 0) {
-    seloStatusPdf(doc, statusDia, 210 - margem - 32, 16 + 2)
-  }
-
-  const alturaResumo = 26
-  doc.setDrawColor(225)
-  doc.setLineWidth(0.3)
-  doc.roundedRect(margem, y, larguraUtil, alturaResumo, 2, 2)
-
-  const colunas = [
-    { label: 'TOTAL CAIXA', valor: formatarMoeda(totalCaixaDia) },
-    { label: 'TOTAL SISTEMA', valor: formatarMoeda(totalSistemaDia) },
-    { label: 'DIFERENÇA', valor: formatarMoeda(diferencaFinalDia) },
-    { label: 'VENDIDAS / MARMITAS', valor: `${rel.quantidadeVendida} / ${totalMarmitasDia}` },
-  ]
-  const larguraColuna = larguraUtil / colunas.length
-  colunas.forEach((c, i) => {
-    const cx = margem + larguraColuna * i + larguraColuna / 2
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7.5)
-    doc.setTextColor(140)
-    doc.text(c.label, cx, y + 9, { align: 'center' })
+    const statusDia = statusPorDiferenca(diferencaFinalDia)
+    const corStatus = COR_STATUS[statusDia]
+    doc.setFillColor(...corStatus)
+    doc.roundedRect(margem, y, larguraUtil, 9, 2, 2, 'F')
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(13)
-    doc.setTextColor(20)
-    doc.text(c.valor, cx, y + 18, { align: 'center' })
-    if (i > 0) {
-      doc.setDrawColor(230)
-      doc.line(margem + larguraColuna * i, y + 5, margem + larguraColuna * i, y + alturaResumo - 5)
-    }
-  })
-  doc.setTextColor(0)
-  y += alturaResumo + 10
+    doc.setFontSize(10)
+    doc.setTextColor(255, 255, 255)
+    doc.text(STATUS_LABEL[statusDia], 210 / 2, y + 6, { align: 'center' })
+    doc.setTextColor(0)
+    y += 15
+  }
 
   // --- Fechamento de caixa, detalhado, por turno ---
   if (fechamentos.length === 0) {
@@ -488,8 +506,7 @@ export async function gerarPdfWhatsApp(params: {
       startY: y,
       margin: { left: margem, right: margem },
       theme: 'striped',
-      alternateRowStyles: { fillColor: [248, 248, 249] },
-      styles: { fontSize: 9.5, cellPadding: 1 },
+      styles: { fontSize: 9.5, cellPadding: 1.4 },
       body: [
         ['Dinheiro abertura', formatarMoeda(f.lc.dinheiroAbertura)],
         ['Dinheiro fechamento', formatarMoeda(f.lc.dinheiroFechamento)],
@@ -502,6 +519,9 @@ export async function gerarPdfWhatsApp(params: {
         ['Total LC', formatarMoeda(f.resultado.totalLC)],
       ],
       columnStyles: { 1: { halign: 'right' } },
+      didParseCell: (data) => {
+        if (data.row.index === 8) data.cell.styles.fontStyle = 'bold'
+      },
     })
     y = finalY(doc) + 4
 
@@ -514,7 +534,7 @@ export async function gerarPdfWhatsApp(params: {
         head: [['Motivo', 'Valor']],
         body: f.sangrias.map((s) => [s.motivo, formatarMoeda(s.valor)]),
         styles: { fontSize: 9 },
-        headStyles: { fillColor: [60, 60, 64] },
+        headStyles: { fillColor: [140, 140, 145] },
         columnStyles: { 1: { halign: 'right' } },
       })
       y = finalY(doc) + 4
@@ -526,8 +546,7 @@ export async function gerarPdfWhatsApp(params: {
       startY: y,
       margin: { left: margem, right: margem },
       theme: 'striped',
-      alternateRowStyles: { fillColor: [248, 248, 249] },
-      styles: { fontSize: 9.5, cellPadding: 1 },
+      styles: { fontSize: 9.5, cellPadding: 1.4 },
       body: [
         ['PIX', formatarMoeda(f.brendi.pix)],
         ['Débito', formatarMoeda(f.brendi.debito)],
@@ -537,6 +556,9 @@ export async function gerarPdfWhatsApp(params: {
         ['Total Brendi', formatarMoeda(f.resultado.totalBrendi)],
       ],
       columnStyles: { 1: { halign: 'right' } },
+      didParseCell: (data) => {
+        if (data.row.index === 5) data.cell.styles.fontStyle = 'bold'
+      },
     })
     y = finalY(doc) + 4
 
@@ -560,8 +582,7 @@ export async function gerarPdfWhatsApp(params: {
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
-      theme: 'striped',
-      alternateRowStyles: { fillColor: [248, 248, 249] },
+      theme: 'plain',
       styles: { fontSize: 9.5, cellPadding: 1, fontStyle: 'bold' },
       body: linhasResultado,
       columnStyles: { 1: { halign: 'right' } },
@@ -603,8 +624,7 @@ export async function gerarPdfWhatsApp(params: {
   autoTable(doc, {
     startY: y,
     margin: { left: margem, right: margem },
-    theme: 'striped',
-      alternateRowStyles: { fillColor: [248, 248, 249] },
+    theme: 'plain',
     styles: { fontSize: 9.5, cellPadding: 1 },
     body: [
       ['Abertura do caixa', formatarMoeda(rel.aberturaCaixa)],
@@ -650,7 +670,7 @@ export async function gerarPdfWhatsApp(params: {
       head: [['Pessoa', 'Item', 'Valor']],
       body: itens.map((it) => [it.pessoa, it.item, formatarMoeda(it.valor)]),
       styles: { fontSize: 9.5 },
-      headStyles: { fillColor: [60, 60, 64] },
+      headStyles: { fillColor: [90, 90, 95] },
     })
     y = finalY(doc) + 8
   }
@@ -667,7 +687,7 @@ export async function gerarPdfWhatsApp(params: {
       head: [['Motivo', 'Valor']],
       body: rel.sangrias.map((s) => [s.motivo, formatarMoeda(s.valor)]),
       styles: { fontSize: 9.5 },
-      headStyles: { fillColor: [60, 60, 64] },
+      headStyles: { fillColor: [90, 90, 95] },
     })
     y = finalY(doc) + 8
   }
@@ -682,7 +702,7 @@ export async function gerarPdfWhatsApp(params: {
       head: [['Produto', 'Quantidade']],
       body: itensEstoque.map((i) => [i.produto, String(i.quantidade)]),
       styles: { fontSize: 9 },
-      headStyles: { fillColor: [60, 60, 64] },
+      headStyles: { fillColor: [90, 90, 95] },
       columnStyles: { 1: { halign: 'right' } },
     })
   }
@@ -728,4 +748,58 @@ export async function gerarPdfWhatsApp(params: {
   }
 
   doc.save(`relatorio_whatsapp_${rel.data}_${slugify('mapa-burger')}.pdf`)
+}
+
+// ============================================================
+// PDF mensal de Vales — por funcionário, com detalhe por dia
+// ============================================================
+
+export function gerarPdfValesMensal(params: {
+  mesLabel: string
+  totaisPorFuncionario: { funcionario: string; total: number }[]
+  vales: { funcionario: string; data: string; valor: number; observacao: string }[]
+}): void {
+  const { mesLabel, totaisPorFuncionario, vales } = params
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const margem = 14
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.text('MAPA BURGER', margem, 16)
+  doc.setFontSize(11)
+  doc.text(`Relatório Mensal de Vales — ${mesLabel}`, margem, 23)
+
+  const totalMes = totaisPorFuncionario.reduce((acc, t) => acc + t.total, 0)
+
+  autoTable(doc, {
+    startY: 28,
+    margin: { left: margem, right: margem },
+    head: [['Funcionário', 'Total no mês']],
+    body: totaisPorFuncionario.map((t) => [t.funcionario, formatarMoeda(t.total)]),
+    styles: { fontSize: 10 },
+    headStyles: { fillColor: [30, 30, 30] },
+    columnStyles: { 1: { halign: 'right' } },
+    foot: [['TOTAL GERAL', formatarMoeda(totalMes)]],
+    footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+  })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let y = (doc as any).lastAutoTable.finalY + 10
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.text('Detalhamento', margem, y)
+  y += 5
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margem, right: margem },
+    head: [['Data', 'Funcionário', 'Valor', 'Observação']],
+    body: vales.map((v) => [formatarData(v.data), v.funcionario, formatarMoeda(v.valor), v.observacao || '-']),
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [90, 90, 95] },
+    columnStyles: { 2: { halign: 'right' } },
+  })
+
+  doc.save(`vales_${mesLabel.replace('/', '-')}.pdf`)
 }

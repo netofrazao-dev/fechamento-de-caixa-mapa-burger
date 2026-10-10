@@ -1,11 +1,24 @@
 -- ============================================================
 -- Mapa Burger — Fechamento de Caixa
--- Schema do Supabase (rodar no SQL Editor)
+-- Schema completo do Supabase (instalação NOVA, banco vazio).
+-- Rodar no SQL Editor. Se o banco já existe, use só o arquivo
+-- de migração mais recente (ex.: migration_vales.sql).
 -- ============================================================
 
 create extension if not exists "pgcrypto";
 
--- Tabela principal: um registro por turno (manhã/noite) por dia
+-- Função usada pra manter updated_at
+create or replace function public.set_updated_at()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+-- ------------------------------------------------------------
+-- Fechamentos de caixa (um por data + turno; hoje só "manha")
+-- ------------------------------------------------------------
 create table if not exists public.fechamentos (
   id uuid primary key default gen_random_uuid(),
   data date not null,
@@ -50,16 +63,15 @@ create table if not exists public.fechamentos (
 
   observacoes text,
 
+  -- Marmitas vendidas por prato: [{ "prato": "...", "quantidade": 3 }]
   marmitas jsonb not null default '[]'::jsonb,
 
-  -- Um único fechamento por data + turno
   unique (data, turno)
 );
 
 create index if not exists idx_fechamentos_data on public.fechamentos (data desc);
 
--- Sangrias: retiradas de dinheiro do caixa durante o expediente.
--- Sempre precisam de motivo (aplicação valida isso, e o banco também).
+-- Sangrias: retiradas de dinheiro do caixa (sempre com motivo)
 create table if not exists public.sangrias (
   id uuid primary key default gen_random_uuid(),
   fechamento_id uuid not null references public.fechamentos (id) on delete cascade,
@@ -70,35 +82,9 @@ create table if not exists public.sangrias (
 
 create index if not exists idx_sangrias_fechamento on public.sangrias (fechamento_id);
 
--- ============================================================
--- Row Level Security
--- ============================================================
--- Este é um sistema interno (sem tela de login por enquanto),
--- então as políticas abaixo liberam acesso total via chave anon.
--- Quando o sistema tiver autenticação (funcionário/gerente),
--- essas políticas devem ser trocadas por regras baseadas em
--- auth.uid() / auth.role().
-
-alter table public.fechamentos enable row level security;
-alter table public.sangrias enable row level security;
-
-drop policy if exists "fechamentos_all_access" on public.fechamentos;
-create policy "fechamentos_all_access" on public.fechamentos
-  for all
-  using (true)
-  with check (true);
-
-drop policy if exists "sangrias_all_access" on public.sangrias;
-create policy "sangrias_all_access" on public.sangrias
-  for all
-  using (true)
-  with check (true);
-
--- ============================================================
--- Relatório diário escrito (sem relação com o fechamento de caixa)
--- Estrutura fixa: cada seção fica em uma coluna jsonb.
--- ============================================================
-
+-- ------------------------------------------------------------
+-- Relatório diário escrito (modelo fixo)
+-- ------------------------------------------------------------
 create table if not exists public.relatorios (
   id uuid primary key default gen_random_uuid(),
   data date not null default current_date,
@@ -128,53 +114,23 @@ create table if not exists public.relatorios (
 
 create index if not exists idx_relatorios_data on public.relatorios (data desc);
 
-create or replace function public.set_updated_at()
-returns trigger as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$ language plpgsql;
-
 drop trigger if exists trg_relatorios_updated_at on public.relatorios;
 create trigger trg_relatorios_updated_at
   before update on public.relatorios
   for each row execute function public.set_updated_at();
 
-alter table public.relatorios enable row level security;
-
-drop policy if exists "relatorios_all_access" on public.relatorios;
-create policy "relatorios_all_access" on public.relatorios
-  for all
-  using (true)
-  with check (true);
-
--- ============================================================
--- Funcionários (pra selecionar por botão em vez de digitar nome)
--- ============================================================
-
+-- ------------------------------------------------------------
+-- Funcionários (botões de seleção) e Pratos (contador de marmitas)
+-- ------------------------------------------------------------
 create table if not exists public.funcionarios (
   id uuid primary key default gen_random_uuid(),
   nome text not null unique,
   created_at timestamptz not null default now()
 );
 
-alter table public.funcionarios enable row level security;
-
-drop policy if exists "funcionarios_all_access" on public.funcionarios;
-create policy "funcionarios_all_access" on public.funcionarios
-  for all
-  using (true)
-  with check (true);
-
 insert into public.funcionarios (nome)
 values ('Neto'), ('Pâmela'), ('Oneide'), ('Diogo'), ('Luciano')
 on conflict (nome) do nothing;
-
--- ============================================================
--- Pratos (contagem de marmitas vendidas por clique, em vez de
--- digitar um número — também mostra o que vende mais no relatório)
--- ============================================================
 
 create table if not exists public.pratos (
   id uuid primary key default gen_random_uuid(),
@@ -182,14 +138,51 @@ create table if not exists public.pratos (
   created_at timestamptz not null default now()
 );
 
-alter table public.pratos enable row level security;
-
-drop policy if exists "pratos_all_access" on public.pratos;
-create policy "pratos_all_access" on public.pratos
-  for all
-  using (true)
-  with check (true);
-
 insert into public.pratos (nome)
 values ('Estrogonofe'), ('Frango Grelhado'), ('Bife Acebolado')
 on conflict (nome) do nothing;
+
+-- ------------------------------------------------------------
+-- Vales (adiantamento de salário) — separado do caixa
+-- ------------------------------------------------------------
+create table if not exists public.vales (
+  id uuid primary key default gen_random_uuid(),
+  funcionario text not null,
+  data date not null default current_date,
+  valor numeric(12,2) not null check (valor > 0),
+  observacao text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_vales_data on public.vales (data desc);
+create index if not exists idx_vales_funcionario on public.vales (funcionario);
+
+-- ------------------------------------------------------------
+-- Row Level Security
+-- Sistema interno sem login por enquanto: a chave anon tem acesso
+-- total. Quando houver autenticação, trocar por regras com auth.uid().
+-- ------------------------------------------------------------
+alter table public.fechamentos enable row level security;
+alter table public.sangrias enable row level security;
+alter table public.relatorios enable row level security;
+alter table public.funcionarios enable row level security;
+alter table public.pratos enable row level security;
+alter table public.vales enable row level security;
+
+drop policy if exists "fechamentos_all_access" on public.fechamentos;
+create policy "fechamentos_all_access" on public.fechamentos for all using (true) with check (true);
+
+drop policy if exists "sangrias_all_access" on public.sangrias;
+create policy "sangrias_all_access" on public.sangrias for all using (true) with check (true);
+
+drop policy if exists "relatorios_all_access" on public.relatorios;
+create policy "relatorios_all_access" on public.relatorios for all using (true) with check (true);
+
+drop policy if exists "funcionarios_all_access" on public.funcionarios;
+create policy "funcionarios_all_access" on public.funcionarios for all using (true) with check (true);
+
+drop policy if exists "pratos_all_access" on public.pratos;
+create policy "pratos_all_access" on public.pratos for all using (true) with check (true);
+
+drop policy if exists "vales_all_access" on public.vales;
+create policy "vales_all_access" on public.vales for all using (true) with check (true);

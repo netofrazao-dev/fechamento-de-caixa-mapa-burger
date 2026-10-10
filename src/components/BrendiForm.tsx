@@ -19,11 +19,7 @@ export default function BrendiForm({ value, onChange, defaultAberto }: Props) {
         <CampoMoeda label="PIX" value={value.pix} onChange={(v) => set('pix', v)} />
         <CampoMoeda label="Débito" value={value.debito} onChange={(v) => set('debito', v)} />
         <CampoMoeda label="Crédito" value={value.credito} onChange={(v) => set('credito', v)} />
-        <CampoMoeda
-          label="Crédito Online"
-          value={value.creditoOnline}
-          onChange={(v) => set('creditoOnline', v)}
-        />
+        <CampoMoeda label="Crédito Online" value={value.creditoOnline} onChange={(v) => set('creditoOnline', v)} />
         <CampoMoeda
           label="Dinheiro"
           value={value.dinheiro}

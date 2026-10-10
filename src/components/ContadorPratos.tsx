@@ -51,10 +51,7 @@ export default function ContadorPratos({ value, onChange }: Props) {
       {pratos.map((p) => {
         const qtd = quantidadeDe(p.nome)
         return (
-          <div
-            key={p.id}
-            className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2"
-          >
+          <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2">
             <span className="text-sm text-gray-700 dark:text-gray-300 flex-1">{p.nome}</span>
             <div className="flex items-center gap-2">
               <button
@@ -80,9 +77,7 @@ export default function ContadorPratos({ value, onChange }: Props) {
         )
       })}
 
-      {pratos.length === 0 && (
-        <p className="text-sm text-gray-400 dark:text-gray-500">Nenhum prato cadastrado ainda.</p>
-      )}
+      {pratos.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500">Nenhum prato cadastrado ainda.</p>}
 
       {!mostrarNovo ? (
         <button
@@ -98,7 +93,7 @@ export default function ContadorPratos({ value, onChange }: Props) {
             autoFocus
             type="text"
             placeholder="Nome do prato"
-            className="flex-1 min-w-0 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-sm outline-none focus:border-gray-400"
+            className="flex-1 min-w-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-gray-400"
             value={novoNome}
             onChange={(e) => setNovoNome(e.target.value)}
             onKeyDown={(e) => {

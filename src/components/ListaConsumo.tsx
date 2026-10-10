@@ -42,7 +42,7 @@ export default function ListaConsumo({ value, onChange, placeholderPessoa = 'Pes
               <input
                 type="number"
                 step="0.01"
-                className="w-full px-2 py-1.5 text-sm outline-none"
+                className="w-full px-2 py-1.5 text-sm outline-none bg-transparent"
                 value={Number.isNaN(it.valor) ? '' : it.valor}
                 onChange={(e) => atualizar(i, 'valor', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                 onFocus={(e) => e.target.select()}

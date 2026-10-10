@@ -167,3 +167,24 @@ export interface Funcionario {
   id: string
   nome: string
 }
+
+// ============================================================
+// Vales (adiantamento de salário) — sistema totalmente separado
+// do fechamento de caixa e do relatório diário.
+// ============================================================
+
+export interface Vale {
+  id: string
+  funcionario: string
+  data: string // YYYY-MM-DD
+  valor: number
+  observacao: string
+  createdAt: string
+}
+
+export interface ValeInput {
+  funcionario: string
+  data: string
+  valor: number
+  observacao: string
+}

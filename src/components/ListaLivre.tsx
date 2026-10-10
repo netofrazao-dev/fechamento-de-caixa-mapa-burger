@@ -9,8 +9,7 @@ interface Props {
 export default function ListaLivre({ value, onChange, placeholder }: Props) {
   const adicionar = () => onChange([...value, ''])
   const remover = (i: number) => onChange(value.filter((_, idx) => idx !== i))
-  const atualizar = (i: number, texto: string) =>
-    onChange(value.map((v, idx) => (idx === i ? texto : v)))
+  const atualizar = (i: number, texto: string) => onChange(value.map((v, idx) => (idx === i ? texto : v)))
 
   return (
     <div className="space-y-2">
@@ -19,7 +18,7 @@ export default function ListaLivre({ value, onChange, placeholder }: Props) {
           <input
             type="text"
             placeholder={placeholder}
-            className="flex-1 min-w-0 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-2 text-sm outline-none focus:border-gray-400"
+            className="flex-1 min-w-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-2.5 py-2 text-sm outline-none focus:border-gray-400"
             value={texto}
             onChange={(e) => atualizar(i, e.target.value)}
           />

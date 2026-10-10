@@ -6,9 +6,11 @@ import type { Funcionario } from '../types/fechamento'
 interface Props {
   value: string[]
   onChange: (value: string[]) => void
+  /** Se true, só um funcionário pode ficar selecionado por vez. */
+  unico?: boolean
 }
 
-export default function SeletorFuncionarios({ value, onChange }: Props) {
+export default function SeletorFuncionarios({ value, onChange, unico }: Props) {
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([])
   const [novoNome, setNovoNome] = useState('')
   const [mostrarNovo, setMostrarNovo] = useState(false)
@@ -22,20 +24,25 @@ export default function SeletorFuncionarios({ value, onChange }: Props) {
   }, [])
 
   function toggle(nome: string) {
+    if (unico) {
+      onChange(value.includes(nome) ? [] : [nome])
+      return
+    }
     onChange(value.includes(nome) ? value.filter((n) => n !== nome) : [...value, nome])
   }
 
   async function adicionarNovo() {
     const nome = novoNome.trim()
     if (!nome) return
+    let nomeFinal = nome
     try {
       const criado = await criarFuncionario(nome)
+      nomeFinal = criado.nome
       setFuncionarios((prev) => [...prev, criado].sort((a, b) => a.nome.localeCompare(b.nome)))
-      onChange([...value, criado.nome])
     } catch {
       // se já existir (nome único) ou der erro, ainda assim seleciona pelo nome digitado
-      onChange([...value, nome])
     }
+    onChange(unico ? [nomeFinal] : [...value, nomeFinal])
     setNovoNome('')
     setMostrarNovo(false)
   }
@@ -48,7 +55,9 @@ export default function SeletorFuncionarios({ value, onChange }: Props) {
           type="button"
           onClick={() => toggle(f.nome)}
           className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-            value.includes(f.nome) ? 'bg-gray-900 dark:bg-gray-700 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+            value.includes(f.nome)
+              ? 'bg-gray-900 dark:bg-gray-700 text-white'
+              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
           }`}
         >
           {f.nome}
@@ -59,7 +68,7 @@ export default function SeletorFuncionarios({ value, onChange }: Props) {
         <button
           type="button"
           onClick={() => setMostrarNovo(true)}
-          className="rounded-full px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-900 border border-dashed border-gray-300 text-gray-400 dark:text-gray-500 flex items-center gap-1"
+          className="rounded-full px-3 py-1.5 text-sm font-medium bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500 flex items-center gap-1"
         >
           <Plus size={14} /> Pessoa
         </button>
@@ -71,7 +80,7 @@ export default function SeletorFuncionarios({ value, onChange }: Props) {
             autoFocus
             type="text"
             placeholder="Nome"
-            className="flex-1 min-w-0 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-sm outline-none focus:border-gray-400"
+            className="flex-1 min-w-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-gray-400"
             value={novoNome}
             onChange={(e) => setNovoNome(e.target.value)}
             onKeyDown={(e) => {
