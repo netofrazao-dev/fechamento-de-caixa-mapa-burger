@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { History, ImagePlus, Printer, Trash2, X } from 'lucide-react'
 import {
@@ -9,7 +9,8 @@ import {
 } from '../lib/relatorioService'
 import { listarFechamentos } from '../lib/fechamentoService'
 import { gerarPdfWhatsApp, imprimirDiaCompleto } from '../lib/pdf'
-import { formatarHoraRascunho, lerRascunho, limparRascunho, salvarRascunho } from '../lib/draft'
+import { formatarHoraRascunho } from '../lib/draft'
+import { useRascunho } from '../lib/useRascunho'
 import Secao from '../components/Secao'
 import SeletorFuncionarios from '../components/SeletorFuncionarios'
 import ListaLivre from '../components/ListaLivre'
@@ -17,10 +18,7 @@ import ListaConsumo from '../components/ListaConsumo'
 import ListaValorMotivo from '../components/ListaValorMotivo'
 import EstoqueForm from '../components/EstoqueForm'
 import type { ConsumoItem, EstoqueSnapshot, Fechamento, Sangria } from '../types/fechamento'
-
-function hoje(): string {
-  return new Date().toISOString().slice(0, 10)
-}
+import { hojeLocal as hoje } from '../lib/datas'
 
 const ESTOQUE_VAZIO: EstoqueSnapshot = { itens: [] }
 
@@ -47,29 +45,22 @@ export default function RelatorioForm() {
   const editando = Boolean(id)
 
   const chaveRascunho = `mapa-burger-rascunho-relatorio-${id ?? 'novo'}`
-  const rascunho = useRef(lerRascunho<RascunhoRelatorio>(chaveRascunho)).current
-  const [avisoRascunho, setAvisoRascunho] = useState(Boolean(rascunho))
-  const pulandoPrimeiraGravacao = useRef(true)
 
-  const [data, setData] = useState(rascunho?.dados.data ?? searchParams.get('data') ?? hoje())
-  const [aberturaCaixa, setAberturaCaixa] = useState(rascunho?.dados.aberturaCaixa ?? 0)
-  const [fechamentoCaixa, setFechamentoCaixa] = useState(rascunho?.dados.fechamentoCaixa ?? 0)
-  const [quantidadeVendida, setQuantidadeVendida] = useState(rascunho?.dados.quantidadeVendida ?? 0)
-  const [estragou, setEstragou] = useState<string[]>(rascunho?.dados.estragou ?? [])
-  const [funcionariosQueComeram, setFuncionariosQueComeram] = useState<string[]>(
-    rascunho?.dados.funcionariosQueComeram ?? [],
-  )
-  const [consumoLojaMensal, setConsumoLojaMensal] = useState<ConsumoItem[]>(rascunho?.dados.consumoLojaMensal ?? [])
-  const [consumoLojaMotoboys, setConsumoLojaMotoboys] = useState<ConsumoItem[]>(
-    rascunho?.dados.consumoLojaMotoboys ?? [],
-  )
-  const [cortesiaClientes, setCortesiaClientes] = useState<ConsumoItem[]>(rascunho?.dados.cortesiaClientes ?? [])
-  const [sangrias, setSangrias] = useState<Sangria[]>(rascunho?.dados.sangrias ?? [])
-  const [estoqueQuente, setEstoqueQuente] = useState<EstoqueSnapshot>(rascunho?.dados.estoqueQuente ?? ESTOQUE_VAZIO)
-  const [imagem1, setImagem1] = useState<string | null>(rascunho?.dados.imagem1 ?? null)
-  const [imagem2, setImagem2] = useState<string | null>(rascunho?.dados.imagem2 ?? null)
+  const [data, setData] = useState(searchParams.get('data') ?? hoje())
+  const [aberturaCaixa, setAberturaCaixa] = useState(0)
+  const [fechamentoCaixa, setFechamentoCaixa] = useState(0)
+  const [quantidadeVendida, setQuantidadeVendida] = useState(0)
+  const [estragou, setEstragou] = useState<string[]>([])
+  const [funcionariosQueComeram, setFuncionariosQueComeram] = useState<string[]>([])
+  const [consumoLojaMensal, setConsumoLojaMensal] = useState<ConsumoItem[]>([])
+  const [consumoLojaMotoboys, setConsumoLojaMotoboys] = useState<ConsumoItem[]>([])
+  const [cortesiaClientes, setCortesiaClientes] = useState<ConsumoItem[]>([])
+  const [sangrias, setSangrias] = useState<Sangria[]>([])
+  const [estoqueQuente, setEstoqueQuente] = useState<EstoqueSnapshot>(ESTOQUE_VAZIO)
+  const [imagem1, setImagem1] = useState<string | null>(null)
+  const [imagem2, setImagem2] = useState<string | null>(null)
 
-  const [carregando, setCarregando] = useState(editando && !rascunho)
+  const [carregando, setCarregando] = useState(editando)
   const [salvando, setSalvando] = useState(false)
   const [processando, setProcessando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -91,7 +82,7 @@ export default function RelatorioForm() {
   }
 
   useEffect(() => {
-    if (!id || rascunho) return // rascunho local é mais recente que o banco
+    if (!id) return
     buscarRelatorioPorId(id)
       .then(aplicarRelatorio)
       .catch((e) => setErro(e instanceof Error ? e.message : 'Erro ao carregar relatório.'))
@@ -117,14 +108,9 @@ export default function RelatorioForm() {
     }
   }
 
-  // Autosave do rascunho a cada mudança.
-  useEffect(() => {
-    if (carregando) return
-    if (pulandoPrimeiraGravacao.current) {
-      pulandoPrimeiraGravacao.current = false
-      return
-    }
-    salvarRascunho<RascunhoRelatorio>(chaveRascunho, {
+  const rascunho = useRascunho<RascunhoRelatorio>({
+    chave: chaveRascunho,
+    dados: {
       data,
       aberturaCaixa,
       fechamentoCaixa,
@@ -138,57 +124,31 @@ export default function RelatorioForm() {
       estoqueQuente,
       imagem1,
       imagem2,
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    carregando,
-    data,
-    aberturaCaixa,
-    fechamentoCaixa,
-    quantidadeVendida,
-    estragou,
-    funcionariosQueComeram,
-    consumoLojaMensal,
-    consumoLojaMotoboys,
-    cortesiaClientes,
-    sangrias,
-    estoqueQuente,
-    imagem1,
-    imagem2,
-  ])
-
-  function descartarRascunho() {
-    limparRascunho(chaveRascunho)
-    setAvisoRascunho(false)
-    if (id) {
-      setCarregando(true)
-      buscarRelatorioPorId(id)
-        .then(aplicarRelatorio)
-        .catch((e) => setErro(e instanceof Error ? e.message : 'Erro ao carregar relatório.'))
-        .finally(() => setCarregando(false))
-    } else {
-      setData(searchParams.get('data') || hoje())
-      setAberturaCaixa(0)
-      setFechamentoCaixa(0)
-      setQuantidadeVendida(0)
-      setEstragou([])
-      setFuncionariosQueComeram([])
-      setConsumoLojaMensal([])
-      setConsumoLojaMotoboys([])
-      setCortesiaClientes([])
-      setSangrias([])
-      setEstoqueQuente(ESTOQUE_VAZIO)
-      setImagem1(null)
-      setImagem2(null)
-    }
-  }
+    },
+    habilitado: !carregando,
+    aplicar: (d) => {
+      setData(d.data)
+      setAberturaCaixa(d.aberturaCaixa)
+      setFechamentoCaixa(d.fechamentoCaixa)
+      setQuantidadeVendida(d.quantidadeVendida)
+      setEstragou(d.estragou)
+      setFuncionariosQueComeram(d.funcionariosQueComeram)
+      setConsumoLojaMensal(d.consumoLojaMensal)
+      setConsumoLojaMotoboys(d.consumoLojaMotoboys)
+      setCortesiaClientes(d.cortesiaClientes)
+      setSangrias(d.sangrias)
+      setEstoqueQuente(d.estoqueQuente)
+      setImagem1(d.imagem1)
+      setImagem2(d.imagem2)
+    },
+  })
 
   async function salvar() {
     setErro(null)
     setSalvando(true)
     try {
       const salvo = id ? await atualizarRelatorio(id, payload()) : await criarRelatorio(payload())
-      limparRascunho(chaveRascunho)
+      rascunho.limpar()
       navigate(`/relatorios/${salvo.id}`, { replace: true })
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao salvar relatório.')
@@ -201,7 +161,7 @@ export default function RelatorioForm() {
     if (!id) return
     if (!confirm('Excluir este relatório? Essa ação não pode ser desfeita.')) return
     await excluirRelatorio(id)
-    limparRascunho(chaveRascunho)
+    rascunho.limpar()
     navigate('/relatorios', { replace: true })
   }
 
@@ -259,14 +219,13 @@ export default function RelatorioForm() {
         )}
       </header>
 
-      {avisoRascunho && (
+      {rascunho.restaurado && (
         <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-300">
           <span className="flex items-center gap-1.5">
             <History size={14} className="shrink-0" />
-            Rascunho restaurado{rascunho ? ` (salvo às ${formatarHoraRascunho(rascunho.salvoEm)})` : ''} — continue de
-            onde parou.
+            Rascunho restaurado (salvo às {formatarHoraRascunho(rascunho.restaurado.salvoEm)}) — continue de onde parou.
           </span>
-          <button type="button" onClick={descartarRascunho} className="shrink-0 font-semibold underline">
+          <button type="button" onClick={rascunho.descartar} className="shrink-0 font-semibold underline">
             Descartar
           </button>
         </div>

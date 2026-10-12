@@ -122,6 +122,17 @@ export function totalMarmitas(itens: { quantidade: number }[]): number {
   return itens.reduce((acc, m) => acc + (m.quantidade || 0), 0)
 }
 
+/** Soma as vendas de cada prato entre vários fechamentos, do mais vendido pro menos vendido. */
+export function agregarVendasPorPrato(fechamentos: { marmitas: { prato: string; quantidade: number }[] }[]): [string, number][] {
+  const mapa = new Map<string, number>()
+  for (const f of fechamentos) {
+    for (const m of f.marmitas) {
+      mapa.set(m.prato, (mapa.get(m.prato) ?? 0) + m.quantidade)
+    }
+  }
+  return Array.from(mapa.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+}
+
 export const STATUS_LABEL: Record<StatusFechamento, string> = {
   fechou: 'CAIXA FECHOU',
   sobrou: 'SOBROU DINHEIRO',

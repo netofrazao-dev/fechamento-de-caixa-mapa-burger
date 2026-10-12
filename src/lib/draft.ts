@@ -9,9 +9,9 @@ interface Envelope<T> {
   salvoEm: string
 }
 
-export function salvarRascunho<T>(chave: string, dados: T): void {
+export function salvarRascunho<T>(chave: string, dados: T, salvoEm: string = new Date().toISOString()): void {
   try {
-    const envelope: Envelope<T> = { dados, salvoEm: new Date().toISOString() }
+    const envelope: Envelope<T> = { dados, salvoEm }
     localStorage.setItem(chave, JSON.stringify(envelope))
   } catch {
     // localStorage pode falhar (modo privado, cheio, etc.) — não é crítico, ignora.

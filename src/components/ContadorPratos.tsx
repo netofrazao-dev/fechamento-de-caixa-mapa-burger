@@ -12,14 +12,24 @@ export default function ContadorPratos({ value, onChange }: Props) {
   const [pratos, setPratos] = useState<Prato[]>([])
   const [novoNome, setNovoNome] = useState('')
   const [mostrarNovo, setMostrarNovo] = useState(false)
+  const [falhou, setFalhou] = useState(false)
 
-  useEffect(() => {
+  function carregar() {
+    setFalhou(false)
     listarPratos()
       .then(setPratos)
-      .catch(() => {
-        /* silencioso: se a tabela ainda não existir, só não mostra sugestões */
-      })
+      .catch(() => setFalhou(true))
+  }
+
+  useEffect(() => {
+    carregar()
   }, [])
+
+  // Pratos já contados que não estão cadastrados (ex.: "Outros" vindo de fechamentos antigos)
+  const lista: Prato[] = [
+    ...pratos,
+    ...value.filter((v) => !pratos.some((p) => p.nome === v.prato)).map((v) => ({ id: `extra-${v.prato}`, nome: v.prato })),
+  ]
 
   function quantidadeDe(nome: string): number {
     return value.find((v) => v.prato === nome)?.quantidade ?? 0
@@ -48,7 +58,15 @@ export default function ContadorPratos({ value, onChange }: Props) {
 
   return (
     <div className="space-y-2">
-      {pratos.map((p) => {
+      {falhou && (
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-red-50 dark:bg-red-950/40 px-3 py-2 text-xs text-red-700 dark:text-red-400">
+          <span>Não consegui carregar a lista de pratos (confira a internet ou se o banco está atualizado).</span>
+          <button type="button" onClick={carregar} className="shrink-0 font-semibold underline">
+            Tentar de novo
+          </button>
+        </div>
+      )}
+      {lista.map((p) => {
         const qtd = quantidadeDe(p.nome)
         return (
           <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2">
@@ -77,7 +95,7 @@ export default function ContadorPratos({ value, onChange }: Props) {
         )
       })}
 
-      {pratos.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500">Nenhum prato cadastrado ainda.</p>}
+      {lista.length === 0 && !falhou && <p className="text-sm text-gray-400 dark:text-gray-500">Nenhum prato cadastrado ainda.</p>}
 
       {!mostrarNovo ? (
         <button

@@ -6,19 +6,7 @@ import { listarRelatorios } from '../lib/relatorioService'
 import { formatarMoeda } from '../lib/calculations'
 import { gerarPdfMensal, type LinhaRelatorioMensal } from '../lib/pdf'
 import type { Fechamento, RelatorioDiario } from '../types/fechamento'
-
-function mesAtual(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
-
-function limitesDoMes(mes: string): { inicio: string; fim: string } {
-  const [ano, m] = mes.split('-').map(Number)
-  const inicio = `${ano}-${String(m).padStart(2, '0')}-01`
-  const ultimoDia = new Date(ano, m, 0).getDate()
-  const fim = `${ano}-${String(m).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`
-  return { inicio, fim }
-}
+import { limitesDoMes, mesLocal } from '../lib/datas'
 
 function formatarData(iso: string): string {
   const [, mes, dia] = iso.split('-')
@@ -40,7 +28,7 @@ function agruparPorDia(fechamentos: Fechamento[]): LinhaRelatorioMensal[] {
 }
 
 export default function RelatorioMensal() {
-  const [mes, setMes] = useState(mesAtual())
+  const [mes, setMes] = useState(mesLocal())
   const [fechamentos, setFechamentos] = useState<Fechamento[]>([])
   const [relatorios, setRelatorios] = useState<RelatorioDiario[]>([])
   const [carregando, setCarregando] = useState(true)

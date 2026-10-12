@@ -14,14 +14,21 @@ export default function SeletorFuncionarios({ value, onChange, unico }: Props) {
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([])
   const [novoNome, setNovoNome] = useState('')
   const [mostrarNovo, setMostrarNovo] = useState(false)
+  const [falhou, setFalhou] = useState(false)
 
-  useEffect(() => {
+  function carregar() {
+    setFalhou(false)
     listarFuncionarios()
       .then(setFuncionarios)
-      .catch(() => {
-        /* silencioso: se a tabela ainda não existir, só não mostra sugestões */
-      })
+      .catch(() => setFalhou(true))
+  }
+
+  useEffect(() => {
+    carregar()
   }, [])
+
+  // Nomes já selecionados que não estão na lista (ex.: pessoa removida, ou lista que não carregou)
+  const extras = value.filter((v) => !funcionarios.some((f) => f.nome === v))
 
   function toggle(nome: string) {
     if (unico) {
@@ -49,6 +56,24 @@ export default function SeletorFuncionarios({ value, onChange, unico }: Props) {
 
   return (
     <div className="flex flex-wrap gap-2">
+      {falhou && (
+        <div className="w-full flex items-center justify-between gap-2 rounded-lg bg-red-50 dark:bg-red-950/40 px-3 py-2 text-xs text-red-700 dark:text-red-400">
+          <span>Não consegui carregar a lista de funcionários (confira a internet ou se o banco está atualizado).</span>
+          <button type="button" onClick={carregar} className="shrink-0 font-semibold underline">
+            Tentar de novo
+          </button>
+        </div>
+      )}
+      {extras.map((nome) => (
+        <button
+          key={`extra-${nome}`}
+          type="button"
+          onClick={() => toggle(nome)}
+          className="rounded-full px-3 py-1.5 text-sm font-medium bg-gray-900 dark:bg-gray-700 text-white"
+        >
+          {nome}
+        </button>
+      ))}
       {funcionarios.map((f) => (
         <button
           key={f.id}

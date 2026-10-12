@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { ConsumoItem, Fechamento, MarmitaItem, RelatorioDiario, StatusFechamento } from '../types/fechamento'
-import { formatarMoeda, STATUS_LABEL, totalMarmitas } from './calculations'
+import type { ConsumoItem, Fechamento, RelatorioDiario, StatusFechamento } from '../types/fechamento'
+import { agregarVendasPorPrato, formatarMoeda, STATUS_LABEL, totalMarmitas } from './calculations'
 import { semAcento } from './texto'
 import { LOGO_MAPA_BURGER_PNG } from './brand'
 
@@ -35,17 +35,6 @@ function slugify(texto: string): string {
 function statusPorDiferenca(diferenca: number): StatusFechamento {
   if (Math.abs(diferenca) < 0.005) return 'fechou'
   return diferenca > 0 ? 'sobrou' : 'faltou'
-}
-
-/** Soma as vendas de cada prato entre vários fechamentos (manhã+noite), do maior pro menor. */
-function agregarVendasPorPrato(fechamentos: Fechamento[]): [string, number][] {
-  const mapa = new Map<string, number>()
-  fechamentos.forEach((f) => {
-    f.marmitas.forEach((m: MarmitaItem) => {
-      mapa.set(m.prato, (mapa.get(m.prato) ?? 0) + m.quantidade)
-    })
-  })
-  return Array.from(mapa.entries()).sort((a, b) => b[1] - a[1])
 }
 
 // ============================================================

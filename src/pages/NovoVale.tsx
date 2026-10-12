@@ -1,15 +1,14 @@
-import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import SeletorFuncionarios from '../components/SeletorFuncionarios'
 import CampoMoeda from '../components/CampoMoeda'
-import { criarVale } from '../lib/valeService'
-
-function hoje(): string {
-  return new Date().toISOString().slice(0, 10)
-}
+import { atualizarVale, buscarValePorId, criarVale } from '../lib/valeService'
+import { hojeLocal as hoje } from '../lib/datas'
 
 export default function NovoVale() {
   const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
+  const editando = Boolean(id)
   const [searchParams] = useSearchParams()
 
   const [funcionario, setFuncionario] = useState<string[]>([])
@@ -18,6 +17,20 @@ export default function NovoVale() {
   const [observacao, setObservacao] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [carregando, setCarregando] = useState(editando)
+
+  useEffect(() => {
+    if (!id) return
+    buscarValePorId(id)
+      .then((v) => {
+        setFuncionario([v.funcionario])
+        setData(v.data)
+        setValor(v.valor)
+        setObservacao(v.observacao)
+      })
+      .catch((e) => setErro(e instanceof Error ? e.message : 'Erro ao carregar vale.'))
+      .finally(() => setCarregando(false))
+  }, [id])
 
   const mesVoltar = searchParams.get('mes') || data.slice(0, 7)
 
@@ -34,7 +47,13 @@ export default function NovoVale() {
 
     setSalvando(true)
     try {
-      await criarVale({ funcionario: funcionario[0], data, valor, observacao: observacao.trim() })
+      const input = { funcionario: funcionario[0], data, valor, observacao: observacao.trim() }
+      if (id) {
+        await atualizarVale(id, input)
+        navigate(`/vales?mes=${data.slice(0, 7)}`, { replace: true })
+        return
+      }
+      await criarVale(input)
       if (outro) {
         setValor(0)
         setObservacao('')
@@ -49,13 +68,17 @@ export default function NovoVale() {
     }
   }
 
+  if (carregando) {
+    return <div className="max-w-2xl mx-auto p-4 text-sm text-gray-400 dark:text-gray-500">Carregando...</div>
+  }
+
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-3 pb-40">
       <Link to={`/vales?mes=${mesVoltar}`} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
         ← Voltar aos vales
       </Link>
       <header>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Novo vale</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">{editando ? 'Editar vale' : 'Novo vale'}</h1>
       </header>
 
       <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-2">
@@ -90,6 +113,7 @@ export default function NovoVale() {
 
       <div className="fixed bottom-14 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-100 dark:border-gray-800 p-3">
         <div className="max-w-2xl mx-auto flex gap-2">
+          {!editando && (
           <button
             type="button"
             disabled={salvando}
@@ -98,13 +122,14 @@ export default function NovoVale() {
           >
             Salvar e lançar outro
           </button>
+          )}
           <button
             type="button"
             disabled={salvando}
             onClick={() => salvar(false)}
             className="flex-1 rounded-xl bg-gray-900 dark:bg-gray-700 py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {salvando ? 'Salvando...' : 'Salvar'}
+            {salvando ? 'Salvando...' : editando ? 'Salvar alterações' : 'Salvar'}
           </button>
         </div>
       </div>

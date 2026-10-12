@@ -158,6 +158,15 @@ create index if not exists idx_vales_data on public.vales (data desc);
 create index if not exists idx_vales_funcionario on public.vales (funcionario);
 
 -- ------------------------------------------------------------
+-- Rascunhos de formulário (sincronizam entre celular e computador)
+-- ------------------------------------------------------------
+create table if not exists public.rascunhos (
+  chave text primary key,
+  dados jsonb not null,
+  salvo_em timestamptz not null default now()
+);
+
+-- ------------------------------------------------------------
 -- Row Level Security
 -- Sistema interno sem login por enquanto: a chave anon tem acesso
 -- total. Quando houver autenticação, trocar por regras com auth.uid().
@@ -168,6 +177,7 @@ alter table public.relatorios enable row level security;
 alter table public.funcionarios enable row level security;
 alter table public.pratos enable row level security;
 alter table public.vales enable row level security;
+alter table public.rascunhos enable row level security;
 
 drop policy if exists "fechamentos_all_access" on public.fechamentos;
 create policy "fechamentos_all_access" on public.fechamentos for all using (true) with check (true);
@@ -186,3 +196,6 @@ create policy "pratos_all_access" on public.pratos for all using (true) with che
 
 drop policy if exists "vales_all_access" on public.vales;
 create policy "vales_all_access" on public.vales for all using (true) with check (true);
+
+drop policy if exists "rascunhos_all_access" on public.rascunhos;
+create policy "rascunhos_all_access" on public.rascunhos for all using (true) with check (true);

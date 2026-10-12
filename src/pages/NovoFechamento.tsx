@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { History } from 'lucide-react'
 import LCForm from '../components/LCForm'
 import BrendiForm from '../components/BrendiForm'
@@ -8,10 +8,17 @@ import ResultadoCard from '../components/ResultadoCard'
 import ContadorPratos from '../components/ContadorPratos'
 import Secao from '../components/Secao'
 import { calcularResultado, totalMarmitas } from '../lib/calculations'
-import { criarFechamento, existeFechamento } from '../lib/fechamentoService'
+import {
+  atualizarFechamento,
+  buscarFechamentoPorId,
+  criarFechamento,
+  existeFechamento,
+} from '../lib/fechamentoService'
 import { gerarPdfFechamento } from '../lib/pdf'
-import { formatarHoraRascunho, lerRascunho, limparRascunho, salvarRascunho } from '../lib/draft'
+import { formatarHoraRascunho } from '../lib/draft'
+import { useRascunho } from '../lib/useRascunho'
 import type { Ajuste, DadosBrendi, DadosLC, MarmitaItem, Sangria, Turno } from '../types/fechamento'
+import { hojeLocal as hoje } from '../lib/datas'
 
 const LC_VAZIO: DadosLC = {
   dinheiroAbertura: 0,
@@ -27,14 +34,9 @@ const LC_VAZIO: DadosLC = {
 const BRENDI_VAZIO: DadosBrendi = { pix: 0, debito: 0, credito: 0, creditoOnline: 0, dinheiro: 0 }
 const AJUSTE_VAZIO: Ajuste = { tipo: null, valor: 0 }
 
-// Só o turno da manhã é usado por enquanto (o da noite foi desativado).
-const TURNO: Turno = 'manha'
-
-function hoje(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
-const CHAVE_RASCUNHO = 'mapa-burger-rascunho-fechamento'
+// Só o turno da manhã é usado em novos fechamentos (o da noite foi desativado).
+// Ao editar um fechamento antigo, o turno original dele é mantido.
+const TURNO_PADRAO: Turno = 'manha'
 
 interface RascunhoFechamento {
   data: string
@@ -49,58 +51,64 @@ interface RascunhoFechamento {
 
 export default function NovoFechamento() {
   const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
+  const editando = Boolean(id)
+  const chaveRascunho = id ? `mapa-burger-rascunho-fechamento-${id}` : 'mapa-burger-rascunho-fechamento'
 
-  const rascunho = useRef(lerRascunho<RascunhoFechamento>(CHAVE_RASCUNHO)).current
-  const [avisoRascunho, setAvisoRascunho] = useState(Boolean(rascunho))
-  const pulandoPrimeiraGravacao = useRef(true)
+  const [turno, setTurno] = useState<Turno>(TURNO_PADRAO)
+  const [data, setData] = useState(hoje())
+  const [lc, setLc] = useState<DadosLC>(LC_VAZIO)
+  const [brendi, setBrendi] = useState<DadosBrendi>(BRENDI_VAZIO)
+  const [sangrias, setSangrias] = useState<Sangria[]>([])
+  const [marmitas, setMarmitas] = useState<MarmitaItem[]>([])
+  const [totalLCSistema, setTotalLCSistema] = useState(0)
+  const [ajuste, setAjuste] = useState<Ajuste>(AJUSTE_VAZIO)
+  const [observacoes, setObservacoes] = useState('')
 
-  const [data, setData] = useState(rascunho?.dados.data ?? hoje())
-  const [lc, setLc] = useState<DadosLC>(rascunho?.dados.lc ?? LC_VAZIO)
-  const [brendi, setBrendi] = useState<DadosBrendi>(rascunho?.dados.brendi ?? BRENDI_VAZIO)
-  const [sangrias, setSangrias] = useState<Sangria[]>(rascunho?.dados.sangrias ?? [])
-  const [marmitas, setMarmitas] = useState<MarmitaItem[]>(rascunho?.dados.marmitas ?? [])
-  const [totalLCSistema, setTotalLCSistema] = useState(rascunho?.dados.totalLCSistema ?? 0)
-  const [ajuste, setAjuste] = useState<Ajuste>(rascunho?.dados.ajuste ?? AJUSTE_VAZIO)
-  const [observacoes, setObservacoes] = useState(rascunho?.dados.observacoes ?? '')
-
+  const [carregando, setCarregando] = useState(editando)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+
+  // Ao editar, carrega o fechamento salvo.
+  useEffect(() => {
+    if (!id) return
+    buscarFechamentoPorId(id)
+      .then((f) => {
+        setTurno(f.turno)
+        setData(f.data)
+        setLc(f.lc)
+        setBrendi(f.brendi)
+        setSangrias(f.sangrias)
+        setMarmitas(f.marmitas)
+        setTotalLCSistema(f.totalLCSistema)
+        setAjuste(f.ajuste.tipo ? f.ajuste : AJUSTE_VAZIO)
+        setObservacoes(f.observacoes)
+      })
+      .catch((e) => setErro(e instanceof Error ? e.message : 'Erro ao carregar fechamento.'))
+      .finally(() => setCarregando(false))
+  }, [id])
 
   const resultado = useMemo(
     () => calcularResultado({ lc, brendi, totalLCSistema, ajuste }),
     [lc, brendi, totalLCSistema, ajuste],
   )
 
-  // Salva o rascunho automaticamente a cada mudança.
-  useEffect(() => {
-    if (pulandoPrimeiraGravacao.current) {
-      pulandoPrimeiraGravacao.current = false
-      return
-    }
-    salvarRascunho<RascunhoFechamento>(CHAVE_RASCUNHO, {
-      data,
-      lc,
-      brendi,
-      sangrias,
-      marmitas,
-      totalLCSistema,
-      ajuste,
-      observacoes,
-    })
-  }, [data, lc, brendi, sangrias, marmitas, totalLCSistema, ajuste, observacoes])
-
-  function descartarRascunho() {
-    limparRascunho(CHAVE_RASCUNHO)
-    setData(hoje())
-    setLc(LC_VAZIO)
-    setBrendi(BRENDI_VAZIO)
-    setSangrias([])
-    setMarmitas([])
-    setTotalLCSistema(0)
-    setAjuste(AJUSTE_VAZIO)
-    setObservacoes('')
-    setAvisoRascunho(false)
-  }
+  // Rascunho automático (navegador + Supabase, sincroniza entre aparelhos).
+  const rascunho = useRascunho<RascunhoFechamento>({
+    chave: chaveRascunho,
+    dados: { data, lc, brendi, sangrias, marmitas, totalLCSistema, ajuste, observacoes },
+    habilitado: !carregando,
+    aplicar: (d) => {
+      setData(d.data)
+      setLc(d.lc)
+      setBrendi(d.brendi)
+      setSangrias(d.sangrias)
+      setMarmitas(d.marmitas)
+      setTotalLCSistema(d.totalLCSistema)
+      setAjuste(d.ajuste)
+      setObservacoes(d.observacoes)
+    },
+  })
 
   async function salvar() {
     setErro(null)
@@ -116,15 +124,15 @@ export default function NovoFechamento() {
 
     setSalvando(true)
     try {
-      if (await existeFechamento(data, TURNO)) {
+      if (await existeFechamento(data, turno, id)) {
         setErro('Já existe um fechamento salvo para essa data.')
         setSalvando(false)
         return
       }
 
-      const fechamento = await criarFechamento({
+      const input = {
         data,
-        turno: TURNO,
+        turno,
         lc,
         brendi,
         sangrias: sangrias.filter((s) => s.valor > 0 || s.motivo.trim()),
@@ -132,11 +140,18 @@ export default function NovoFechamento() {
         totalLCSistema,
         ajuste,
         observacoes,
-      })
+      }
 
-      limparRascunho(CHAVE_RASCUNHO)
-      gerarPdfFechamento(fechamento)
-      navigate(`/fechamento/${fechamento.id}`)
+      if (id) {
+        await atualizarFechamento(id, input)
+        rascunho.limpar()
+        navigate(`/fechamento/${id}`)
+      } else {
+        const fechamento = await criarFechamento(input)
+        rascunho.limpar()
+        gerarPdfFechamento(fechamento)
+        navigate(`/fechamento/${fechamento.id}`)
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao salvar o fechamento.')
     } finally {
@@ -144,20 +159,25 @@ export default function NovoFechamento() {
     }
   }
 
+  if (carregando) {
+    return <div className="max-w-2xl mx-auto p-4 text-sm text-gray-400 dark:text-gray-500">Carregando...</div>
+  }
+
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-3 pb-36">
       <header>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Novo Fechamento</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+          {editando ? 'Editar fechamento' : 'Novo Fechamento'}
+        </h1>
       </header>
 
-      {avisoRascunho && (
+      {rascunho.restaurado && (
         <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-300">
           <span className="flex items-center gap-1.5">
             <History size={14} className="shrink-0" />
-            Rascunho restaurado{rascunho ? ` (salvo às ${formatarHoraRascunho(rascunho.salvoEm)})` : ''} — continue de
-            onde parou.
+            Rascunho restaurado (salvo às {formatarHoraRascunho(rascunho.restaurado.salvoEm)}) — continue de onde parou.
           </span>
-          <button type="button" onClick={descartarRascunho} className="shrink-0 font-semibold underline">
+          <button type="button" onClick={rascunho.descartar} className="shrink-0 font-semibold underline">
             Descartar
           </button>
         </div>
@@ -204,7 +224,7 @@ export default function NovoFechamento() {
             onClick={salvar}
             className="w-full rounded-xl bg-gray-900 dark:bg-gray-700 py-3 text-white text-sm font-semibold disabled:opacity-50"
           >
-            {salvando ? 'Salvando...' : 'Salvar e gerar PDF'}
+            {salvando ? 'Salvando...' : editando ? 'Salvar alterações' : 'Salvar e gerar PDF'}
           </button>
         </div>
       </div>

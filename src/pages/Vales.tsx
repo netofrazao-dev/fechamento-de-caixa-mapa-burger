@@ -1,23 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ChevronDown, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 import { excluirVale, listarVales } from '../lib/valeService'
 import { formatarMoeda } from '../lib/calculations'
 import { gerarPdfValesMensal } from '../lib/pdf'
 import type { Vale } from '../types/fechamento'
-
-function mesAtual(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
-
-function limitesDoMes(mes: string): { inicio: string; fim: string } {
-  const [ano, m] = mes.split('-').map(Number)
-  const inicio = `${ano}-${String(m).padStart(2, '0')}-01`
-  const ultimoDia = new Date(ano, m, 0).getDate()
-  const fim = `${ano}-${String(m).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`
-  return { inicio, fim }
-}
+import { limitesDoMes, mesLocal } from '../lib/datas'
 
 function formatarDia(iso: string): string {
   const [, mes, dia] = iso.split('-')
@@ -32,7 +20,7 @@ interface GrupoFuncionario {
 
 export default function Vales() {
   const [searchParams] = useSearchParams()
-  const [mes, setMes] = useState(searchParams.get('mes') || mesAtual())
+  const [mes, setMes] = useState(searchParams.get('mes') || mesLocal())
   const [vales, setVales] = useState<Vale[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -188,6 +176,13 @@ export default function Vales() {
                         {v.observacao || ''}
                       </span>
                       <span className="font-medium text-gray-900 dark:text-gray-100">{formatarMoeda(v.valor)}</span>
+                      <Link
+                        to={`/vales/${v.id}/editar?mes=${mes}`}
+                        className="p-1 text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300"
+                        aria-label="Editar vale"
+                      >
+                        <Pencil size={14} />
+                      </Link>
                       <button
                         type="button"
                         onClick={() => excluir(v)}

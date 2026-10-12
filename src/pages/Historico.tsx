@@ -5,14 +5,8 @@ import { listarFechamentos } from '../lib/fechamentoService'
 import { listarRelatorios } from '../lib/relatorioService'
 import { formatarMoeda, STATUS_COLOR, STATUS_LABEL } from '../lib/calculations'
 import type { Fechamento, RelatorioDiario } from '../types/fechamento'
+import { hojeLocal as hoje, inicioDoMesLocal as inicioDoMes } from '../lib/datas'
 
-function inicioDoMes(): string {
-  const d = new Date()
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)
-}
-function hoje(): string {
-  return new Date().toISOString().slice(0, 10)
-}
 function formatarData(iso: string): string {
   const [ano, mes, dia] = iso.split('-')
   return `${dia}/${mes}/${ano}`

@@ -53,3 +53,25 @@ export async function excluirVale(id: string): Promise<void> {
   const { error } = await supabase.from('vales').delete().eq('id', id)
   if (error) throw error
 }
+
+export async function buscarValePorId(id: string): Promise<Vale> {
+  const { data, error } = await supabase.from('vales').select('*').eq('id', id).single()
+  if (error) throw error
+  return rowToVale(data as ValeRow)
+}
+
+export async function atualizarVale(id: string, input: ValeInput): Promise<Vale> {
+  const { data, error } = await supabase
+    .from('vales')
+    .update({
+      funcionario: input.funcionario,
+      data: input.data,
+      valor: input.valor,
+      observacao: input.observacao || null,
+    })
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (error) throw error
+  return rowToVale(data as ValeRow)
+}

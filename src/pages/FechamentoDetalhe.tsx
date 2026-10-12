@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { buscarFechamentoPorId, excluirFechamento } from '../lib/fechamentoService'
 import { formatarMoeda, STATUS_COLOR, STATUS_LABEL, totalMarmitas } from '../lib/calculations'
 import { gerarPdfFechamento } from '../lib/pdf'
@@ -47,13 +47,21 @@ export default function FechamentoDetalhe() {
         </span>
       </header>
 
-      <button
-        type="button"
-        onClick={excluir}
-        className="flex items-center gap-1.5 text-sm text-gray-400 dark:text-gray-500 hover:text-red-500"
-      >
-        <Trash2 size={14} /> Excluir fechamento
-      </button>
+      <div className="flex items-center gap-4">
+        <Link
+          to={`/fechamento/${f.id}/editar`}
+          className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:underline"
+        >
+          <Pencil size={14} /> Editar fechamento
+        </Link>
+        <button
+          type="button"
+          onClick={excluir}
+          className="flex items-center gap-1.5 text-sm text-gray-400 dark:text-gray-500 hover:text-red-500"
+        >
+          <Trash2 size={14} /> Excluir
+        </button>
+      </div>
 
       <Secao titulo="LC">
         <Linha label="Dinheiro abertura" valor={f.lc.dinheiroAbertura} />

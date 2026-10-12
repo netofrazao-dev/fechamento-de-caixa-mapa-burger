@@ -41,11 +41,13 @@ export default function App() {
         <Route path="/historico" element={<Historico />} />
         <Route path="/mensal" element={<RelatorioMensal />} />
         <Route path="/relatorios" element={<Relatorios />} />
-        <Route path="/relatorios/novo" element={<RelatorioForm />} />
-        <Route path="/relatorios/:id" element={<RelatorioForm />} />
+        <Route path="/relatorios/novo" element={<RelatorioForm key="novo" />} />
+        <Route path="/relatorios/:id" element={<RelatorioForm key="editar" />} />
         <Route path="/fechamento/:id" element={<FechamentoDetalhe />} />
+        <Route path="/fechamento/:id/editar" element={<NovoFechamento />} />
         <Route path="/vales" element={<Vales />} />
         <Route path="/vales/novo" element={<NovoVale />} />
+        <Route path="/vales/:id/editar" element={<NovoVale />} />
       </Routes>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex max-w-2xl mx-auto">
