@@ -302,7 +302,8 @@ export async function gerarPdfMensal(params: {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const margem = 16
   const larguraUtil = 210 - margem * 2
-  let y = cabecalhoComLogo(doc, margem, 'Relatório do mês', `${NOMES_MES[Number(m) - 1]} de ${ano}`)
+  const nomeMes = NOMES_MES[Number(m) - 1] ?? m
+  let y = cabecalhoComLogo(doc, margem, 'Relatório do mês', `${nomeMes.charAt(0).toUpperCase()}${nomeMes.slice(1)} de ${ano}`)
 
   const quebra = criarQuebra(doc)
   const garantir = (altura: number) => {
@@ -405,6 +406,7 @@ export async function gerarPdfMensal(params: {
     doc.setFontSize(9.5)
     const texto = diasSemFechamento.map((d) => formatarData(d).slice(0, 5)).join(', ')
     const linhasTexto = doc.splitTextToSize(texto, larguraUtil)
+    y += 1
     doc.text(linhasTexto, margem, y)
     y += linhasTexto.length * 4.6
   }
@@ -549,6 +551,12 @@ function faixaSituacao(
   return y + altura + 5
 }
 
+/** "37%"; valores pequenos mas não zerados aparecem como "<1%" (e não "0%"). */
+function porcentagem(parte: number, total: number): string {
+  const pct = (parte / (total || 1)) * 100
+  return parte > 0 && pct < 0.5 ? '<1%' : `${Math.round(pct)}%`
+}
+
 /** Barras horizontais: rótulo, barra, valor e porcentagem do total. */
 function desenharBarras(doc: jsPDF, itens: ItemPagamento[], x: number, y: number, largura: number): number {
   const total = itens.reduce((a, i) => a + i.valor, 0) || 1
@@ -570,7 +578,7 @@ function desenharBarras(doc: jsPDF, itens: ItemPagamento[], x: number, y: number
     doc.text(formatarMoeda(item.valor), x + lRotulo + lBarra + 2 + lValor, y + 3.8, { align: 'right' })
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(130)
-    doc.text(`${Math.round((item.valor / total) * 100)}%`, x + largura, y + 3.8, { align: 'right' })
+    doc.text(porcentagem(item.valor, total), x + largura, y + 3.8, { align: 'right' })
     y += 7.5
   }
   doc.setDrawColor(225)
@@ -626,7 +634,7 @@ function tabelaPratos(doc: jsPDF, vendas: [string, number][], margem: number, y:
     startY: y,
     margin: { left: margem, right: margem },
     head: [['Prato', { content: 'Quantidade', styles: { halign: 'right' } }, { content: '% do total', styles: { halign: 'right' } }]],
-    body: vendas.map(([prato, qtd]) => [prato, String(qtd), `${Math.round((qtd / total) * 100)}%`]),
+    body: vendas.map(([prato, qtd]) => [prato, String(qtd), porcentagem(qtd, total)]),
     foot: [['TOTAL', { content: String(total), styles: { halign: 'right' } }, { content: '100%', styles: { halign: 'right' } }]],
     styles: { fontSize: 9.5, cellPadding: 1.6 },
     headStyles: { fillColor: [60, 60, 64] },
