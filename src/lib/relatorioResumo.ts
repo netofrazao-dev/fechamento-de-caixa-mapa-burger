@@ -78,8 +78,10 @@ export function resumoDoMes(params: {
   dias: { data: string; totalCaixaDia: number; diferencaFinalDia: number }[]
   diasSemFechamento: number
   totalMarmitas: number
+  /** "o mês" (padrão) ou "a semana" — usado nas frases. */
+  periodo?: 'o mês' | 'a semana'
 }): string[] {
-  const { dias, diasSemFechamento, totalMarmitas } = params
+  const { dias, diasSemFechamento, totalMarmitas, periodo = 'o mês' } = params
   if (dias.length === 0) return ['Nenhum fechamento de caixa registrado neste mês.']
   const total = somarValores(dias.map((d) => d.totalCaixaDia))
   const media = Math.round((total / dias.length) * 100) / 100
@@ -94,8 +96,8 @@ export function resumoDoMes(params: {
     `Vendas no caixa: ${formatarMoeda(total)} em ${dias.length} dia(s) — média de ${formatarMoeda(media)} por dia.`,
     `O caixa fechou certinho em ${fechou} dia(s), sobrou em ${sobrou} e faltou em ${faltou}.`,
     statusPorDiferenca(diferenca) === 'fechou'
-      ? 'Somando o mês, as diferenças se compensaram: saldo zero.'
-      : `Somando o mês, ${diferenca > 0 ? 'sobraram' : 'faltaram'} ${formatarMoeda(Math.abs(diferenca))} no total.`,
+      ? `Somando ${periodo}, as diferenças se compensaram: saldo zero.`
+      : `Somando ${periodo}, ${diferenca > 0 ? 'sobraram' : 'faltaram'} ${formatarMoeda(Math.abs(diferenca))} no total.`,
   ]
   if (dias.length > 1) {
     frases.push(

@@ -287,16 +287,65 @@ function situacaoTexto(diferenca: number): string {
   return diferenca > 0.005 ? 'Sobrou' : diferenca < -0.005 ? 'Faltou' : 'Fechou'
 }
 
+/** Textos que mudam entre o relatório do mês e o da semana. */
+interface TextosPeriodo {
+  titulo: string
+  subtitulo: string
+  prefixo: string // "NO MÊS" / "NA SEMANA"
+  resumo: string // "Resumo do mês"
+  dinheiro: string // "Como o dinheiro entrou no mês"
+  rodape: string
+  arquivo: string
+  periodoFrase: 'o mês' | 'a semana'
+  colunaAtual: string // "Este mês"
+  colunaAnterior: string // "Mês anterior"
+  valesNo: string // "no mês"
+}
+
+/** PDF da semana: mesmo formato do mensal, com os dias de segunda a domingo. */
+export async function gerarPdfSemanal(params: Omit<Parameters<typeof gerarPdfMensal>[0], 'mes' | 'periodo'> & {
+  inicio: string // segunda-feira YYYY-MM-DD
+  fim: string
+}): Promise<ResultadoEntrega> {
+  const { inicio, fim, ...resto } = params
+  const br = (iso: string) => iso.split('-').reverse().join('/')
+  return gerarPdfMensal({
+    ...resto,
+    mes: inicio.slice(0, 7),
+    periodo: {
+      titulo: 'Relatório da semana',
+      subtitulo: `Segunda ${br(inicio)} a domingo ${br(fim)}`,
+      prefixo: 'NA SEMANA',
+      resumo: 'Resumo da semana',
+      dinheiro: 'Como o dinheiro entrou na semana',
+      rodape: `Mapa Burger — Relatório da semana ${br(inicio).slice(0, 5)} a ${br(fim)}`,
+      arquivo: `Mapa-Burger_relatorio-semanal_${br(inicio).replace(/\//g, '-')}.pdf`,
+      periodoFrase: 'a semana',
+      colunaAtual: 'Esta semana',
+      colunaAnterior: 'Semana passada',
+      valesNo: 'na semana',
+    },
+  })
+}
+
 /** PDF do mês: resumo em linguagem simples, formas de pagamento, dia a dia e pratos. */
 export async function gerarPdfMensal(params: {
   mes: string // YYYY-MM
+  /** Quando informado, troca os textos (usado pelo relatório semanal). */
+  periodo?: TextosPeriodo
   linhas: LinhaRelatorioMensal[]
   vendasPorPrato?: [string, number][]
   diasSemFechamento?: string[]
   totalVales?: number | null
   compartilhar?: boolean
   /** Vendas de cada dia (null = sem fechamento) + médias, para o gráfico de colunas. */
-  grafico?: { dias: { data: string; vendas: number | null }[]; mediaAtual: number; mediaAnterior?: number | null; rotuloAnterior?: string }
+  grafico?: {
+    dias: { data: string; vendas: number | null; diferenca?: number }[]
+    mediaAtual: number
+    mediaAnterior?: number | null
+    rotuloAnterior?: string
+    rotuloMedia?: string
+  }
   /** Comparação com o mês anterior, já formatada: [indicador, este mês, mês anterior, variação]. */
   comparacao?: { titulo: string; frase: string; linhas: [string, string, string, string][] } | null
 }): Promise<ResultadoEntrega> {
@@ -307,7 +356,20 @@ export async function gerarPdfMensal(params: {
   const margem = 16
   const larguraUtil = 210 - margem * 2
   const nomeMes = NOMES_MES[Number(m) - 1] ?? m
-  let y = cabecalhoComLogo(doc, margem, 'Relatório do mês', `${nomeMes.charAt(0).toUpperCase()}${nomeMes.slice(1)} de ${ano}`)
+  const textos: TextosPeriodo = params.periodo ?? {
+    titulo: 'Relatório do mês',
+    subtitulo: `${nomeMes.charAt(0).toUpperCase()}${nomeMes.slice(1)} de ${ano}`,
+    prefixo: 'NO MÊS',
+    resumo: 'Resumo do mês',
+    dinheiro: 'Como o dinheiro entrou no mês',
+    rodape: `Mapa Burger — Relatório do mês ${mesLabel}`,
+    arquivo: `Mapa-Burger_relatorio-mensal_${m}-${ano}.pdf`,
+    periodoFrase: 'o mês',
+    colunaAtual: 'Este mês',
+    colunaAnterior: 'Mês anterior',
+    valesNo: 'no mês',
+  }
+  let y = cabecalhoComLogo(doc, margem, textos.titulo, textos.subtitulo)
 
   const quebra = criarQuebra(doc)
   const garantir = (altura: number) => {
@@ -322,7 +384,7 @@ export async function gerarPdfMensal(params: {
 
   // Resultado do mês
   const situacao = situacaoDoCaixa(totalDiferenca)
-  y = faixaSituacao(doc, margem, y, larguraUtil, linhas.length ? `NO MÊS: ${situacao.titulo}` : 'SEM FECHAMENTOS NO MÊS', linhas.length ? situacao.status : null)
+  y = faixaSituacao(doc, margem, y, larguraUtil, linhas.length ? `${textos.prefixo}: ${situacao.titulo}` : 'SEM FECHAMENTOS NO PERÍODO', linhas.length ? situacao.status : null)
 
   // Cards
   const cards = [
@@ -338,9 +400,9 @@ export async function gerarPdfMensal(params: {
   y += 24
 
   // Resumo em frases
-  y = tituloSecaoPdf(doc, 'Resumo do mês', y, margem, larguraUtil)
-  const frases = resumoDoMes({ dias: linhas, diasSemFechamento: diasSemFechamento.length, totalMarmitas: totalMarmitasMes })
-  if (totalVales != null && totalVales > 0) frases.push(`Vales (adiantamentos de salário) no mês: ${formatarMoeda(totalVales)}.`)
+  y = tituloSecaoPdf(doc, textos.resumo, y, margem, larguraUtil)
+  const frases = resumoDoMes({ dias: linhas, diasSemFechamento: diasSemFechamento.length, totalMarmitas: totalMarmitasMes, periodo: textos.periodoFrase })
+  if (totalVales != null && totalVales > 0) frases.push(`Vales (adiantamentos de salário) ${textos.valesNo}: ${formatarMoeda(totalVales)}.`)
   y = listaComMarcadores(doc, frases, margem, y + 1, larguraUtil, quebra)
   y += 3
 
@@ -360,8 +422,8 @@ export async function gerarPdfMensal(params: {
       margin: { left: margem, right: margem },
       head: [[
         'Indicador',
-        { content: 'Este mês', styles: { halign: 'right' } },
-        { content: 'Mês anterior', styles: { halign: 'right' } },
+        { content: textos.colunaAtual, styles: { halign: 'right' } },
+        { content: textos.colunaAnterior, styles: { halign: 'right' } },
         { content: 'Variação', styles: { halign: 'right' } },
       ]],
       body: comparacao.linhas,
@@ -385,13 +447,19 @@ export async function gerarPdfMensal(params: {
     y = tituloSecaoPdf(doc, 'Vendas por dia', y, margem, larguraUtil)
     y = desenharColunas(doc, grafico, margem, y + 1, larguraUtil, 48)
     y += 4
+    if (grafico.dias.some((d) => d.diferenca !== undefined && Math.abs(d.diferenca) >= 0.005)) {
+      garantir(56)
+      y = tituloSecaoPdf(doc, 'Sobra e falta por dia', y, margem, larguraUtil)
+      y = desenharSobraFalta(doc, grafico.dias, margem, y + 1, larguraUtil, 38)
+      y += 4
+    }
   }
 
   // Formas de pagamento
   const pagamentos = formasDePagamento(fechamentos)
   if (pagamentos.length > 0) {
     garantir(16 + pagamentos.length * 7.5)
-    y = tituloSecaoPdf(doc, 'Como o dinheiro entrou no mês', y, margem, larguraUtil)
+    y = tituloSecaoPdf(doc, textos.dinheiro, y, margem, larguraUtil)
     y = desenharBarras(doc, pagamentos, margem, y, larguraUtil)
     y += 4
   }
@@ -458,8 +526,8 @@ export async function gerarPdfMensal(params: {
     y += linhasTexto.length * 4.6
   }
 
-  rodapePaginas(doc, margem, `Mapa Burger — Relatório do mês ${mesLabel}`)
-  return entregarPdf(doc, `Mapa-Burger_relatorio-mensal_${m}-${ano}.pdf`, compartilhar)
+  rodapePaginas(doc, margem, textos.rodape)
+  return entregarPdf(doc, textos.arquivo, compartilhar)
 }
 
 // ============================================================
@@ -645,7 +713,7 @@ function desenharBarras(doc: jsPDF, itens: ItemPagamento[], x: number, y: number
  */
 function desenharColunas(
   doc: jsPDF,
-  g: { dias: { data: string; vendas: number | null }[]; mediaAtual: number; mediaAnterior?: number | null; rotuloAnterior?: string },
+  g: { dias: { data: string; vendas: number | null }[]; mediaAtual: number; mediaAnterior?: number | null; rotuloAnterior?: string; rotuloMedia?: string },
   x: number,
   y: number,
   largura: number,
@@ -676,7 +744,7 @@ function desenharColunas(
 
   // colunas
   const slot = larguraPlot / Math.max(g.dias.length, 1)
-  const larguraBarra = Math.max(0.8, slot - 0.8)
+  const larguraBarra = Math.min(8, Math.max(0.8, slot - 0.8)) // no máximo 8 mm, mesmo com poucos dias
   g.dias.forEach((d, i) => {
     const xb = x + esq + slot * i + (slot - larguraBarra) / 2
     if (d.vendas && d.vendas > 0) {
@@ -690,10 +758,12 @@ function desenharColunas(
       doc.line(xb + larguraBarra / 2, yv(0) - 1.2, xb + larguraBarra / 2, yv(0))
     }
     const dia = Number(d.data.slice(8, 10))
-    if (dia === 1 || dia % 5 === 0) {
+    const poucos = g.dias.length <= 7
+    if (poucos || dia === 1 || dia % 5 === 0) {
       doc.setTextColor(150)
       doc.setFontSize(7)
-      doc.text(String(dia), x + esq + slot * i + slot / 2, y + altura - 1.5, { align: 'center' })
+      const rotulo = poucos ? `${DIAS_CURTOS[diaSemanaNumero(d.data)]} ${dia}` : String(dia)
+      doc.text(rotulo, x + esq + slot * i + slot / 2, y + altura - 1.5, { align: 'center' })
     }
   })
 
@@ -719,16 +789,86 @@ function desenharColunas(
   lx += 30
   if (g.mediaAtual > 0) {
     linhaMediaLegenda(doc, lx, ly - 1, 40, [2, 1.2])
-    doc.text(`Média do mês ${formatarMoeda(g.mediaAtual)}`, lx + 8, ly)
+    doc.text(`${g.rotuloMedia ?? 'Média do mês'} ${formatarMoeda(g.mediaAtual)}`, lx + 8, ly)
     lx += 58
   }
   if (g.mediaAnterior) {
     linhaMediaLegenda(doc, lx, ly - 1, 150, [0.6, 1])
-    doc.text(`Média de ${g.rotuloAnterior ?? 'mês anterior'} ${formatarMoeda(g.mediaAnterior)}`, lx + 8, ly)
+    const ant = g.rotuloAnterior ?? 'mês anterior'
+    doc.text(`Média ${/^semana/.test(ant) ? 'da' : 'de'} ${ant} ${formatarMoeda(g.mediaAnterior)}`, lx + 8, ly)
   }
   doc.setTextColor(0)
   ly += 3
   return ly
+}
+
+/** Sobra (azul, para cima) e falta (vermelho, para baixo) de cada dia. */
+function desenharSobraFalta(
+  doc: jsPDF,
+  dias: { data: string; vendas: number | null; diferenca?: number }[],
+  x: number,
+  y: number,
+  largura: number,
+  altura: number,
+): number {
+  const esq = 14
+  const base = 6
+  const larguraPlot = largura - esq
+  const alturaPlot = altura - base
+  const maior = Math.max(...dias.map((d) => Math.abs(d.diferenca ?? 0)), 1)
+  const meio = y + alturaPlot / 2
+  const yv = (v: number) => meio - (v / maior) * (alturaPlot / 2)
+  const AZUL: [number, number, number] = [42, 120, 214]
+  const VERMELHO: [number, number, number] = [227, 73, 72]
+  const fmt = (v: number) => {
+    const a = Math.abs(v)
+    return `${v < 0 ? '-' : v > 0 ? '+' : ''}${a >= 1000 ? `${(a / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil` : Math.round(a)}`
+  }
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7)
+  for (const v of [maior, 0, -maior]) {
+    doc.setDrawColor(v === 0 ? 190 : 232)
+    doc.setLineWidth(v === 0 ? 0.3 : 0.15)
+    doc.line(x + esq, yv(v), x + largura, yv(v))
+    doc.setTextColor(150)
+    doc.text(v === 0 ? '0' : fmt(v), x + esq - 1.5, yv(v) + 1, { align: 'right' })
+  }
+  const slot = larguraPlot / Math.max(dias.length, 1)
+  const barra = Math.min(6.4, Math.max(0.8, slot - 0.8))
+  const poucos = dias.length <= 7
+  dias.forEach((d, i) => {
+    const xb = x + esq + slot * i + (slot - barra) / 2
+    const v = d.diferenca
+    if (v !== undefined && d.vendas !== null && Math.abs(v) >= 0.005) {
+      const h = Math.max(0.4, Math.abs(yv(v) - meio))
+      doc.setFillColor(...(v > 0 ? AZUL : VERMELHO))
+      doc.rect(xb, v > 0 ? meio - h : meio, barra, h, 'F')
+    } else if (v !== undefined && d.vendas !== null) {
+      doc.setFillColor(22, 130, 70)
+      doc.circle(xb + barra / 2, meio, 0.6, 'F')
+    }
+    const dia = Number(d.data.slice(8, 10))
+    if (poucos || dia === 1 || dia % 5 === 0) {
+      doc.setTextColor(150)
+      doc.setFontSize(7)
+      doc.text(poucos ? `${DIAS_CURTOS[diaSemanaNumero(d.data)]} ${dia}` : String(dia), x + esq + slot * i + slot / 2, y + altura - 1.5, { align: 'center' })
+    }
+  })
+  const ly = y + altura + 4.5
+  let lx = x + esq
+  doc.setFontSize(8)
+  doc.setTextColor(90)
+  for (const [cor, texto] of [[AZUL, 'Sobrou'], [VERMELHO, 'Faltou']] as const) {
+    doc.setFillColor(...cor)
+    doc.rect(lx, ly - 2.4, 2.6, 2.6, 'F')
+    doc.text(texto, lx + 4, ly)
+    lx += 22
+  }
+  doc.setFillColor(22, 130, 70)
+  doc.circle(lx + 1.3, ly - 1.1, 0.9, 'F')
+  doc.text('Fechou certinho', lx + 4, ly)
+  doc.setTextColor(0)
+  return ly + 3
 }
 
 function linhaMediaLegenda(doc: jsPDF, x: number, y: number, cor: number, padrao: number[]) {

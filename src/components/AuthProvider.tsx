@@ -69,6 +69,23 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw new Error(traduzirErroLogin(error))
   }, [])
 
+  const enviarRedefinicao = useCallback(async (email: string) => {
+    const limpo = email.trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(limpo)) throw new Error('Digite um e-mail válido.')
+    const { error } = await supabase.auth.resetPasswordForEmail(limpo, {
+      redirectTo: `${window.location.origin}/redefinir-senha`,
+    })
+    // Por segurança, a tela não diz se o e-mail existe ou não; só repassa limite/erro de rede.
+    if (error && /rate|seconds|security purposes|fetch|network/i.test(error.message)) {
+      throw new Error(traduzirErroLogin(error))
+    }
+  }, [])
+
+  const entrarComLinkDeRecuperacao = useCallback(async (accessToken: string, refreshToken: string) => {
+    const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+    if (error) throw new Error(traduzirErroLogin(error))
+  }, [])
+
   const valor = useMemo<EstadoAuth>(
     () => ({
       carregando,
@@ -78,8 +95,10 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       entrar,
       sair,
       trocarSenha,
+      enviarRedefinicao,
+      entrarComLinkDeRecuperacao,
     }),
-    [carregando, sessao, autorizado, entrar, sair, trocarSenha],
+    [carregando, sessao, autorizado, entrar, sair, trocarSenha, enviarRedefinicao, entrarComLinkDeRecuperacao],
   )
 
   return <AuthContext.Provider value={valor}>{children}</AuthContext.Provider>

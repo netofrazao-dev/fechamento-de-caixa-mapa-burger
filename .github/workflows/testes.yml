@@ -1,0 +1,91 @@
+# Testes automáticos: rodam a cada pull request e a cada mudança no main.
+# Se algo quebrar, o GitHub mostra um X vermelho no PR antes do merge.
+name: Testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: testes-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: App (lint, testes e build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Testes automáticos (contas, vales, acerto, semanas...)
+        run: npm test
+      - name: Build
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://exemplo.supabase.co
+          VITE_SUPABASE_ANON_KEY: chave-de-teste
+
+  banco:
+    name: Banco de dados (migrações e regras de segurança)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Todas as migrações (2x) + testes do banco
+        run: bash supabase/testes/rodar.sh
+
+  navegador:
+    name: Telas no navegador
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Navegador de teste
+        run: |
+          npm i --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+          sudo apt-get update -q && sudo apt-get install -y -q poppler-utils
+      - name: Roteiros (login, fechamento, vales, acerto, semana, senha, gráficos...)
+        run: bash e2e/rodar.sh e2e/.saida
+      - name: Prints das telas (se falhar, ajudam a ver o que aconteceu)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prints-das-telas
+          path: e2e/.saida
+          retention-days: 7

@@ -14,6 +14,8 @@ interface Props {
   mediaAtual: number
   mediaAnterior?: number | null
   rotuloAnterior?: string
+  /** Texto da linha de média deste período (ex.: "Média da semana"). */
+  rotuloMedia?: string
 }
 
 const L = 360 // largura do desenho (viewBox)
@@ -41,7 +43,13 @@ function escala(maximo: number): { topo: number; passo: number } {
  * Colunas: vendas de cada dia do mês (uma cor só), com linhas de média
  * deste mês e do mês anterior. Toque/passe o mouse numa coluna pra ver o valor.
  */
-export default function GraficoVendasDia({ dias, mediaAtual, mediaAnterior, rotuloAnterior = 'mês anterior' }: Props) {
+export default function GraficoVendasDia({
+  dias,
+  mediaAtual,
+  mediaAnterior,
+  rotuloAnterior = 'mês anterior',
+  rotuloMedia = 'Média do mês',
+}: Props) {
   const id = useId()
   const [ativo, setAtivo] = useState<number | null>(null)
 
@@ -52,7 +60,8 @@ export default function GraficoVendasDia({ dias, mediaAtual, mediaAnterior, rotu
   const largPlot = L - M.esq - M.dir
   const altPlot = A - M.topo - M.base
   const slot = largPlot / Math.max(dias.length, 1)
-  const larguraBarra = Math.max(3, slot - 2) // 2px de espaço entre colunas
+  const larguraBarra = Math.min(24, Math.max(3, slot - 2)) // 2px de espaço; no máximo 24px
+  const poucos = dias.length <= 7
   const y = (v: number) => M.topo + altPlot - (v / topo) * altPlot
   const linhasGrade = Array.from({ length: Math.round(topo / passo) + 1 }, (_, i) => i * passo)
   const diaAtivo = ativo !== null ? dias[ativo] : null
@@ -80,7 +89,8 @@ export default function GraficoVendasDia({ dias, mediaAtual, mediaAnterior, rotu
         {dias.map((d, i) => {
           const x = M.esq + slot * i + (slot - larguraBarra) / 2
           const dia = Number(d.data.slice(8, 10))
-          const mostrarRotulo = dia === 1 || dia % 5 === 0
+          const mostrarRotulo = poucos || dia === 1 || dia % 5 === 0
+          const rotuloX = poucos ? `${DIAS_CURTOS[new Date(`${d.data}T12:00:00`).getDay()]} ${dia}` : String(dia)
           return (
             <g key={d.data}>
               {d.vendas !== null && d.vendas > 0 && (
@@ -99,7 +109,7 @@ export default function GraficoVendasDia({ dias, mediaAtual, mediaAnterior, rotu
               )}
               {mostrarRotulo && (
                 <text x={M.esq + slot * i + slot / 2} y={A - 8} textAnchor="middle" className="fill-gray-400 dark:fill-gray-500" fontSize={8}>
-                  {dia}
+                  {rotuloX}
                 </text>
               )}
               {/* área de toque maior que a coluna */}
@@ -141,7 +151,7 @@ export default function GraficoVendasDia({ dias, mediaAtual, mediaAnterior, rotu
         </span>
         {mediaAtual > 0 && (
           <span className="flex items-center gap-1.5">
-            <span className="inline-block w-4 border-t-[1.5px] border-dashed border-gray-800 dark:border-gray-200" /> Média do mês {formatarMoeda(mediaAtual)}
+            <span className="inline-block w-4 border-t-[1.5px] border-dashed border-gray-800 dark:border-gray-200" /> {rotuloMedia} {formatarMoeda(mediaAtual)}
           </span>
         )}
         {mediaAnterior ? (

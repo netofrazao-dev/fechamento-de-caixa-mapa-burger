@@ -30,6 +30,7 @@ import type { GrupoValesPdf } from '../lib/pdf'
 import { carregarPdf } from '../lib/pdfSobDemanda'
 import { baixarArquivo } from '../lib/arquivos'
 import AbasPessoal from '../components/AbasPessoal'
+import BarrasHorizontais from '../components/graficos/BarrasHorizontais'
 import { mesLocal } from '../lib/datas'
 import {
   agruparPorFuncionario,
@@ -391,6 +392,17 @@ export default function Vales() {
               </button>
             </div>
           </div>
+
+          {grupos.length > 1 && (
+            <section className={`${caixa} p-4 space-y-3`}>
+              <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Quem pegou mais vale</h2>
+              <BarrasHorizontais
+                itens={[...grupos].sort((a, b) => b.total - a.total).map((g) => ({ rotulo: g.funcionario, valor: g.total, detalhe: `${g.quantidade} vale(s)` }))}
+                porcentagem
+                descricao="Total de vales do mês por funcionário"
+              />
+            </section>
+          )}
 
           {/* Situação do mês: aberto / fechado */}
           <section className={`${caixa} p-4 space-y-3`}>

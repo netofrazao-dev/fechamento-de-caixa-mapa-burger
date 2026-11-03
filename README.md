@@ -95,6 +95,19 @@ relatório, vale). O service worker guarda só os arquivos do app — nunca dado
   andamento, com os mesmos dias), gráfico de vendas por dia com médias, formas de pagamento,
   dia a dia e pratos. Botão **Enviar** no celular.
 
+## Esqueci minha senha
+Na tela de login, **Esqueci minha senha** manda um link por e-mail; o link abre
+`/redefinir-senha`, onde a pessoa cria a senha nova. Precisa, no Supabase:
+- **Authentication → URL Configuration:** *Site URL* = endereço do sistema na Vercel e, em
+  *Redirect URLs*, `https://SEU-ENDERECO/redefinir-senha`.
+- O e-mail padrão do Supabase grátis só entrega para e-mails da equipe do projeto e tem limite
+  por hora. Para outras pessoas receberem, configure um SMTP em Authentication → Emails.
+
+## Relatório semanal
+Menu **Resumos → Semana**: semana de segunda a domingo, comparada com a semana passada (na
+semana em andamento, com os mesmos dias), gráficos de vendas e de sobra/falta, formas de
+pagamento, pratos, dia a dia e PDF (botão Enviar no celular).
+
 ## Segurança
 - **Login obrigatório** (e-mail e senha do Supabase) + lista de e-mails autorizados no banco.
 - **Regras no banco (RLS):** sem login autorizado o banco não mostra nem aceita nada; histórico,
@@ -121,7 +134,16 @@ relatório, vale). O service worker guarda só os arquivos do app — nunca dado
   tema e Sair.
 
 ## Testes
-- `npm test` roda os testes automáticos (cálculos do caixa, conferências, valores em reais, datas, vales).
+Rodam sozinhos no GitHub a cada pull request e a cada mudança no `main`
+(`.github/workflows/testes.yml`, aba **Actions**). São três partes:
+- **App:** `npm run lint`, `npm test` (contas do caixa, conferências, valores em reais, datas,
+  vales, acerto, semanas, comparações, link de senha) e `npm run build`.
+- **Banco:** `bash supabase/testes/rodar.sh` roda todas as migrações duas vezes num Postgres limpo
+  e confere as regras (quem sem login não vê nada, contas do fechamento, vales, acerto, cópias).
+  Localmente, use as variáveis `PGHOST`, `PGUSER` etc. do `psql`.
+- **Navegador:** `bash e2e/rodar.sh` abre o app num navegador com um Supabase simulado e percorre
+  login, fechamento, vales, acerto, relatórios, semana, esqueci a senha e gráficos (relógio fixo
+  em 03/11/2026, pra dar o mesmo resultado todo dia). Precisa do pacote `playwright`.
 
 ## Vales (adiantamento de salário)
 O total de cada funcionário no mês é o que será descontado do salário, então essa parte
