@@ -76,3 +76,9 @@ export function formatarDataHora(iso: string): string {
     minute: '2-digit',
   })
 }
+
+/** Dia anterior de uma data YYYY-MM-DD ("2026-11-01" -> "2026-10-31"). */
+export function diaAnterior(iso: string): string {
+  const [a, m, d] = iso.split('-').map(Number)
+  return dataLocal(new Date(a, m - 1, d - 1))
+}

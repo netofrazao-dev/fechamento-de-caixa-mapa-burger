@@ -13,6 +13,8 @@ import { mesValido, nomeMes, rotuloMes, somarMeses, somarValores } from '../lib/
 import { CaixaErro } from '../components/Avisos'
 import type { Fechamento, RelatorioDiario } from '../types/fechamento'
 import { datasEntre, formatarDiaMes, hojeLocal, limitesDoMes, mesLocal } from '../lib/datas'
+import { compararMeses, fraseComparacao, variacao, type Variacao } from '../lib/comparacao'
+import GraficoVendasDia, { type DiaGrafico } from '../components/GraficoVendasDia'
 
 function agruparPorDia(fechamentos: Fechamento[]): (LinhaRelatorioMensal & { fechamentoId: string })[] {
   const porDia = new Map<string, Fechamento[]>()
@@ -40,6 +42,19 @@ interface DadosMes {
   fechamentos: Fechamento[]
   relatorios: RelatorioDiario[]
   totalVales: number | null
+  fechamentosAnterior: Fechamento[]
+}
+
+/** Selo de variação: verde quando é bom, vermelho quando é ruim, cinza sem base. */
+function SeloVariacao({ v, menorEhMelhor }: { v: Variacao; menorEhMelhor?: boolean }) {
+  if (v.sentido === 'sem-base') return <span className="text-[11px] text-gray-400">sem base</span>
+  if (v.sentido === 'igual') return <span className="text-[11px] text-gray-500">= igual</span>
+  const bom = menorEhMelhor ? v.sentido === 'caiu' : v.sentido === 'subiu'
+  return (
+    <span className={`text-[11px] font-semibold ${bom ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+      {v.sentido === 'subiu' ? '▲' : '▼'} {v.texto}
+    </span>
+  )
 }
 
 export default function RelatorioMensal() {
@@ -62,9 +77,14 @@ export default function RelatorioMensal() {
       listarValesDoMes(mes)
         .then((vs) => somarValores(vs.filter((v) => !v.excluidoEm).map((v) => v.valor)))
         .catch(() => null),
+      // Mês anterior, para comparar (se falhar, só não mostra a comparação).
+      (() => {
+        const ant = limitesDoMes(somarMeses(mes, -1))
+        return listarFechamentos({ dataInicio: ant.inicio, dataFim: ant.fim }).catch(() => [] as Fechamento[])
+      })(),
     ])
-      .then(([fechamentos, relatorios, totalVales]) => {
-        if (ativo) setDados({ mes, fechamentos, relatorios, totalVales })
+      .then(([fechamentos, relatorios, totalVales, fechamentosAnterior]) => {
+        if (ativo) setDados({ mes, fechamentos, relatorios, totalVales, fechamentosAnterior })
       })
       .catch((e) => {
         if (ativo) setErro({ mes, mensagem: mensagemErro(e, 'Erro ao carregar o relatório do mês.') })
@@ -105,8 +125,24 @@ export default function RelatorioMensal() {
     setErroPdf(null)
     try {
       const pdf = await carregarPdf()
+      const mediaAtual = linhas.length ? Math.round((resumo.caixa / linhas.length) * 100) / 100 : 0
       await pdf.gerarPdfMensal({
         compartilhar,
+        grafico: { dias: diasGrafico, mediaAtual, mediaAnterior: comparacao?.mediaDiaAnteriorMesInteiro || null, rotuloAnterior: nomeAnterior },
+        comparacao:
+          comparacao && comparacao.anterior.vendas > 0
+            ? {
+                titulo: `Comparado com ${nomeAnterior}`,
+                frase: fraseComparacao(comparacao, nomeAnterior),
+                linhas: [
+                  ['Vendas no caixa', formatarMoeda(comparacao.atual.vendas), formatarMoeda(comparacao.anterior.vendas), variacao(comparacao.atual.vendas, comparacao.anterior.vendas).texto],
+                  ['Média por dia', formatarMoeda(comparacao.atual.mediaDia), formatarMoeda(comparacao.anterior.mediaDia), variacao(comparacao.atual.mediaDia, comparacao.anterior.mediaDia).texto],
+                  ['Diferença (sobra/falta)', formatarMoeda(comparacao.atual.diferenca), formatarMoeda(comparacao.anterior.diferenca), ''],
+                  ['Dias que faltou', String(comparacao.atual.diasFaltou), String(comparacao.anterior.diasFaltou), variacao(comparacao.atual.diasFaltou, comparacao.anterior.diasFaltou).texto],
+                  ['Marmitas vendidas', String(comparacao.atual.marmitas), String(comparacao.anterior.marmitas), variacao(comparacao.atual.marmitas, comparacao.anterior.marmitas).texto],
+                ],
+              }
+            : null,
         mes,
         linhas,
         vendasPorPrato,
@@ -119,6 +155,26 @@ export default function RelatorioMensal() {
   }
 
   const maxPrato = vendasPorPrato[0]?.[1] ?? 0
+  const nomeAnterior = nomeMes(somarMeses(mes, -1)).split(' de ')[0]
+  const hoje = hojeLocal()
+  const comparacao = useMemo(
+    () => (atual ? compararMeses({ mes, fechamentos: atual.fechamentos, fechamentosAnterior: atual.fechamentosAnterior, hoje }) : null),
+    [atual, mes, hoje],
+  )
+  const diasGrafico = useMemo<DiaGrafico[]>(() => {
+    const { inicio, fim } = limitesDoMes(mes)
+    const ate = fim < hoje ? fim : hoje
+    const porData = new Map(linhas.map((l) => [l.data, l]))
+    return datasEntre(inicio, fim).map((d) => {
+      const l = porData.get(d)
+      return {
+        data: d,
+        vendas: l ? l.totalCaixaDia : d <= ate ? null : 0,
+        diferenca: l?.diferencaFinalDia,
+        status: l ? (Math.abs(l.diferencaFinalDia) < 0.005 ? 'fechou' : l.diferencaFinalDia > 0 ? 'sobrou' : 'faltou') : undefined,
+      }
+    })
+  }, [linhas, mes, hoje])
   const podeCompartilhar = podeCompartilharArquivos()
   const nome = nomeMes(mes)
 
@@ -212,6 +268,46 @@ export default function RelatorioMensal() {
               </Link>
             )}
           </section>
+
+          {comparacao && linhas.length > 0 && (
+            <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-3">
+              <div>
+                <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Comparado com {nomeAnterior}</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{fraseComparacao(comparacao, nomeAnterior)}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { rotulo: 'Vendas', atual: formatarMoeda(comparacao.atual.vendas), antes: formatarMoeda(comparacao.anterior.vendas), v: variacao(comparacao.atual.vendas, comparacao.anterior.vendas) },
+                  { rotulo: 'Média por dia', atual: formatarMoeda(comparacao.atual.mediaDia), antes: formatarMoeda(comparacao.anterior.mediaDia), v: variacao(comparacao.atual.mediaDia, comparacao.anterior.mediaDia) },
+                  { rotulo: 'Marmitas', atual: String(comparacao.atual.marmitas), antes: String(comparacao.anterior.marmitas), v: variacao(comparacao.atual.marmitas, comparacao.anterior.marmitas) },
+                  { rotulo: 'Dias que faltou', atual: String(comparacao.atual.diasFaltou), antes: String(comparacao.anterior.diasFaltou), v: variacao(comparacao.atual.diasFaltou, comparacao.anterior.diasFaltou), menor: true },
+                ].map((k) => (
+                  <div key={k.rotulo} className="rounded-xl bg-gray-50 dark:bg-gray-800 p-3">
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">{k.rotulo}</p>
+                    <p className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{k.atual}</p>
+                    <p className="text-[11px] text-gray-400 tabular-nums">antes {k.antes}</p>
+                    <SeloVariacao v={k.v} menorEhMelhor={k.menor} />
+                  </div>
+                ))}
+              </div>
+              {comparacao.ateDia && (
+                <p className="text-[11px] text-gray-400">Mês em andamento: comparando os dias 1 a {comparacao.ateDia} dos dois meses.</p>
+              )}
+            </section>
+          )}
+
+          {linhas.length > 0 && (
+            <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-2">
+              <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Vendas por dia</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1">Toque numa coluna para ver o valor do dia.</p>
+              <GraficoVendasDia
+                dias={diasGrafico}
+                mediaAtual={resumo.caixa && linhas.length ? Math.round((resumo.caixa / linhas.length) * 100) / 100 : 0}
+                mediaAnterior={comparacao?.mediaDiaAnteriorMesInteiro || null}
+                rotuloAnterior={`de ${nomeAnterior}`}
+              />
+            </section>
+          )}
 
           {resumo.semFechamento.length > 0 && (
             <section className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 space-y-2">

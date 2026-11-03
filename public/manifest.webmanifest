@@ -1,0 +1,23 @@
+{
+  "name": "Mapa Burger — Fechamento de Caixa",
+  "short_name": "Mapa Burger",
+  "description": "Fechamento de caixa, relatórios, vales e acerto do mês do Mapa Burger.",
+  "lang": "pt-BR",
+  "id": "/hoje",
+  "start_url": "/hoje",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f5f7",
+  "theme_color": "#f4f5f7",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Fechar o caixa", "short_name": "Fechar caixa", "url": "/novo", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Relatório do dia", "short_name": "Relatório", "url": "/relatorios/novo", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Lançar vale", "short_name": "Vale", "url": "/vales/novo", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

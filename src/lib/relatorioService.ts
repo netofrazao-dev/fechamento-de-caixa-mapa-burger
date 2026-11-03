@@ -55,7 +55,12 @@ const texto = (v: string, max: number) => (v ?? '').trim().slice(0, max)
 
 function limparConsumo(itens: ConsumoItem[]): ConsumoItem[] {
   return itens
-    .map((c) => ({ pessoa: texto(c.pessoa, 80), item: texto(c.item, 120), valor: dinheiro(c.valor) }))
+    .map((c) => ({
+      pessoa: texto(c.pessoa, 80),
+      item: texto(c.item, 120),
+      valor: dinheiro(c.valor),
+      ...(c.funcionarioId ? { funcionarioId: c.funcionarioId } : {}),
+    }))
     .filter((c) => c.pessoa || c.item || c.valor > 0)
 }
 
@@ -130,10 +135,17 @@ export async function criarRelatorio(input: RelatorioDiarioInput): Promise<Relat
   return rowToRelatorio(data as unknown as RelatorioRow)
 }
 
-export async function atualizarRelatorio(id: string, input: RelatorioDiarioInput): Promise<RelatorioDiario> {
+export async function atualizarRelatorio(
+  id: string,
+  input: RelatorioDiarioInput,
+  opts?: { manterConsumoFuncionarios?: boolean },
+): Promise<RelatorioDiario> {
+  const linha: Partial<ReturnType<typeof inputToRow>> = inputToRow(input)
+  // Acerto do mês fechado: não reenvia o consumo (o banco recusaria qualquer mudança nele).
+  if (opts?.manterConsumoFuncionarios) delete linha.consumo_loja_mensal
   const { data, error } = await supabase
     .from('relatorios')
-    .update(inputToRow(input))
+    .update(linha)
     .eq('id', id)
     .select('*')
     .single()

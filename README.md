@@ -34,6 +34,8 @@ a chave pública que fica dentro do app não abre mais nada.
 
 **E. Cópias de segurança automáticas:** rode `migration_v6_copias_seguranca.sql` (depois da v4 e da v5).
 
+**F. Acerto do mês:** rode `migration_v7_acerto_mes.sql` (depois da v4).
+
 Para incluir alguém depois: crie o login (passo B) e rode
 `insert into public.usuarios_autorizados (email, nome) values ('email@exemplo.com', 'Nome');`
 Para tirar o acesso: `update public.usuarios_autorizados set ativo = false where email = '...';`
@@ -55,6 +57,27 @@ registra a verificação na tabela `sistema_verificacoes`. Ela não devolve nenh
   longo; aí só a própria Vercel consegue chamar a função.
 - De 3 em 3 dias, e não de 5 em 5: se uma chamada falhar, a seguinte ainda acontece antes dos 7 dias.
 
+## Acerto do mês (vales + consumo)
+Aba **Vales → Acerto do mês**: para cada funcionário, **vales + consumo na loja = total a descontar
+do salário**. O consumo vem da seção "Consumo de funcionários" do relatório do dia, onde o
+funcionário é escolhido numa lista (não digitado).
+- Consumo antigo com nome que não bate com o cadastro aparece em destaque, com um seletor
+  para corrigir; o acerto só fecha quando tudo estiver ligado a alguém.
+- **Fechar acerto** (depois de descontar na folha) grava o total de cada um e trava o mês:
+  vales (o mês dos vales fecha junto) e consumo de funcionários não mudam mais — o próprio banco
+  recusa. Reabrir exige motivo e fica no histórico.
+- PDF com resumo + uma folha por funcionário com declaração e assinatura; planilha (CSV).
+
+## Tela Hoje
+É a tela inicial: mostra se o fechamento e o relatório de hoje já foram feitos, o que ficou
+pendente (ontem sem fechamento/relatório, acerto do mês anterior aberto, cópia de segurança), o
+mês até agora comparado com os mesmos dias do mês anterior e os vales do mês.
+
+## App no celular
+O sistema é instalável (PWA): no Android aparece "Instalar app" (tela Hoje e menu); no iPhone,
+Compartilhar → Adicionar à Tela de Início. Abre em tela cheia, com atalhos (fechar caixa,
+relatório, vale). O service worker guarda só os arquivos do app — nunca dados do Supabase.
+
 ## Cópias de segurança
 - **Automáticas:** a cada verificação da Vercel (3 em 3 dias) o banco guarda uma cópia completa
   (sem os prints) na tabela `copias_seguranca`; ficam as 10 mais recentes (~30 dias). Ninguém
@@ -68,7 +91,9 @@ registra a verificação na tabela `sistema_verificacoes`. Ela não devolve nenh
 - **Relatório do dia (PDF WhatsApp):** página 1 em linguagem simples (resultado do caixa numa frase,
   como o dinheiro entrou, destaques do dia, marmitas); depois os detalhes para conferência e os prints.
   No celular, o botão abre direto o "Compartilhar" (WhatsApp).
-- **Relatório do mês:** resumo em frases, formas de pagamento, dia a dia e pratos. Botão **Enviar** no celular.
+- **Relatório do mês:** resultado, resumo em frases, comparação com o mês anterior (no mês em
+  andamento, com os mesmos dias), gráfico de vendas por dia com médias, formas de pagamento,
+  dia a dia e pratos. Botão **Enviar** no celular.
 
 ## Segurança
 - **Login obrigatório** (e-mail e senha do Supabase) + lista de e-mails autorizados no banco.

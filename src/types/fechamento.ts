@@ -108,6 +108,8 @@ export interface ConsumoItem {
   pessoa: string
   item: string
   valor: number
+  /** Id do funcionário no cadastro (consumo loja mensal). Nos antigos pode faltar. */
+  funcionarioId?: string | null
 }
 
 /** Quantidade de um produto contado no estoque. */
@@ -247,4 +249,30 @@ export interface HistoricoVale {
   antes: Record<string, unknown> | null
   depois: Record<string, unknown> | null
   detalhe: string | null
+}
+
+// ============================================================
+// Acerto do mês: vales + consumo da loja = total a descontar
+// ============================================================
+
+/** Resumo de um funcionário gravado quando o acerto é fechado. */
+export interface ResumoAcerto {
+  funcionarioId: string | null
+  funcionario: string
+  vales: number
+  qtdVales: number
+  consumo: number
+  qtdConsumo: number
+  total: number
+}
+
+export interface AcertoFechado {
+  mes: string // YYYY-MM
+  fechadoEm: string
+  total: number
+  totalVales: number
+  totalConsumo: number
+  resumo: ResumoAcerto[]
+  observacao: string | null
+  usuario: string | null
 }

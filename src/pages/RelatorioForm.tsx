@@ -15,6 +15,9 @@ import { formatarMoeda, totalMarmitas } from '../lib/calculations'
 import CampoMoeda from '../components/CampoMoeda'
 import { BotaoExcluir, CaixaErro } from '../components/Avisos'
 import { dataValida } from '../lib/vales'
+import { listarFuncionarios } from '../lib/funcionarioService'
+import { buscarAcerto } from '../lib/acertoService'
+import type { Funcionario } from '../types/fechamento'
 import { formatarHoraRascunho } from '../lib/draft'
 import { useRascunho } from '../lib/useRascunho'
 import Secao from '../components/Secao'
@@ -77,6 +80,27 @@ export default function RelatorioForm() {
   const [info, setInfo] = useState<string | null>(null)
   const salvandoRef = useRef(false)
   const alertasRef = useRef<HTMLDivElement>(null)
+  const [funcionarios, setFuncionarios] = useState<Funcionario[] | undefined>(undefined)
+  const [acertoFechado, setAcertoFechado] = useState<{ mes: string; fechado: boolean } | null>(null)
+
+  useEffect(() => {
+    listarFuncionarios({ incluirInativos: true })
+      .then(setFuncionarios)
+      .catch(() => setFuncionarios(undefined))
+  }, [])
+
+  const mesDoRelatorio = dataValida(data) ? data.slice(0, 7) : null
+  useEffect(() => {
+    if (!mesDoRelatorio) return
+    let ativo = true
+    buscarAcerto(mesDoRelatorio)
+      .then((a) => ativo && setAcertoFechado({ mes: mesDoRelatorio, fechado: Boolean(a) }))
+      .catch(() => ativo && setAcertoFechado({ mes: mesDoRelatorio, fechado: false }))
+    return () => {
+      ativo = false
+    }
+  }, [mesDoRelatorio])
+  const consumoTravado = acertoFechado?.mes === mesDoRelatorio && acertoFechado?.fechado === true
 
   function aplicarRelatorio(r: Awaited<ReturnType<typeof buscarRelatorioPorId>>) {
     setData(r.data)
@@ -180,7 +204,9 @@ export default function RelatorioForm() {
         mostrarAlertas()
         return
       }
-      const salvo = id ? await atualizarRelatorio(id, payload()) : await criarRelatorio(payload())
+      const salvo = id
+        ? await atualizarRelatorio(id, payload(), { manterConsumoFuncionarios: consumoTravado })
+        : await criarRelatorio(payload())
       rascunho.limpar()
       if (id) {
         aplicarRelatorio(salvo)
@@ -362,11 +388,23 @@ export default function RelatorioForm() {
       </Secao>
 
       <Secao
-        titulo="Consumo loja mensal"
-        resumo={`${consumoLojaMensal.length} lançamento(s)`}
-        ajuda="O que funcionário consumiu e vai ser acertado no fim do mês."
+        titulo="Consumo de funcionários"
+        resumo={`${consumoLojaMensal.length} lançamento(s)${consumoTravado ? ' · acerto fechado' : ''}`}
+        ajuda="O que o funcionário consumiu na loja. Entra no Acerto do mês e é descontado do salário."
       >
-        <ListaConsumo value={consumoLojaMensal} onChange={setConsumoLojaMensal} placeholderPessoa="Funcionário" />
+        {consumoTravado && (
+          <p className="rounded-lg bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+            O acerto deste mês já foi fechado: o consumo de funcionários está travado. Para corrigir, reabra o acerto em
+            Vales → Acerto do mês.
+          </p>
+        )}
+        <ListaConsumo
+          value={consumoLojaMensal}
+          onChange={setConsumoLojaMensal}
+          placeholderPessoa="Funcionário"
+          funcionarios={funcionarios}
+          travado={consumoTravado}
+        />
       </Secao>
 
       <Secao titulo="Consumo loja motoboys" resumo={`${consumoLojaMotoboys.length} lançamento(s)`} ajuda="O que os motoboys consumiram.">
