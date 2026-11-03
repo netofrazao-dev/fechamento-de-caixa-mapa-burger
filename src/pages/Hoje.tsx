@@ -17,6 +17,8 @@ import { buscarAcerto } from '../lib/acertoService'
 import { copiaAtrasada as calcularCopiaAtrasada, ultimaCopiaBaixada } from '../lib/copiaService'
 import { formatarMoeda, STATUS_COLOR, STATUS_LABEL } from '../lib/calculations'
 import { compararMeses, variacao } from '../lib/comparacao'
+import GraficoVendasDia from '../components/GraficoVendasDia'
+import { statusPorDiferenca } from '../lib/relatorioResumo'
 import { useInstalarApp } from '../lib/instalar'
 import { nomeMes, rotuloMes, somarMeses, somarValores } from '../lib/vales'
 import { datasEntre, diaAnterior, diaDaSemana, formatarDataBr, formatarDiaMes, hojeLocal, limitesDoMes } from '../lib/datas'
@@ -105,6 +107,24 @@ export default function Hoje() {
   const copiaAtrasada = calcularCopiaAtrasada()
 
   const nomeAnterior = nomeMes(mesAnterior).split(' de ')[0]
+  const ultimos7 = useMemo(() => {
+    const lista: string[] = [hoje]
+    while (lista.length < 7) lista.unshift(diaAnterior(lista[0]))
+    const porDia = new Map<string, Fechamento[]>()
+    for (const f of todosFechamentos) porDia.set(f.data, [...(porDia.get(f.data) ?? []), f])
+    return lista.map((d) => {
+      const fs = porDia.get(d)
+      const dif = fs ? somarValores(fs.map((f) => f.resultado.diferencaFinal)) : undefined
+      return {
+        data: d,
+        vendas: fs ? somarValores(fs.map((f) => f.resultado.totalCaixa)) : d === hoje ? 0 : null,
+        diferenca: dif,
+        status: dif !== undefined ? statusPorDiferenca(dif) : undefined,
+      }
+    })
+  }, [todosFechamentos, hoje])
+  const comVenda7 = ultimos7.filter((d) => (d.vendas ?? 0) > 0)
+  const media7 = comVenda7.length ? Math.round((somarValores(comVenda7.map((d) => d.vendas ?? 0)) / comVenda7.length) * 100) / 100 : 0
   const vVendas = comparacao ? variacao(comparacao.atual.vendas, comparacao.anterior.vendas) : null
 
   const pendencias: { texto: string; link: string; acao: string }[] = []
@@ -230,6 +250,19 @@ export default function Hoje() {
               em vendas comparado aos mesmos dias de {nomeAnterior}.
             </p>
           )}
+        </Link>
+      )}
+
+      {/* Últimos 7 dias */}
+      {dados && ultimos7.some((d) => (d.vendas ?? 0) > 0) && (
+        <Link to="/semanal" className={`${caixa} p-4 block space-y-1`}>
+          <div className="flex items-center justify-between">
+            <p className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Últimos 7 dias</p>
+            <span className="flex items-center text-xs text-gray-400">
+              ver semana <ChevronRight size={16} />
+            </span>
+          </div>
+          <GraficoVendasDia dias={ultimos7} mediaAtual={media7} rotuloMedia="Média dos 7 dias" />
         </Link>
       )}
 

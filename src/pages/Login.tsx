@@ -1,14 +1,31 @@
 import { useState, type FormEvent } from 'react'
-import { Eye, EyeOff, Lock } from 'lucide-react'
+import { ArrowLeft, Eye, EyeOff, Lock, Mail } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 
 export default function Login() {
-  const { entrar } = useAuth()
+  const { entrar, enviarRedefinicao } = useAuth()
+  const [modo, setModo] = useState<'entrar' | 'esqueci'>('entrar')
+  const [enviado, setEnviado] = useState(false)
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [verSenha, setVerSenha] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [entrando, setEntrando] = useState(false)
+
+  async function pedirRedefinicao(e: FormEvent) {
+    e.preventDefault()
+    if (entrando) return
+    setErro(null)
+    setEntrando(true)
+    try {
+      await enviarRedefinicao(email)
+      setEnviado(true)
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : 'Não foi possível enviar o e-mail.')
+    } finally {
+      setEntrando(false)
+    }
+  }
 
   async function enviar(e: FormEvent) {
     e.preventDefault()
@@ -43,6 +60,62 @@ export default function Login() {
           </div>
         </div>
 
+        {modo === 'esqueci' ? (
+          <form onSubmit={pedirRedefinicao} className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-5 space-y-4" noValidate>
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Esqueci minha senha</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                Digite o e-mail do seu login. Vamos mandar um link para você criar uma senha nova.
+              </p>
+            </div>
+            {enviado ? (
+              <p role="status" className="rounded-xl bg-green-50 dark:bg-green-950/40 px-3.5 py-3 text-sm text-green-700 dark:text-green-400">
+                Pronto! Se esse e-mail estiver cadastrado, o link chega em alguns minutos. Confira também a caixa de spam.
+                O link vale por pouco tempo e só funciona uma vez.
+              </p>
+            ) : (
+              <>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">E-mail</span>
+                  <input
+                    type="email"
+                    autoComplete="username"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    required
+                    className={campo}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </label>
+                {erro && (
+                  <p role="alert" className="rounded-xl bg-red-50 dark:bg-red-950/40 px-3.5 py-2.5 text-sm text-red-700 dark:text-red-400">
+                    {erro}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  disabled={entrando || !email.trim()}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-700 py-3 text-base font-semibold text-white disabled:opacity-50"
+                >
+                  <Mail size={16} /> {entrando ? 'Enviando...' : 'Enviar link'}
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setModo('entrar')
+                setEnviado(false)
+                setErro(null)
+              }}
+              className="w-full flex items-center justify-center gap-1.5 text-sm font-medium text-gray-500 dark:text-gray-400"
+            >
+              <ArrowLeft size={15} /> Voltar para o login
+            </button>
+          </form>
+        ) : (
         <form onSubmit={enviar} className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-5 space-y-4" noValidate>
           <label className="flex flex-col gap-1.5">
             <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">E-mail</span>
@@ -93,11 +166,20 @@ export default function Login() {
           >
             <Lock size={16} /> {entrando ? 'Entrando...' : 'Entrar'}
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setModo('esqueci')
+              setErro(null)
+            }}
+            className="w-full text-sm font-medium text-gray-500 dark:text-gray-400 hover:underline"
+          >
+            Esqueci minha senha
+          </button>
         </form>
+        )}
 
-        <p className="text-center text-xs text-gray-400 dark:text-gray-500">
-          Acesso restrito. Esqueceu a senha? Peça para o responsável redefinir no Supabase.
-        </p>
+        <p className="text-center text-xs text-gray-400 dark:text-gray-500">Acesso restrito a pessoas autorizadas.</p>
       </div>
     </main>
   )

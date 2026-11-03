@@ -11,6 +11,8 @@ import { mensagemErro } from '../lib/erros'
 import { diaDaSemana, formatarDataBr, formatarDataHora } from '../lib/datas'
 import { somarValores } from '../lib/vales'
 import { BotaoExcluir, CaixaErro } from '../components/Avisos'
+import BarrasHorizontais from '../components/graficos/BarrasHorizontais'
+import { formasDePagamento } from '../lib/relatorioResumo'
 import type { Fechamento, RegistroAuditoria } from '../types/fechamento'
 
 export default function FechamentoDetalhe() {
@@ -142,6 +144,11 @@ export default function FechamentoDetalhe() {
         </Link>
       </div>
       {aviso && <CaixaErro>{aviso}</CaixaErro>}
+
+      <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-2">
+        <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Como o dinheiro entrou</h2>
+        <BarrasHorizontais itens={formasDePagamento([f])} porcentagem total rotuloTotal="Total do caixa" descricao="Vendas do dia por forma de pagamento" />
+      </section>
 
       <Bloco titulo="Caixa LC">
         <Linha label="Dinheiro abertura" valor={f.lc.dinheiroAbertura} nota="não entra no total" />

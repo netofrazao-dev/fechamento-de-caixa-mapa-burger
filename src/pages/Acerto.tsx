@@ -13,6 +13,7 @@ import {
   UserX,
 } from 'lucide-react'
 import AbasPessoal from '../components/AbasPessoal'
+import BarrasEmpilhadas from '../components/graficos/BarrasEmpilhadas'
 import { CaixaErro } from '../components/Avisos'
 import { listarValesDoMes } from '../lib/valeService'
 import { listarRelatorios } from '../lib/relatorioService'
@@ -291,6 +292,19 @@ export default function Acerto() {
               </button>
             </div>
           </section>
+
+          {resultado.linhas.length > 0 && (
+            <section className={`${caixa} p-4 space-y-3`}>
+              <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Desconto de cada um</h2>
+              <BarrasEmpilhadas
+                series={['Vales', 'Consumo na loja']}
+                linhas={[...resultado.linhas]
+                  .sort((a, b) => b.total - a.total)
+                  .map((l) => ({ rotulo: l.funcionario, valores: [l.totalVales, l.totalConsumo] }))}
+                descricao="Total a descontar por funcionário, dividido em vales e consumo"
+              />
+            </section>
+          )}
 
           {/* Consumo sem funcionário */}
           {pendentes > 0 && (

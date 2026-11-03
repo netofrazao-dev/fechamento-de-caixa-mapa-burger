@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
-  FileText,
+  BarChart3,
   History,
   Home,
   LogOut,
@@ -22,6 +22,7 @@ import { useInstalarApp } from './lib/instalar'
 import { supabaseConfigurado } from './lib/supabase'
 import ErrorBoundary from './components/ErrorBoundary'
 import Login from './pages/Login'
+import RedefinirSenha from './pages/RedefinirSenha'
 
 // Cada tela é baixada só quando é aberta (app abre mais rápido no celular).
 const Hoje = lazy(() => import('./pages/Hoje'))
@@ -29,6 +30,7 @@ const NovoFechamento = lazy(() => import('./pages/NovoFechamento'))
 const Historico = lazy(() => import('./pages/Historico'))
 const FechamentoDetalhe = lazy(() => import('./pages/FechamentoDetalhe'))
 const RelatorioMensal = lazy(() => import('./pages/RelatorioMensal'))
+const RelatorioSemanal = lazy(() => import('./pages/RelatorioSemanal'))
 const Relatorios = lazy(() => import('./pages/Relatorios'))
 const RelatorioForm = lazy(() => import('./pages/RelatorioForm'))
 const Vales = lazy(() => import('./pages/Vales'))
@@ -40,7 +42,7 @@ const abas = [
   { to: '/hoje', label: 'Hoje', icon: Home },
   { to: '/novo', label: 'Fechar', icon: PlusSquare },
   { to: '/historico', label: 'Histórico', icon: History },
-  { to: '/mensal', label: 'Mensal', icon: FileText },
+  { to: '/mensal', label: 'Resumos', icon: BarChart3 },
   { to: '/relatorios', label: 'Relatórios', icon: ScrollText },
   { to: '/vales', label: 'Vales', icon: Wallet },
 ]
@@ -196,6 +198,7 @@ function Sistema() {
             <Route path="/novo" element={<NovoFechamento key="novo" />} />
             <Route path="/historico" element={<Historico />} />
             <Route path="/mensal" element={<RelatorioMensal />} />
+            <Route path="/semanal" element={<RelatorioSemanal />} />
             <Route path="/relatorios" element={<Relatorios />} />
             <Route path="/relatorios/novo" element={<RelatorioForm key="novo" />} />
             <Route path="/relatorios/:id" element={<RelatorioForm key="editar" />} />
@@ -222,7 +225,7 @@ function Sistema() {
               to={to}
               className={({ isActive }) =>
                 `flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium ${
-                  isActive || (to === '/vales' && pathname.startsWith('/acerto'))
+                  isActive || (to === '/vales' && pathname.startsWith('/acerto')) || (to === '/mensal' && pathname.startsWith('/semanal'))
                     ? 'text-gray-900 dark:text-gray-100'
                     : 'text-gray-400 dark:text-gray-500'
                 }`
@@ -230,7 +233,7 @@ function Sistema() {
             >
               {({ isActive }) => (
                 <>
-                  <Icon size={20} strokeWidth={isActive || (to === '/vales' && pathname.startsWith('/acerto')) ? 2.4 : 1.8} />
+                  <Icon size={20} strokeWidth={isActive || (to === '/vales' && pathname.startsWith('/acerto')) || (to === '/mensal' && pathname.startsWith('/semanal')) ? 2.4 : 1.8} />
                   {label}
                 </>
               )}
@@ -244,6 +247,7 @@ function Sistema() {
 
 export default function App() {
   const { carregando, sessao, autorizado, sair } = useAuth()
+  const { pathname, hash } = useLocation()
 
   if (!supabaseConfigurado) {
     return (
@@ -253,6 +257,8 @@ export default function App() {
       />
     )
   }
+  // Link do e-mail "Esqueci minha senha" (também se o Supabase mandar para a raiz do site).
+  if (pathname === '/redefinir-senha' || /type=recovery|error_code=/.test(hash)) return <RedefinirSenha />
   if (carregando) return <Carregando />
   if (!sessao) return <Login />
   if (autorizado === false) {

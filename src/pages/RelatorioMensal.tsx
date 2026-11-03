@@ -15,6 +15,11 @@ import type { Fechamento, RelatorioDiario } from '../types/fechamento'
 import { datasEntre, formatarDiaMes, hojeLocal, limitesDoMes, mesLocal } from '../lib/datas'
 import { compararMeses, fraseComparacao, variacao, type Variacao } from '../lib/comparacao'
 import GraficoVendasDia, { type DiaGrafico } from '../components/GraficoVendasDia'
+import GraficoSobraFalta from '../components/graficos/GraficoSobraFalta'
+import BarrasHorizontais from '../components/graficos/BarrasHorizontais'
+import BarraResultados from '../components/graficos/BarraResultados'
+import AbasResumo from '../components/AbasResumo'
+import { formasDePagamento, statusPorDiferenca } from '../lib/relatorioResumo'
 
 function agruparPorDia(fechamentos: Fechamento[]): (LinhaRelatorioMensal & { fechamentoId: string })[] {
   const porDia = new Map<string, Fechamento[]>()
@@ -154,7 +159,6 @@ export default function RelatorioMensal() {
     }
   }
 
-  const maxPrato = vendasPorPrato[0]?.[1] ?? 0
   const nomeAnterior = nomeMes(somarMeses(mes, -1)).split(' de ')[0]
   const hoje = hojeLocal()
   const comparacao = useMemo(
@@ -180,6 +184,7 @@ export default function RelatorioMensal() {
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-3 pb-24">
+      <AbasResumo />
       <header className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Relatório mensal</h1>
         <div className="flex gap-2">
@@ -309,6 +314,25 @@ export default function RelatorioMensal() {
             </section>
           )}
 
+          {linhas.length > 0 && (
+            <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-3">
+              <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Como o caixa fechou</h2>
+              <BarraResultados
+                fechou={linhas.filter((l) => statusPorDiferenca(l.diferencaFinalDia) === 'fechou').length}
+                sobrou={linhas.filter((l) => statusPorDiferenca(l.diferencaFinalDia) === 'sobrou').length}
+                faltou={linhas.filter((l) => statusPorDiferenca(l.diferencaFinalDia) === 'faltou').length}
+              />
+              <GraficoSobraFalta dias={diasGrafico.map((d) => ({ data: d.data, diferenca: d.diferenca ?? null }))} />
+            </section>
+          )}
+
+          {linhas.length > 0 && (
+            <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-3">
+              <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Como o dinheiro entrou</h2>
+              <BarrasHorizontais itens={formasDePagamento(atual.fechamentos)} porcentagem total descricao="Vendas do mês por forma de pagamento" />
+            </section>
+          )}
+
           {resumo.semFechamento.length > 0 && (
             <section className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 space-y-2">
               <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-900 dark:text-amber-200">
@@ -395,20 +419,13 @@ export default function RelatorioMensal() {
           {vendasPorPrato.length > 0 && (
             <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-2">
               <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Pratos mais vendidos</h2>
-              {vendasPorPrato.map(([prato, qtd]) => (
-                <div key={prato} className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-700 dark:text-gray-300">{prato}</span>
-                    <span className="tabular-nums font-medium text-gray-900 dark:text-gray-100">{qtd}</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-orange-500"
-                      style={{ width: `${maxPrato ? Math.max(4, (qtd / maxPrato) * 100) : 0}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+              <BarrasHorizontais
+                itens={vendasPorPrato.map(([prato, q]) => ({ rotulo: prato, valor: q }))}
+                formato="numero"
+                porcentagem
+                total
+                descricao="Marmitas vendidas no mês por prato"
+              />
             </section>
           )}
         </>

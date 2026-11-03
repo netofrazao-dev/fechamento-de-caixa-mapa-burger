@@ -14,7 +14,7 @@ import { mensagemErro } from '../lib/erros'
 import { formatarMoeda, totalMarmitas } from '../lib/calculations'
 import CampoMoeda from '../components/CampoMoeda'
 import { BotaoExcluir, CaixaErro } from '../components/Avisos'
-import { dataValida } from '../lib/vales'
+import { dataValida, somarValores } from '../lib/vales'
 import { listarFuncionarios } from '../lib/funcionarioService'
 import { buscarAcerto } from '../lib/acertoService'
 import type { Funcionario } from '../types/fechamento'
@@ -194,6 +194,11 @@ export default function RelatorioForm() {
       mostrarAlertas()
       return
     }
+    if (sangrias.some((s) => s.valor > 0 && !s.motivo.trim())) {
+      setErro('Toda sangria com valor precisa ter um motivo escrito.')
+      mostrarAlertas()
+      return
+    }
     salvandoRef.current = true
     setSalvando(true)
     try {
@@ -244,10 +249,15 @@ export default function RelatorioForm() {
       setFechamentoCaixa(f.lc.dinheiroFechamento)
       const qtd = totalMarmitas(f.marmitas)
       if (qtd > 0) setQuantidadeVendida(qtd)
+      // Fechamentos antigos tinham sangrias; agora elas ficam no relatório.
+      const sangriasAntigas = sangrias.length === 0 ? fechamentos.flatMap((x) => x.sangrias) : []
+      if (sangriasAntigas.length > 0) setSangrias(sangriasAntigas.map((x) => ({ valor: x.valor, motivo: x.motivo })))
       setInfo(
         `Puxado do fechamento: abertura ${formatarMoeda(f.lc.dinheiroAbertura)}, fechamento ${formatarMoeda(
           f.lc.dinheiroFechamento,
-        )}${qtd > 0 ? `, ${qtd} marmitas` : ''}. Confira e ajuste se precisar.`,
+        )}${qtd > 0 ? `, ${qtd} marmitas` : ''}${
+          sangriasAntigas.length > 0 ? `, ${sangriasAntigas.length} sangria(s)` : ''
+        }. Confira e ajuste se precisar.`,
       )
     } catch (e) {
       setErro(mensagemErro(e, 'Não consegui buscar o fechamento do dia.'))
@@ -417,9 +427,15 @@ export default function RelatorioForm() {
 
       <Secao
         titulo="Sangrias"
-        resumo={`${sangrias.length} sangria(s)`}
+        resumo={
+          sangrias.length > 0
+            ? `${sangrias.length} · ${formatarMoeda(somarValores(sangrias.map((s) => s.valor)))}${
+                sangrias.some((s) => s.valor > 0 && !s.motivo.trim()) ? ' · falta motivo' : ''
+              }`
+            : 'Nenhuma'
+        }
         alerta={sangrias.some((s) => s.valor > 0 && !s.motivo.trim())}
-        ajuda="Retiradas de dinheiro do caixa, com o motivo."
+        ajuda="Dinheiro retirado do caixa durante o dia, com o motivo. Sai no PDF do dia junto com o fechamento. Só informativo: não entra no Total LC."
       >
         <ListaValorMotivo value={sangrias} onChange={setSangrias} />
       </Secao>

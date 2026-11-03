@@ -7,6 +7,10 @@ import { formatarMoeda, STATUS_COLOR, STATUS_LABEL } from '../lib/calculations'
 import { mensagemErro } from '../lib/erros'
 import { somarValores, dataValida } from '../lib/vales'
 import { CaixaErro } from '../components/Avisos'
+import GraficoVendasDia from '../components/GraficoVendasDia'
+import GraficoSobraFalta from '../components/graficos/GraficoSobraFalta'
+import BarraResultados from '../components/graficos/BarraResultados'
+import { statusPorDiferenca } from '../lib/relatorioResumo'
 import type { Fechamento, RelatorioDiario } from '../types/fechamento'
 import {
   dataLocal,
@@ -100,6 +104,28 @@ export default function Historico() {
     }
   }, [atual, dataInicio, dataFim])
 
+  // Gráficos do período (até 62 dias, pra caber na tela)
+  const graficoPeriodo = useMemo(() => {
+    if (!atual || periodoInvalido) return null
+    const datas = datasEntre(dataInicio, dataFim)
+    if (datas.length > 62) return null
+    const porDia = new Map<string, Fechamento[]>()
+    for (const f of atual.fechamentos) porDia.set(f.data, [...(porDia.get(f.data) ?? []), f])
+    const limite = hoje()
+    return datas.map((d) => {
+      const fs = porDia.get(d)
+      const dif = fs ? somarValores(fs.map((f) => f.resultado.diferencaFinal)) : undefined
+      return {
+        data: d,
+        vendas: fs ? somarValores(fs.map((f) => f.resultado.totalCaixa)) : d <= limite ? null : 0,
+        diferenca: dif,
+        status: dif !== undefined ? statusPorDiferenca(dif) : undefined,
+      }
+    })
+  }, [atual, dataInicio, dataFim, periodoInvalido])
+  const comVenda = (graficoPeriodo ?? []).filter((d) => (d.vendas ?? 0) > 0)
+  const mediaPeriodo = comVenda.length ? Math.round((somarValores(comVenda.map((d) => d.vendas ?? 0)) / comVenda.length) * 100) / 100 : 0
+
   const campoData =
     'rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-gray-500'
 
@@ -160,6 +186,20 @@ export default function Historico() {
           <p className="text-xs text-gray-400">
             {atual.fechamentos.length} fechamento(s) · {resumo.faltou} com falta · {resumo.sobrou} com sobra
           </p>
+        </section>
+      )}
+
+      {atual && graficoPeriodo && graficoPeriodo.some((d) => (d.vendas ?? 0) > 0) && (
+        <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-3">
+          <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Vendas no período</h2>
+          <GraficoVendasDia dias={graficoPeriodo} mediaAtual={mediaPeriodo} rotuloMedia="Média do período" />
+          <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100 pt-2">Como o caixa fechou</h2>
+          <BarraResultados
+            fechou={graficoPeriodo.filter((d) => d.status === 'fechou').length}
+            sobrou={graficoPeriodo.filter((d) => d.status === 'sobrou').length}
+            faltou={graficoPeriodo.filter((d) => d.status === 'faltou').length}
+          />
+          <GraficoSobraFalta dias={graficoPeriodo.map((d) => ({ data: d.data, diferenca: d.diferenca ?? null }))} />
         </section>
       )}
 

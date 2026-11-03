@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 
 .env
+
+# testes de navegador
+e2e/.dist
+e2e/.saida

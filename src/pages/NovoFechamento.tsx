@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { History } from 'lucide-react'
+import { History, Info } from 'lucide-react'
 import LCForm from '../components/LCForm'
 import BrendiForm from '../components/BrendiForm'
-import SangriaForm from '../components/SangriaForm'
 import ResultadoCard from '../components/ResultadoCard'
 import ContadorPratos from '../components/ContadorPratos'
 import Secao from '../components/Secao'
@@ -20,7 +19,7 @@ import { carregarPdf } from '../lib/pdfSobDemanda'
 import { formatarHoraRascunho } from '../lib/draft'
 import { useRascunho } from '../lib/useRascunho'
 import { avisosFechamento, errosFechamento } from '../lib/conferencia'
-import { dataValida } from '../lib/vales'
+import { dataValida, somarValores } from '../lib/vales'
 import { mensagemErro } from '../lib/erros'
 import type { Ajuste, DadosBrendi, DadosLC, MarmitaItem, NovoFechamentoInput, Sangria, Turno } from '../types/fechamento'
 import { diaDaSemana, formatarDataBr, hojeLocal as hoje } from '../lib/datas'
@@ -277,7 +276,23 @@ export default function NovoFechamento() {
 
       <LCForm value={lc} onChange={setLc} defaultAberto />
       <BrendiForm value={brendi} onChange={setBrendi} />
-      <SangriaForm value={sangrias} onChange={setSangrias} />
+      {sangrias.length > 0 && (
+        // Fechamentos antigos podem ter sangrias lançadas aqui. Agora elas ficam só no Relatório do dia.
+        <div className="rounded-2xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 p-3.5 text-sm text-blue-900 dark:text-blue-200 space-y-2">
+          <p className="flex gap-2">
+            <Info size={16} className="shrink-0 mt-0.5" />
+            <span>
+              Este fechamento tem {sangrias.length} sangria(s) lançada(s) antes (
+              {formatarMoeda(somarValores(sangrias.map((s) => s.valor)))}):{' '}
+              {sangrias.map((s) => s.motivo.trim() || 'sem motivo').join(', ')}. Agora as sangrias ficam só no{' '}
+              <strong>Relatório do dia</strong>.
+            </span>
+          </p>
+          <button type="button" onClick={() => setSangrias([])} className="text-xs font-semibold underline">
+            Tirar do fechamento (lance no relatório)
+          </button>
+        </div>
+      )}
       <ResultadoCard
         resultado={resultado}
         totalLCSistema={totalLCSistema}
