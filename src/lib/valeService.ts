@@ -9,6 +9,7 @@ import type {
 } from '../types/fechamento'
 import { limitesDoMes } from './datas'
 import { limparNome, mesValido, validarVale } from './vales'
+import { ErroAmigavel, mensagemErro } from './erros'
 
 // ============================================================
 // Erros com mensagem clara (em vez do texto técnico do banco)
@@ -16,12 +17,11 @@ import { limparNome, mesValido, validarVale } from './vales'
 
 export type TipoErroVale = 'migracao_pendente' | 'mes_fechado' | 'sem_conexao' | 'nao_encontrado' | 'validacao' | 'outro'
 
-export class ErroVale extends Error {
+export class ErroVale extends ErroAmigavel {
   tipo: TipoErroVale
   constructor(tipo: TipoErroVale, mensagem: string) {
     super(mensagem)
     this.tipo = tipo
-    this.name = 'ErroVale'
   }
 }
 
@@ -46,6 +46,9 @@ function traduzirErro(e: unknown, padrao: string): ErroVale {
     return new ErroVale('migracao_pendente', MSG_MIGRACAO)
   }
   if (err.hint === 'MES_FECHADO') return new ErroVale('mes_fechado', msg)
+  if (err.code === '42501' || /permission denied|row-level security|jwt/i.test(msg)) {
+    return new ErroVale('outro', mensagemErro(e))
+  }
   if (err.code === 'PGRST116') return new ErroVale('nao_encontrado', 'Vale não encontrado (pode ter sido removido).')
   if (err.code === 'P0001' || err.code === '23514') return new ErroVale('validacao', msg)
   if (/failed to fetch|network|load failed|fetch failed/i.test(msg)) {
@@ -344,6 +347,5 @@ export async function listarHistoricoDoMes(mes: string, limite = 200): Promise<H
 
 /** Mensagem pra mostrar na tela a partir de qualquer erro. */
 export function mensagemDeErro(e: unknown, padrao = 'Algo deu errado.'): string {
-  if (e instanceof Error && e.message) return e.message
-  return padrao
+  return mensagemErro(e, padrao)
 }

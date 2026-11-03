@@ -30,3 +30,49 @@ export function limitesDoMes(mes: string): { inicio: string; fim: string } {
   const ultimoDia = new Date(ano, m, 0).getDate()
   return { inicio: `${ano}-${mm}-01`, fim: `${ano}-${mm}-${String(ultimoDia).padStart(2, '0')}` }
 }
+
+/** "2026-10-05" -> "05/10/2026" */
+export function formatarDataBr(iso: string): string {
+  const [ano, mes, dia] = (iso ?? '').split('-')
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : iso
+}
+
+/** "2026-10-05" -> "05/10" */
+export function formatarDiaMes(iso: string): string {
+  const [, mes, dia] = (iso ?? '').split('-')
+  return mes && dia ? `${dia}/${mes}` : iso
+}
+
+const DIAS_SEMANA = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado']
+
+/** "2026-11-03" -> "terça-feira" */
+export function diaDaSemana(iso: string): string {
+  const [ano, mes, dia] = (iso ?? '').split('-').map(Number)
+  if (!ano || !mes || !dia) return ''
+  return DIAS_SEMANA[new Date(ano, mes - 1, dia).getDay()]
+}
+
+/** Todas as datas YYYY-MM-DD entre início e fim (inclusive). */
+export function datasEntre(inicio: string, fim: string): string[] {
+  const [ai, mi, di] = inicio.split('-').map(Number)
+  const [af, mf, df] = fim.split('-').map(Number)
+  const d = new Date(ai, mi - 1, di)
+  const ultimo = new Date(af, mf - 1, df)
+  const lista: string[] = []
+  while (d <= ultimo && lista.length < 400) {
+    lista.push(dataLocal(d))
+    d.setDate(d.getDate() + 1)
+  }
+  return lista
+}
+
+/** Data/hora ISO -> "03/11/2026 14:05" (fuso local). */
+export function formatarDataHora(iso: string): string {
+  return new Date(iso).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}

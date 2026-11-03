@@ -148,12 +148,41 @@ create table if not exists public.vales_historico (
   detalhe text
 );
 
+alter table public.vales_historico add column if not exists usuario text;
+
 create index if not exists idx_vales_historico_mes on public.vales_historico (mes, registrado_em desc);
 create index if not exists idx_vales_historico_vale on public.vales_historico (vale_id, registrado_em desc);
 
 -- ------------------------------------------------------------
 -- Helpers
 -- ------------------------------------------------------------
+-- E-mail de quem está logado (vem do login do Supabase). null = sem login.
+create or replace function public.email_usuario_atual()
+returns text
+language sql
+stable
+as $$
+  select lower(nullif(nullif(current_setting('request.jwt.claims', true), ''), 'null')::jsonb ->> 'email')
+$$;
+
+-- Ponto único de verificação de permissão nas funções abaixo.
+-- Aqui ela não bloqueia nada; migration_v4_seguranca.sql troca por
+-- uma versão que exige usuário logado e autorizado. Só é criada se
+-- ainda não existir, pra não desfazer a v4 ao rodar esta de novo.
+do $$
+begin
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'exigir_usuario_autorizado'
+  ) then
+    execute $f$
+      create function public.exigir_usuario_autorizado() returns void
+      language plpgsql stable as $b$ begin return; end; $b$
+    $f$;
+  end if;
+end
+$$;
+
 create or replace function public.vales_mes_esta_fechado(p_data date)
 returns boolean
 language sql
@@ -324,21 +353,22 @@ begin
     v_operacao := 'alterado';
   end if;
 
-  insert into public.vales_historico (operacao, vale_id, mes, antes, depois, detalhe)
+  insert into public.vales_historico (operacao, vale_id, mes, antes, depois, detalhe, usuario)
   values (
     v_operacao,
     new.id,
     date_trunc('month', new.data)::date,
     case when tg_op = 'UPDATE' then to_jsonb(old) end,
     to_jsonb(new),
-    v_detalhe
+    v_detalhe,
+    public.email_usuario_atual()
   );
 
   -- Vale mudou de mês: registra também no mês de origem.
   if tg_op = 'UPDATE' and date_trunc('month', old.data) <> date_trunc('month', new.data) then
-    insert into public.vales_historico (operacao, vale_id, mes, antes, depois, detalhe)
+    insert into public.vales_historico (operacao, vale_id, mes, antes, depois, detalhe, usuario)
     values (v_operacao, new.id, date_trunc('month', old.data)::date, to_jsonb(old), to_jsonb(new),
-            'Vale movido para ' || public.vales_formatar_mes(new.data));
+            'Vale movido para ' || public.vales_formatar_mes(new.data), public.email_usuario_atual());
   end if;
 
   return null;
@@ -373,6 +403,7 @@ declare
   v_qtd integer;
   v_linha public.vales_meses_fechados;
 begin
+  perform public.exigir_usuario_autorizado();
   if p_mes is null then
     raise exception 'Informe o mês.' using errcode = '22004';
   end if;
@@ -414,8 +445,8 @@ begin
   values (v_mes, v_total, v_qtd, v_resumo, nullif(btrim(coalesce(p_observacao, '')), ''))
   returning * into v_linha;
 
-  insert into public.vales_historico (operacao, mes, depois, detalhe)
-  values ('mes_fechado', v_mes, to_jsonb(v_linha), v_linha.observacao);
+  insert into public.vales_historico (operacao, mes, depois, detalhe, usuario)
+  values ('mes_fechado', v_mes, to_jsonb(v_linha), v_linha.observacao, public.email_usuario_atual());
 
   return v_linha;
 end;
@@ -431,6 +462,7 @@ declare
   v_mes date := date_trunc('month', p_mes)::date;
   v_linha public.vales_meses_fechados;
 begin
+  perform public.exigir_usuario_autorizado();
   if length(btrim(coalesce(p_motivo, ''))) = 0 then
     raise exception 'Informe o motivo para reabrir o mês.' using errcode = '23514';
   end if;
@@ -441,8 +473,8 @@ begin
       using errcode = 'P0001';
   end if;
 
-  insert into public.vales_historico (operacao, mes, antes, detalhe)
-  values ('mes_reaberto', v_mes, to_jsonb(v_linha), btrim(p_motivo));
+  insert into public.vales_historico (operacao, mes, antes, detalhe, usuario)
+  values ('mes_reaberto', v_mes, to_jsonb(v_linha), btrim(p_motivo), public.email_usuario_atual());
 end;
 $$;
 

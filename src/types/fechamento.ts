@@ -60,6 +60,8 @@ export interface MarmitaItem {
 export interface Prato {
   id: string
   nome: string
+  /** false = desativado (some da lista de seleção, histórico continua). */
+  ativo: boolean
 }
 
 /** Um fechamento completo, como fica salvo no banco. */
@@ -166,6 +168,20 @@ export interface RelatorioDiarioInput {
 export interface Funcionario {
   id: string
   nome: string
+  /** false = desativado (saiu da empresa): some da lista, histórico continua. */
+  ativo: boolean
+}
+
+/** Uma linha da auditoria geral (fechamentos, relatórios, cadastros). */
+export interface RegistroAuditoria {
+  id: number
+  registradoEm: string
+  tabela: string
+  operacao: 'insert' | 'update' | 'delete'
+  registroId: string | null
+  antes: Record<string, unknown> | null
+  depois: Record<string, unknown> | null
+  usuario: string | null
 }
 
 // ============================================================

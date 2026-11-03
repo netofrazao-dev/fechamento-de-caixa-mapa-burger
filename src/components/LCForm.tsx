@@ -14,19 +14,25 @@ export default function LCForm({ value, onChange, defaultAberto }: Props) {
   const total = calcularTotalLC(value)
 
   return (
-    <Secao titulo="LC" resumo={`Total: ${formatarMoeda(total)}`} defaultAberto={defaultAberto}>
+    <Secao
+      titulo="2. Caixa LC"
+      resumo={`Total LC: ${formatarMoeda(total)}`}
+      defaultAberto={defaultAberto}
+      ajuda="O que foi apurado no caixa da LC. Use o + ao lado do campo para somar comprovantes um a um."
+    >
       <div className="grid grid-cols-2 gap-3">
         <CampoMoeda
           label="Dinheiro de abertura"
           value={value.dinheiroAbertura}
           onChange={(v) => set('dinheiroAbertura', v)}
           somavel={false}
-          helper="Não entra no total"
+          helper="Troco do início do dia. Não entra no total."
         />
         <CampoMoeda
-          label="Dinheiro / fechamento"
+          label="Dinheiro no fechamento"
           value={value.dinheiroFechamento}
           onChange={(v) => set('dinheiroFechamento', v)}
+          helper="Dinheiro contado na gaveta."
         />
         <CampoMoeda label="PIX" value={value.pix} onChange={(v) => set('pix', v)} />
         <CampoMoeda label="Débito" value={value.debito} onChange={(v) => set('debito', v)} />
@@ -37,7 +43,7 @@ export default function LCForm({ value, onChange, defaultAberto }: Props) {
       </div>
       <div className="flex justify-between items-center pt-1 text-sm">
         <span className="text-gray-400 dark:text-gray-500">Total LC</span>
-        <span className="font-semibold text-gray-900 dark:text-gray-100">{formatarMoeda(total)}</span>
+        <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatarMoeda(total)}</span>
       </div>
     </Secao>
   )

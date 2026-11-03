@@ -26,7 +26,8 @@ import {
   restaurarVale,
 } from '../lib/valeService'
 import { formatarMoeda } from '../lib/calculations'
-import { gerarPdfValesMensal, type GrupoValesPdf } from '../lib/pdf'
+import type { GrupoValesPdf } from '../lib/pdf'
+import { carregarPdf } from '../lib/pdfSobDemanda'
 import { mesLocal } from '../lib/datas'
 import {
   agruparPorFuncionario,
@@ -277,8 +278,15 @@ export default function Vales() {
     }
   }
 
-  function exportarPdf(somente?: GrupoFuncionario) {
-    gerarPdfValesMensal({
+  async function exportarPdf(somente?: GrupoFuncionario) {
+    let pdf: Awaited<ReturnType<typeof carregarPdf>>
+    try {
+      pdf = await carregarPdf()
+    } catch (e) {
+      setAviso(mensagemDeErro(e, 'Não consegui gerar o PDF (sem internet?).'))
+      return
+    }
+    pdf.gerarPdfValesMensal({
       mes,
       grupos: paraPdf(somente ? [somente] : grupos),
       fechadoEm: fechamento?.fechadoEm ?? null,

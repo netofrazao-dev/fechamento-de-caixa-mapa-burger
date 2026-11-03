@@ -277,46 +277,166 @@ export interface LinhaRelatorioMensal {
   diferencaFinalDia: number
 }
 
-/** Gera o PDF resumido do mês: uma linha por dia + totais do mês. */
-export function gerarPdfMensal(params: { mesLabel: string; linhas: LinhaRelatorioMensal[] }): void {
-  const { mesLabel, linhas } = params
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+function somaCentavos(valores: number[]): number {
+  return valores.reduce((acc, v) => acc + Math.round(v * 100), 0) / 100
+}
 
+function situacaoTexto(diferenca: number): string {
+  return diferenca > 0.005 ? 'Sobrou' : diferenca < -0.005 ? 'Faltou' : 'Fechou'
+}
+
+/** PDF do mês: resumo, uma linha por dia, vendas por prato e dias sem fechamento. */
+export function gerarPdfMensal(params: {
+  mes: string // YYYY-MM
+  linhas: LinhaRelatorioMensal[]
+  vendasPorPrato?: [string, number][]
+  diasSemFechamento?: string[]
+  totalVales?: number | null
+}): void {
+  const { mes, linhas, vendasPorPrato = [], diasSemFechamento = [], totalVales } = params
+  const [ano, m] = mes.split('-')
+  const mesLabel = `${m}/${ano}`
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const margem = 14
+  const larguraUtil = 210 - margem * 2
+
+  // Cabeçalho
+  doc.setFillColor(...COR_ACCENT)
+  doc.rect(margem, 12, 2.2, 13, 'F')
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text('MAPA BURGER', 14, 16)
+  doc.setTextColor(...COR_ESCURO)
+  doc.text('MAPA BURGER', margem + 5, 17)
   doc.setFontSize(11)
-  doc.text(`Relatório Mensal de Fechamento — ${mesLabel}`, 14, 23)
+  doc.text(`Relatório mensal de fechamento — ${mesLabel}`, margem + 5, 23)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.setTextColor(110)
+  doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, 210 - margem, 17, { align: 'right' })
+  doc.setTextColor(0)
 
-  const totalMesCaixa = linhas.reduce((acc, l) => acc + l.totalCaixaDia, 0)
-  const totalMesSistema = linhas.reduce((acc, l) => acc + l.totalSistemaDia, 0)
-  const totalMesDiferenca = linhas.reduce((acc, l) => acc + l.diferencaFinalDia, 0)
+  const totalCaixa = somaCentavos(linhas.map((l) => l.totalCaixaDia))
+  const totalSistema = somaCentavos(linhas.map((l) => l.totalSistemaDia))
+  const totalDiferenca = somaCentavos(linhas.map((l) => l.diferencaFinalDia))
+  const totalMarmitasMes = vendasPorPrato.reduce((acc, [, q]) => acc + q, 0)
+
+  // Cards de resumo
+  const cards = [
+    { label: 'Total caixa', valor: formatarMoeda(totalCaixa) },
+    { label: 'Total sistema', valor: formatarMoeda(totalSistema) },
+    { label: 'Diferença do mês', valor: formatarMoeda(totalDiferenca), destaque: true },
+    { label: 'Marmitas', valor: String(totalMarmitasMes) },
+  ]
+  const larguraCard = (larguraUtil - 3 * 4) / 4
+  cards.forEach((c, i) =>
+    desenharCardResumo(doc, {
+      x: margem + i * (larguraCard + 4),
+      y: 31,
+      largura: larguraCard,
+      altura: 18,
+      label: c.label,
+      valor: c.valor,
+      destaque: c.destaque,
+    }),
+  )
+
+  const faltou = linhas.filter((l) => l.diferencaFinalDia < -0.005).length
+  const sobrou = linhas.filter((l) => l.diferencaFinalDia > 0.005).length
+  doc.setFontSize(9)
+  doc.setTextColor(80)
+  const resumoTexto =
+    `${linhas.length} dia(s) com fechamento · ${linhas.length - faltou - sobrou} fecharam · ` +
+    `${sobrou} sobrou · ${faltou} faltou` +
+    (diasSemFechamento.length ? ` · ${diasSemFechamento.length} dia(s) sem fechamento` : '') +
+    (totalVales != null ? ` · Vales do mês: ${formatarMoeda(totalVales)}` : '')
+  doc.text(doc.splitTextToSize(resumoTexto, larguraUtil), margem, 55)
+  doc.setTextColor(0)
 
   autoTable(doc, {
-    startY: 28,
-    head: [['Data', 'Total Caixa', 'Total Sistema', 'Diferença', 'Situação']],
+    startY: 60,
+    margin: { left: margem, right: margem },
+    head: [[
+      'Data',
+      { content: 'Total Caixa', styles: { halign: 'right' } },
+      { content: 'Total Sistema', styles: { halign: 'right' } },
+      { content: 'Diferença', styles: { halign: 'right' } },
+      'Situação',
+    ]],
     body: linhas.map((l) => [
       formatarData(l.data),
       formatarMoeda(l.totalCaixaDia),
       formatarMoeda(l.totalSistemaDia),
       formatarMoeda(l.diferencaFinalDia),
-      l.diferencaFinalDia > 0.005 ? 'Sobrou' : l.diferencaFinalDia < -0.005 ? 'Faltou' : 'Fechou',
+      situacaoTexto(l.diferencaFinalDia),
     ]),
     styles: { fontSize: 9 },
-    headStyles: { fillColor: [30, 30, 30] },
-    foot: [
-      [
-        'TOTAL DO MÊS',
-        formatarMoeda(totalMesCaixa),
-        formatarMoeda(totalMesSistema),
-        formatarMoeda(totalMesDiferenca),
-        totalMesDiferenca > 0.005 ? 'Sobrou' : totalMesDiferenca < -0.005 ? 'Faltou' : 'Fechou',
-      ],
-    ],
+    headStyles: { fillColor: COR_ESCURO },
+    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+    didParseCell: (data) => {
+      if (data.section === 'body' && (data.column.index === 3 || data.column.index === 4)) {
+        const d = linhas[data.row.index]?.diferencaFinalDia ?? 0
+        const status = statusPorDiferenca(d)
+        if (status !== 'fechou') data.cell.styles.textColor = COR_STATUS[status]
+      }
+    },
+    foot: [[
+      'TOTAL DO MÊS',
+      { content: formatarMoeda(totalCaixa), styles: { halign: 'right' } },
+      { content: formatarMoeda(totalSistema), styles: { halign: 'right' } },
+      { content: formatarMoeda(totalDiferenca), styles: { halign: 'right' } },
+      situacaoTexto(totalDiferenca),
+    ]],
     footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
   })
 
-  doc.save(`relatorio_mensal_${mesLabel.replace('/', '-')}.pdf`)
+  let y = finalY(doc) + 8
+  if (vendasPorPrato.length > 0) {
+    if (y > 240) {
+      doc.addPage()
+      y = 20
+    }
+    y = tituloSecaoPdf(doc, 'Vendas por prato no mês', y, margem, larguraUtil)
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [['Prato', { content: 'Quantidade', styles: { halign: 'right' } }]],
+      body: vendasPorPrato.map(([prato, qtd]) => [prato, String(qtd)]),
+      foot: [['TOTAL', { content: String(totalMarmitasMes), styles: { halign: 'right' } }]],
+      styles: { fontSize: 9.5 },
+      headStyles: { fillColor: [60, 60, 64] },
+      footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+      columnStyles: { 1: { halign: 'right' } },
+    })
+    y = finalY(doc) + 8
+  }
+
+  if (diasSemFechamento.length > 0) {
+    if (y > 260) {
+      doc.addPage()
+      y = 20
+    }
+    y = tituloSecaoPdf(doc, 'Dias sem fechamento', y, margem, larguraUtil)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9.5)
+    const texto = diasSemFechamento.map((d) => formatarData(d).slice(0, 5)).join(', ')
+    doc.text(doc.splitTextToSize(texto, larguraUtil), margem, y)
+  }
+
+  const totalPaginas = doc.getNumberOfPages()
+  for (let p = 1; p <= totalPaginas; p++) {
+    doc.setPage(p)
+    doc.setDrawColor(230)
+    doc.setLineWidth(0.2)
+    doc.line(margem, 289, 210 - margem, 289)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(140)
+    doc.text(`Mapa Burger — Relatório mensal ${mesLabel}`, margem, 293.5)
+    doc.text(`${p} / ${totalPaginas}`, 210 - margem, 293.5, { align: 'right' })
+    doc.setTextColor(0)
+  }
+
+  doc.save(`relatorio_mensal_${mes}.pdf`)
 }
 
 // ============================================================

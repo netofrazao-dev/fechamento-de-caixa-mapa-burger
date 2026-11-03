@@ -9,26 +9,65 @@ e rascunho automático.
 - Extraia o zip substituindo a pasta antiga (mantenha o seu `.env`).
 - `npm install`
 
-## 2. Database (Supabase)
-- **Banco novo:** SQL Editor → cole `supabase/schema.sql` e rode; depois rode
-  `supabase/migration_vales_v2.sql`.
-- **Banco já existente:** rode só o que ainda não rodou, nesta ordem:
-  `supabase/migration_vales.sql` (se ainda não tem a tabela de vales),
-  `supabase/migration_rascunhos.sql` (rascunhos sincronizados entre aparelhos) e
-  `supabase/migration_vales_v2.sql` (vales à prova de erro — veja abaixo).
-  As migrações podem ser rodadas de novo sem problema e não apagam dados.
+## 2. Banco de dados (Supabase) e login — siga NESTA ORDEM
 
-## 3. Environment Variables
+Os arquivos ficam em `supabase/`. Todos podem ser rodados de novo sem problema e não apagam dados.
+
+**Banco novo (vazio):** rode `schema.sql`, depois os passos A a D abaixo.
+
+**A. Antes de publicar a versão nova** (não quebram a versão que está no ar):
+1. `migration_vales.sql` (só se ainda não tem a tabela de vales)
+2. `migration_rascunhos.sql` (só se ainda não tem a tabela de rascunhos)
+3. `migration_vales_v2.sql` — vales à prova de erro
+4. `migration_v3_cadastros_integridade.sql` — banco confere as contas, auditoria, cadastros
+
+**B. Crie os logins:** Supabase → Authentication → Users → *Add user* (e-mail + senha, marque
+*Auto Confirm User*) para cada pessoa que usa o sistema. Depois, em Authentication → Sign In /
+Providers, **desligue "Allow new users to sign up"** (ninguém se cadastra sozinho).
+
+**C. Publique a versão nova** (merge no `main`; a Vercel publica sozinha) e confira que consegue entrar.
+
+**D. Feche o acesso:** abra `migration_v4_seguranca.sql`, troque `COLOQUE_SEU_EMAIL_AQUI` pelo(s)
+e-mail(s) de login e rode. A partir daí, só quem está logado E está na lista acessa os dados —
+a chave pública que fica dentro do app não abre mais nada.
+
+Para incluir alguém depois: crie o login (passo B) e rode
+`insert into public.usuarios_autorizados (email, nome) values ('email@exemplo.com', 'Nome');`
+Para tirar o acesso: `update public.usuarios_autorizados set ativo = false where email = '...';`
+
+## 3. Variáveis de ambiente
 - Copie `.env.example` para `.env` e preencha `VITE_SUPABASE_URL` e
-  `VITE_SUPABASE_ANON_KEY` (Supabase → Project Settings → API).
-- Na Vercel, configure as mesmas variáveis. Framework Preset: **Vite**.
+  `VITE_SUPABASE_ANON_KEY` (Supabase → Project Settings → API). **Nunca** use a chave
+  `service_role` no app.
+- Na Vercel, configure as mesmas variáveis (Production e Preview). Framework Preset: **Vite**.
 
-## 4. Test
+## Segurança
+- **Login obrigatório** (e-mail e senha do Supabase) + lista de e-mails autorizados no banco.
+- **Regras no banco (RLS):** sem login autorizado o banco não mostra nem aceita nada; histórico,
+  auditoria e fechamento de mês de vales só podem ser lidos (o próprio banco escreve neles).
+- **Banco confere as contas** de cada fechamento (totais, diferença e situação), recusa valores
+  negativos, ajuste sem observação, relatório duplicado na mesma data e cadastros duplicados.
+- **Auditoria:** criação, alteração e exclusão de fechamentos, sangrias, relatórios, funcionários e
+  pratos ficam registradas com o antes/depois e o e-mail de quem fez (tabela `auditoria`; o
+  histórico de cada fechamento aparece na tela dele).
+- **Cabeçalhos de segurança** na Vercel (`vercel.json`): CSP, bloqueio de iframe, HSTS, sem indexação
+  em buscadores.
+- Ao **Sair**, os rascunhos guardados no aparelho são apagados.
+
+## 4. Usar
 - `npm run dev` e abra http://localhost:5173
-- **Novo**: fechamento do dia (só turno da manhã). **Vales**: lançar e ver o total por funcionário no mês.
+- **Fechamento**: o caixa do dia, em 5 passos numerados; o resultado aparece ao vivo no rodapé e o
+  sistema avisa antes de salvar se algo parecer errado (Total LC Sistema zerado, data de outro dia,
+  diferença grande sem observação). Valores aceitam vírgula ("12,50").
+- **Histórico**: dias com fechamento/relatório, atalhos de período e dias sem fechamento.
+- **Mensal**: totais do mês, dias sem fechamento, pratos mais vendidos e PDF.
+- **Relatórios**: relatório escrito do dia (um por data), com botão para puxar valores do fechamento.
+- **Vales**: adiantamentos por funcionário (veja abaixo).
+- **Menu (ícone de pessoa)**: Cadastros (funcionários e pratos: renomear/desativar), trocar senha,
+  tema e Sair.
 
 ## Testes
-- `npm test` roda os testes automáticos (cálculos do caixa, datas, remoção de acentos, vales).
+- `npm test` roda os testes automáticos (cálculos do caixa, conferências, valores em reais, datas, vales).
 
 ## Vales (adiantamento de salário)
 O total de cada funcionário no mês é o que será descontado do salário, então essa parte
@@ -60,7 +99,6 @@ Para apagar um vale de verdade (só em caso extremo, pelo SQL Editor):
   então dá pra começar no celular e continuar no computador.
 - Fechamentos e vales podem ser editados (lápis / botão "Editar").
 - Datas usam o fuso local (não UTC), então à noite o "hoje" continua certo.
-- Sem autenticação ainda (qualquer pessoa com o link acessa).
 - O turno da noite foi desativado na tela (a coluna `turno` continua no banco, caso volte a ser usado).
 - Cálculos do caixa: `src/lib/calculations.ts` (fonte de verdade).
 - Produtos do estoque quente: `src/lib/produtos.ts`.

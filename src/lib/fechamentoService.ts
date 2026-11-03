@@ -1,6 +1,54 @@
 import { supabase } from './supabase'
 import { calcularResultado } from './calculations'
+import { arredondarCentavos } from './moeda'
+import { ErroAmigavel } from './erros'
 import type { Fechamento, MarmitaItem, NovoFechamentoInput, ResultadoCalculado } from '../types/fechamento'
+
+/** Erro com mensagem pronta pra mostrar na tela. */
+export class ErroFechamento extends ErroAmigavel {}
+
+const MSG_DUPLICADO = 'Já existe um fechamento salvo para essa data. Abra-o pelo Histórico para editar.'
+
+function dinheiro(v: number): number {
+  return Math.max(0, arredondarCentavos(Number(v) || 0))
+}
+
+/**
+ * Garante que o que vai pro banco está limpo: nada negativo, só centavos,
+ * sangrias com motivo, pratos com quantidade inteira. Os totais são
+ * calculados a partir DESTES valores (o banco confere as contas de novo).
+ */
+export function normalizarFechamento(input: NovoFechamentoInput): NovoFechamentoInput {
+  return {
+    ...input,
+    lc: {
+      dinheiroAbertura: dinheiro(input.lc.dinheiroAbertura),
+      dinheiroFechamento: dinheiro(input.lc.dinheiroFechamento),
+      pix: dinheiro(input.lc.pix),
+      debito: dinheiro(input.lc.debito),
+      credito: dinheiro(input.lc.credito),
+      consumoLoja: dinheiro(input.lc.consumoLoja),
+      aPrazo: dinheiro(input.lc.aPrazo),
+      ticket: dinheiro(input.lc.ticket),
+    },
+    brendi: {
+      pix: dinheiro(input.brendi.pix),
+      debito: dinheiro(input.brendi.debito),
+      credito: dinheiro(input.brendi.credito),
+      creditoOnline: dinheiro(input.brendi.creditoOnline),
+      dinheiro: dinheiro(input.brendi.dinheiro),
+    },
+    sangrias: input.sangrias
+      .map((s) => ({ valor: dinheiro(s.valor), motivo: s.motivo.trim().slice(0, 200) }))
+      .filter((s) => s.valor > 0 || s.motivo),
+    marmitas: input.marmitas
+      .map((m) => ({ prato: m.prato.trim(), quantidade: Math.max(0, Math.floor(Number(m.quantidade) || 0)) }))
+      .filter((m) => m.prato && m.quantidade > 0),
+    totalLCSistema: dinheiro(input.totalLCSistema),
+    ajuste: input.ajuste.tipo ? { tipo: input.ajuste.tipo, valor: dinheiro(input.ajuste.valor) } : { tipo: null, valor: 0 },
+    observacoes: input.observacoes.trim().slice(0, 2000),
+  }
+}
 
 // Formato da tabela no Supabase (snake_case, plano).
 interface FechamentoRow {
@@ -114,7 +162,8 @@ function montarLinha(input: NovoFechamentoInput, resultado: ResultadoCalculado) 
 const SELECT_COLUMNS = '*, sangrias(id, valor, motivo)'
 
 /** Salva um novo fechamento (calcula os totais aqui, na hora de gravar). */
-export async function criarFechamento(input: NovoFechamentoInput): Promise<Fechamento> {
+export async function criarFechamento(entrada: NovoFechamentoInput): Promise<Fechamento> {
+  const input = normalizarFechamento(entrada)
   const resultado = calcularResultado({
     lc: input.lc,
     brendi: input.brendi,
@@ -128,7 +177,10 @@ export async function criarFechamento(input: NovoFechamentoInput): Promise<Fecha
     .select('id')
     .single()
 
-  if (error) throw error
+  if (error) {
+    if (error.code === '23505') throw new ErroFechamento(MSG_DUPLICADO)
+    throw error
+  }
 
   const fechamentoId = inserted.id as string
 
@@ -140,14 +192,19 @@ export async function criarFechamento(input: NovoFechamentoInput): Promise<Fecha
         motivo: s.motivo,
       })),
     )
-    if (sangriaError) throw sangriaError
+    if (sangriaError) {
+      // Não deixa um fechamento salvo pela metade (sem as sangrias).
+      await supabase.from('fechamentos').delete().eq('id', fechamentoId)
+      throw sangriaError
+    }
   }
 
   return buscarFechamentoPorId(fechamentoId)
 }
 
 /** Atualiza um fechamento existente (recalcula os totais e troca as sangrias). */
-export async function atualizarFechamento(id: string, input: NovoFechamentoInput): Promise<Fechamento> {
+export async function atualizarFechamento(id: string, entrada: NovoFechamentoInput): Promise<Fechamento> {
+  const input = normalizarFechamento(entrada)
   const resultado = calcularResultado({
     lc: input.lc,
     brendi: input.brendi,
@@ -155,8 +212,18 @@ export async function atualizarFechamento(id: string, input: NovoFechamentoInput
     ajuste: input.ajuste,
   })
 
-  const { error } = await supabase.from('fechamentos').update(montarLinha(input, resultado)).eq('id', id)
-  if (error) throw error
+  const { data: atualizado, error } = await supabase
+    .from('fechamentos')
+    .update(montarLinha(input, resultado))
+    .eq('id', id)
+    .select('id')
+  if (error) {
+    if (error.code === '23505') throw new ErroFechamento(MSG_DUPLICADO)
+    throw error
+  }
+  if (!atualizado || atualizado.length === 0) {
+    throw new ErroFechamento('Este fechamento não existe mais (pode ter sido excluído).')
+  }
 
   // Insere as sangrias novas ANTES de apagar as antigas: se der erro no meio, nada se perde.
   const { data: antigas, error: erroAntigas } = await supabase.from('sangrias').select('id').eq('fechamento_id', id)
@@ -205,24 +272,22 @@ export async function listarFechamentos(params: {
   return (data as unknown as FechamentoRow[]).map(rowToFechamento)
 }
 
-/** Verifica se já existe fechamento para essa data + turno. */
-export async function existeFechamento(
+/** Id do fechamento dessa data + turno (ignorando o que está sendo editado), ou null. */
+export async function buscarIdFechamento(
   data: string,
   turno: 'manha' | 'noite',
   ignorarId?: string,
-): Promise<boolean> {
-  let query = supabase
-    .from('fechamentos')
-    .select('id', { count: 'exact', head: true })
-    .eq('data', data)
-    .eq('turno', turno)
+): Promise<string | null> {
+  let query = supabase.from('fechamentos').select('id').eq('data', data).eq('turno', turno).limit(1)
   if (ignorarId) query = query.neq('id', ignorarId)
-  const { count, error } = await query
+  const { data: linhas, error } = await query
   if (error) throw error
-  return (count ?? 0) > 0
+  return (linhas as { id: string }[])[0]?.id ?? null
 }
 
+/** Exclui o fechamento (e as sangrias dele). Fica uma cópia na auditoria. */
 export async function excluirFechamento(id: string): Promise<void> {
-  const { error } = await supabase.from('fechamentos').delete().eq('id', id)
+  const { data, error } = await supabase.from('fechamentos').delete().eq('id', id).select('id')
   if (error) throw error
+  if (!data || data.length === 0) throw new ErroFechamento('Não foi possível excluir (já foi excluído ou sem permissão).')
 }

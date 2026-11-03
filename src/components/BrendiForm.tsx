@@ -14,7 +14,12 @@ export default function BrendiForm({ value, onChange, defaultAberto }: Props) {
   const total = calcularTotalBrendi(value)
 
   return (
-    <Secao titulo="Brendi" resumo={`Total: ${formatarMoeda(total)}`} defaultAberto={defaultAberto}>
+    <Secao
+      titulo="3. Brendi"
+      resumo={`Total Brendi: ${formatarMoeda(total)}`}
+      defaultAberto={defaultAberto}
+      ajuda="Vendas do Brendi (delivery). O dinheiro do Brendi entra só no Total Sistema."
+    >
       <div className="grid grid-cols-2 gap-3">
         <CampoMoeda label="PIX" value={value.pix} onChange={(v) => set('pix', v)} />
         <CampoMoeda label="Débito" value={value.debito} onChange={(v) => set('debito', v)} />
@@ -24,12 +29,12 @@ export default function BrendiForm({ value, onChange, defaultAberto }: Props) {
           label="Dinheiro"
           value={value.dinheiro}
           onChange={(v) => set('dinheiro', v)}
-          helper="Não entra no total Brendi"
+          helper="Não entra no Total Brendi."
         />
       </div>
       <div className="flex justify-between items-center pt-1 text-sm">
         <span className="text-gray-400 dark:text-gray-500">Total Brendi</span>
-        <span className="font-semibold text-gray-900 dark:text-gray-100">{formatarMoeda(total)}</span>
+        <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatarMoeda(total)}</span>
       </div>
     </Secao>
   )

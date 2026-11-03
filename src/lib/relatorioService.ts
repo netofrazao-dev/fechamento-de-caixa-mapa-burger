@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { arredondarCentavos } from './moeda'
 import type { ConsumoItem, EstoqueSnapshot, RelatorioDiario, RelatorioDiarioInput, Sangria } from '../types/fechamento'
 
 interface RelatorioRow {
@@ -43,7 +44,44 @@ function rowToRelatorio(row: RelatorioRow): RelatorioDiario {
   }
 }
 
-function inputToRow(input: RelatorioDiarioInput) {
+/** Colunas para listas: tudo menos as imagens (que são pesadas). */
+const COLUNAS_LISTA =
+  'id, data, abertura_caixa, fechamento_caixa, quantidade_vendida, estragou, funcionarios_que_comeram, ' +
+  'consumo_loja_mensal, consumo_loja_motoboys, cortesia_clientes, sangrias, estoque_quente, created_at, updated_at'
+
+const dinheiro = (v: number) => Math.max(0, arredondarCentavos(Number(v) || 0))
+const inteiro = (v: number) => Math.max(0, Math.floor(Number(v) || 0))
+const texto = (v: string, max: number) => (v ?? '').trim().slice(0, max)
+
+function limparConsumo(itens: ConsumoItem[]): ConsumoItem[] {
+  return itens
+    .map((c) => ({ pessoa: texto(c.pessoa, 80), item: texto(c.item, 120), valor: dinheiro(c.valor) }))
+    .filter((c) => c.pessoa || c.item || c.valor > 0)
+}
+
+/** Limpa o relatório antes de gravar (sem negativos, sem linhas vazias, textos com limite). */
+export function normalizarRelatorio(input: RelatorioDiarioInput): RelatorioDiarioInput {
+  return {
+    ...input,
+    aberturaCaixa: dinheiro(input.aberturaCaixa),
+    fechamentoCaixa: dinheiro(input.fechamentoCaixa),
+    quantidadeVendida: inteiro(input.quantidadeVendida),
+    estragou: input.estragou.map((e) => texto(e, 200)).filter(Boolean),
+    funcionariosQueComeram: input.funcionariosQueComeram.map((f) => texto(f, 80)).filter(Boolean),
+    consumoLojaMensal: limparConsumo(input.consumoLojaMensal),
+    consumoLojaMotoboys: limparConsumo(input.consumoLojaMotoboys),
+    cortesiaClientes: limparConsumo(input.cortesiaClientes),
+    sangrias: input.sangrias
+      .map((s) => ({ valor: dinheiro(s.valor), motivo: texto(s.motivo, 200) }))
+      .filter((s) => s.valor > 0 || s.motivo),
+    estoqueQuente: {
+      itens: input.estoqueQuente.itens.map((i) => ({ produto: i.produto, quantidade: inteiro(i.quantidade) })),
+    },
+  }
+}
+
+function inputToRow(entrada: RelatorioDiarioInput) {
+  const input = normalizarRelatorio(entrada)
   return {
     data: input.data,
     abertura_caixa: input.aberturaCaixa,
@@ -62,7 +100,7 @@ function inputToRow(input: RelatorioDiarioInput) {
 }
 
 export async function listarRelatorios(params?: { dataInicio: string; dataFim: string }): Promise<RelatorioDiario[]> {
-  let query = supabase.from('relatorios').select('*')
+  let query = supabase.from('relatorios').select(COLUNAS_LISTA)
   if (params) {
     query = query.gte('data', params.dataInicio).lte('data', params.dataFim)
   }
@@ -77,11 +115,13 @@ export async function buscarRelatorioPorId(id: string): Promise<RelatorioDiario>
   return rowToRelatorio(data as unknown as RelatorioRow)
 }
 
-export async function buscarRelatorioPorData(data: string): Promise<RelatorioDiario | null> {
-  const { data: rows, error } = await supabase.from('relatorios').select('*').eq('data', data).limit(1)
+/** Id do relatório de uma data (ignorando o que está sendo editado), ou null. */
+export async function buscarIdRelatorioPorData(data: string, ignorarId?: string): Promise<string | null> {
+  let query = supabase.from('relatorios').select('id').eq('data', data).limit(1)
+  if (ignorarId) query = query.neq('id', ignorarId)
+  const { data: rows, error } = await query
   if (error) throw error
-  const row = (rows as unknown as RelatorioRow[])[0]
-  return row ? rowToRelatorio(row) : null
+  return (rows as { id: string }[])[0]?.id ?? null
 }
 
 export async function criarRelatorio(input: RelatorioDiarioInput): Promise<RelatorioDiario> {
@@ -101,7 +141,9 @@ export async function atualizarRelatorio(id: string, input: RelatorioDiarioInput
   return rowToRelatorio(data as unknown as RelatorioRow)
 }
 
+/** Exclui o relatório. Fica uma cópia (sem as imagens) na auditoria. */
 export async function excluirRelatorio(id: string): Promise<void> {
-  const { error } = await supabase.from('relatorios').delete().eq('id', id)
+  const { data, error } = await supabase.from('relatorios').delete().eq('id', id).select('id')
   if (error) throw error
+  if (!data || data.length === 0) throw new Error('Não foi possível excluir (já foi excluído ou sem permissão).')
 }

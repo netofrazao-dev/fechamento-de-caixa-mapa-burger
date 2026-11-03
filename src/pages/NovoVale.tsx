@@ -330,7 +330,7 @@ export default function NovoVale() {
         )}
       </div>
 
-      <div className="fixed bottom-14 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-100 dark:border-gray-800 p-3">
+      <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-100 dark:border-gray-800 p-3">
         <div className="max-w-2xl mx-auto flex gap-2">
           {!editando && (
             <button
