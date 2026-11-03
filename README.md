@@ -32,6 +32,8 @@ Providers, **desligue "Allow new users to sign up"** (ninguém se cadastra sozin
 e-mail(s) de login e rode. A partir daí, só quem está logado E está na lista acessa os dados —
 a chave pública que fica dentro do app não abre mais nada.
 
+**E. Cópias de segurança automáticas:** rode `migration_v6_copias_seguranca.sql` (depois da v4 e da v5).
+
 Para incluir alguém depois: crie o login (passo B) e rode
 `insert into public.usuarios_autorizados (email, nome) values ('email@exemplo.com', 'Nome');`
 Para tirar o acesso: `update public.usuarios_autorizados set ativo = false where email = '...';`
@@ -52,6 +54,21 @@ registra a verificação na tabela `sistema_verificacoes`. Ela não devolve nenh
 - Opcional (recomendado): crie a variável `CRON_SECRET` na Vercel com um texto aleatório
   longo; aí só a própria Vercel consegue chamar a função.
 - De 3 em 3 dias, e não de 5 em 5: se uma chamada falhar, a seguinte ainda acontece antes dos 7 dias.
+
+## Cópias de segurança
+- **Automáticas:** a cada verificação da Vercel (3 em 3 dias) o banco guarda uma cópia completa
+  (sem os prints) na tabela `copias_seguranca`; ficam as 10 mais recentes (~30 dias). Ninguém
+  consegue apagá-las pelo app.
+- **No aparelho:** menu (ícone de pessoa) → *Cadastros, cópias e conta* → **Baixar cópia completa
+  agora** (arquivo `.json`). Guarde no Google Drive ou no e-mail uma vez por mês: é o que protege
+  contra perder a conta do Supabase. A mesma tela baixa qualquer cópia automática.
+- Para restaurar dados de uma cópia, peça ajuda (os dados vão de volta pelo SQL Editor).
+
+## Relatórios para enviar
+- **Relatório do dia (PDF WhatsApp):** página 1 em linguagem simples (resultado do caixa numa frase,
+  como o dinheiro entrou, destaques do dia, marmitas); depois os detalhes para conferência e os prints.
+  No celular, o botão abre direto o "Compartilhar" (WhatsApp).
+- **Relatório do mês:** resumo em frases, formas de pagamento, dia a dia e pratos. Botão **Enviar** no celular.
 
 ## Segurança
 - **Login obrigatório** (e-mail e senha do Supabase) + lista de e-mails autorizados no banco.

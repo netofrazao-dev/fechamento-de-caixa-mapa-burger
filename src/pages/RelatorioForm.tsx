@@ -252,11 +252,13 @@ export default function RelatorioForm() {
     setProcessando(true)
     try {
       const [fechamentos, pdf] = await Promise.all([buscarFechamentosDoDia(), carregarPdf()])
-      await pdf.gerarPdfWhatsApp({
+      const resultado = await pdf.gerarPdfWhatsApp({
         relatorio: { id: id ?? '', ...payload(), createdAt: '', updatedAt: '' },
         fechamentos,
         imagens: [imagem1, imagem2],
+        compartilhar: true,
       })
+      if (resultado === 'baixado') setInfo('PDF baixado. Agora é só anexar no WhatsApp.')
     } catch (e) {
       setErro(mensagemErro(e, 'Erro ao gerar o PDF.'))
       mostrarAlertas()

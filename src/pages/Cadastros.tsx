@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Check, Pencil, Plus, X } from 'lucide-react'
+import { Check, DatabaseBackup, Download, Pencil, Plus, X } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { mensagemErro } from '../lib/erros'
 import { normalizarNome } from '../lib/vales'
 import { atualizarFuncionario, criarFuncionario, listarFuncionarios } from '../lib/funcionarioService'
 import { atualizarPrato, criarPrato, listarPratos } from '../lib/pratoService'
+import {
+  baixarCopiaAutomatica,
+  baixarCopiaCompleta,
+  listarCopiasAutomaticas,
+  resumoQuantidades,
+  ultimaCopiaBaixada,
+  type CopiaAutomatica,
+} from '../lib/copiaService'
+import { formatarDataHora } from '../lib/datas'
 
 interface ItemCadastro {
   id: string
@@ -235,6 +244,138 @@ function ListaCadastro({
   )
 }
 
+const NOMES_TABELAS: Record<string, string> = {
+  fechamentos: 'fechamentos',
+  sangrias: 'sangrias',
+  relatorios: 'relatórios',
+  vales: 'vales',
+  vales_meses_fechados: 'meses de vales fechados',
+  vales_historico: 'histórico dos vales',
+  funcionarios: 'funcionários',
+  pratos: 'pratos',
+}
+
+function diasDesde(iso: string | null): number | null {
+  if (!iso) return null
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
+}
+
+function CopiaSeguranca() {
+  const [comImagens, setComImagens] = useState(false)
+  const [baixando, setBaixando] = useState<string | null>(null)
+  const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null)
+  const [copias, setCopias] = useState<CopiaAutomatica[] | null | undefined>(undefined)
+  const [ultima, setUltima] = useState(() => ultimaCopiaBaixada())
+
+  useEffect(() => {
+    listarCopiasAutomaticas()
+      .then(setCopias)
+      .catch(() => setCopias([]))
+  }, [])
+
+  async function baixarAgora() {
+    if (baixando) return
+    setMsg(null)
+    setBaixando('preparando')
+    try {
+      const q = await baixarCopiaCompleta({
+        incluirImagens: comImagens,
+        aoAvancar: (t) => setBaixando(NOMES_TABELAS[t] ?? t),
+      })
+      setUltima(ultimaCopiaBaixada())
+      setMsg({ ok: true, texto: `Cópia baixada: ${resumoQuantidades(q)}. Guarde o arquivo (Google Drive, e-mail ou computador).` })
+    } catch (e) {
+      setMsg({ ok: false, texto: mensagemErro(e, 'Não consegui gerar a cópia.') })
+    } finally {
+      setBaixando(null)
+    }
+  }
+
+  async function baixarAutomatica(c: CopiaAutomatica) {
+    setMsg(null)
+    try {
+      await baixarCopiaAutomatica(c)
+    } catch (e) {
+      setMsg({ ok: false, texto: mensagemErro(e, 'Não consegui baixar essa cópia.') })
+    }
+  }
+
+  const dias = diasDesde(ultima)
+  const atrasada = dias === null || dias > 30
+
+  return (
+    <section className={caixa}>
+      <div className="flex items-start gap-2">
+        <DatabaseBackup size={18} className="text-gray-500 mt-0.5 shrink-0" />
+        <div>
+          <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Cópia de segurança</h2>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+            Arquivo com todos os fechamentos, relatórios, vales e cadastros. Se algo for apagado ou der problema na
+            conta, os dados podem ser recuperados a partir dele.
+          </p>
+        </div>
+      </div>
+
+      <p className={`text-xs rounded-lg px-3 py-2 ${atrasada ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300' : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400'}`}>
+        {ultima
+          ? `Última cópia baixada neste aparelho: ${formatarDataHora(ultima)}${dias !== null ? ` (há ${dias} dia(s))` : ''}.`
+          : 'Nenhuma cópia baixada neste aparelho ainda.'}{' '}
+        {atrasada && 'Recomendado: baixar uma vez por mês e guardar no Google Drive ou no e-mail.'}
+      </p>
+
+      <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+        <input type="checkbox" checked={comImagens} onChange={(e) => setComImagens(e.target.checked)} className="w-4 h-4" />
+        Incluir os prints dos relatórios (arquivo bem maior)
+      </label>
+      <button
+        type="button"
+        onClick={baixarAgora}
+        disabled={Boolean(baixando)}
+        className="w-full flex items-center justify-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-700 py-3 text-sm font-semibold text-white disabled:opacity-60"
+      >
+        <Download size={16} /> {baixando ? `Copiando ${baixando}...` : 'Baixar cópia completa agora'}
+      </button>
+      {msg && (
+        <p role="status" className={`text-sm ${msg.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+          {msg.texto}
+        </p>
+      )}
+
+      <div className="pt-1 space-y-1.5">
+        <p className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Cópias automáticas (a cada 3 dias)</p>
+        {copias === undefined && <p className="text-xs text-gray-400">Carregando...</p>}
+        {copias === null && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            Ainda não ativadas: rode o arquivo supabase/migration_v6_copias_seguranca.sql no Supabase.
+          </p>
+        )}
+        {copias?.length === 0 && <p className="text-xs text-gray-400">Nenhuma cópia automática ainda.</p>}
+        {copias && copias.length > 0 && (
+          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+            {copias.map((c) => (
+              <li key={c.id} className="flex items-center gap-2 py-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-800 dark:text-gray-200">{formatarDataHora(c.criadaEm)}</p>
+                  <p className="text-[11px] text-gray-400 truncate">{resumoQuantidades(c.quantidades)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => baixarAutomatica(c)}
+                  className="shrink-0 flex items-center gap-1 rounded-lg bg-gray-100 dark:bg-gray-800 px-2.5 py-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300"
+                  aria-label={`Baixar cópia de ${formatarDataHora(c.criadaEm)}`}
+                >
+                  <Download size={13} /> Baixar
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-[11px] text-gray-400">Ficam guardadas as 10 mais recentes (cerca de 30 dias), sem os prints.</p>
+      </div>
+    </section>
+  )
+}
+
 function Conta() {
   const { email, trocarSenha, sair } = useAuth()
   const [senha, setSenha] = useState('')
@@ -322,8 +463,9 @@ export default function Cadastros() {
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-3 pb-24">
       <header>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Cadastros e conta</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Cadastros, cópias e conta</h1>
       </header>
+      <CopiaSeguranca />
       <ListaCadastro
         titulo="Funcionários"
         explicacao="Aparecem nos vales e no relatório. Desativar tira da lista de seleção, mas mantém os vales e relatórios antigos."
