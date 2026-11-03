@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { criarFuncionario, listarFuncionarios } from '../lib/funcionarioService'
 import type { Funcionario } from '../types/fechamento'
+import { limparNome, normalizarNome } from '../lib/vales'
 
 interface Props {
   value: string[]
@@ -15,6 +16,7 @@ export default function SeletorFuncionarios({ value, onChange, unico }: Props) {
   const [novoNome, setNovoNome] = useState('')
   const [mostrarNovo, setMostrarNovo] = useState(false)
   const [falhou, setFalhou] = useState(false)
+  const [adicionando, setAdicionando] = useState(false)
 
   function carregar() {
     setFalhou(false)
@@ -39,17 +41,30 @@ export default function SeletorFuncionarios({ value, onChange, unico }: Props) {
   }
 
   async function adicionarNovo() {
-    const nome = novoNome.trim()
-    if (!nome) return
-    let nomeFinal = nome
-    try {
-      const criado = await criarFuncionario(nome)
-      nomeFinal = criado.nome
-      setFuncionarios((prev) => [...prev, criado].sort((a, b) => a.nome.localeCompare(b.nome)))
-    } catch {
-      // se já existir (nome único) ou der erro, ainda assim seleciona pelo nome digitado
+    const nome = limparNome(novoNome)
+    if (!nome || adicionando) return
+
+    // Já cadastrado com outra grafia ("pamela" x "Pâmela")? Usa o cadastro.
+    const existente = funcionarios.find((f) => normalizarNome(f.nome) === normalizarNome(nome))
+    let nomeFinal = existente?.nome ?? nome
+
+    if (!existente) {
+      setAdicionando(true)
+      try {
+        const criado = await criarFuncionario(nome)
+        nomeFinal = criado.nome
+        setFuncionarios((prev) => [...prev, criado].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')))
+      } catch {
+        // se já existir no banco (lista desatualizada) ou der erro, seleciona pelo nome digitado;
+        // nos vales o banco liga esse nome ao cadastro certo.
+        carregar()
+      } finally {
+        setAdicionando(false)
+      }
     }
-    onChange(unico ? [nomeFinal] : [...value, nomeFinal])
+
+    const jaSelecionado = value.some((v) => normalizarNome(v) === normalizarNome(nomeFinal))
+    onChange(unico ? [nomeFinal] : jaSelecionado ? value : [...value, nomeFinal])
     setNovoNome('')
     setMostrarNovo(false)
   }
@@ -118,9 +133,10 @@ export default function SeletorFuncionarios({ value, onChange, unico }: Props) {
           <button
             type="button"
             onClick={adicionarNovo}
-            className="shrink-0 rounded-lg bg-gray-900 dark:bg-gray-700 px-3 text-xs font-medium text-white"
+            disabled={adicionando}
+            className="shrink-0 rounded-lg bg-gray-900 dark:bg-gray-700 px-3 text-xs font-medium text-white disabled:opacity-50"
           >
-            Adicionar
+            {adicionando ? '...' : 'Adicionar'}
           </button>
         </div>
       )}

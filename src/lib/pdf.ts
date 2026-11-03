@@ -740,55 +740,162 @@ export async function gerarPdfWhatsApp(params: {
 }
 
 // ============================================================
-// PDF mensal de Vales — por funcionário, com detalhe por dia
+// PDF mensal de Vales — resumo do mês + extrato por funcionário
+// com linha de assinatura (comprovante do adiantamento salarial).
 // ============================================================
 
-export function gerarPdfValesMensal(params: {
-  mesLabel: string
-  totaisPorFuncionario: { funcionario: string; total: number }[]
-  vales: { funcionario: string; data: string; valor: number; observacao: string }[]
-}): void {
-  const { mesLabel, totaisPorFuncionario, vales } = params
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
-  const margem = 14
+export interface GrupoValesPdf {
+  funcionario: string
+  total: number
+  quantidade: number
+  vales: { data: string; valor: number; observacao: string }[]
+}
 
+function agoraFormatado(): string {
+  return new Date().toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function cabecalhoVales(doc: jsPDF, titulo: string, subtitulo: string, margem: number): number {
+  doc.setFillColor(...COR_ACCENT)
+  doc.rect(margem, 12, 2.2, 13, 'F')
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text('MAPA BURGER', margem, 16)
+  doc.setTextColor(...COR_ESCURO)
+  doc.text('MAPA BURGER', margem + 5, 17)
   doc.setFontSize(11)
-  doc.text(`Relatório Mensal de Vales — ${mesLabel}`, margem, 23)
+  doc.text(titulo, margem + 5, 23)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.setTextColor(110)
+  doc.text(subtitulo, 210 - margem, 17, { align: 'right' })
+  doc.setTextColor(0)
+  return 32
+}
 
-  const totalMes = totaisPorFuncionario.reduce((acc, t) => acc + t.total, 0)
+/**
+ * Gera o PDF dos vales do mês.
+ * - Página 1: total por funcionário (o que descontar na folha).
+ * - Uma página por funcionário: cada vale, total e assinatura.
+ * Com `somenteExtratos`, gera só as páginas por funcionário (ex.: um funcionário só).
+ */
+export function gerarPdfValesMensal(params: {
+  mes: string // YYYY-MM
+  grupos: GrupoValesPdf[]
+  fechadoEm?: string | null
+  somenteExtratos?: boolean
+}): void {
+  const { mes, grupos, fechadoEm, somenteExtratos } = params
+  const [ano, m] = mes.split('-')
+  const mesLabel = `${m}/${ano}`
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const margem = 14
+  const situacao = fechadoEm
+    ? `Mês FECHADO em ${new Date(fechadoEm).toLocaleDateString('pt-BR')}`
+    : 'Mês em aberto (valores podem mudar)'
+  const subtitulo = `Gerado em ${agoraFormatado()}`
 
-  autoTable(doc, {
-    startY: 28,
-    margin: { left: margem, right: margem },
-    head: [['Funcionário', 'Total no mês']],
-    body: totaisPorFuncionario.map((t) => [t.funcionario, formatarMoeda(t.total)]),
-    styles: { fontSize: 10 },
-    headStyles: { fillColor: [30, 30, 30] },
-    columnStyles: { 1: { halign: 'right' } },
-    foot: [['TOTAL GERAL', formatarMoeda(totalMes)]],
-    footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+  const totalMesCentavos = grupos.reduce((acc, g) => acc + Math.round(g.total * 100), 0)
+  const qtdMes = grupos.reduce((acc, g) => acc + g.quantidade, 0)
+
+  if (!somenteExtratos) {
+    let y = cabecalhoVales(doc, `Vales (adiantamento salarial) — ${mesLabel}`, subtitulo, margem)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text(situacao, margem, y)
+    y += 4
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [[
+        'Funcionário',
+        { content: 'Qtd. de vales', styles: { halign: 'center' } },
+        { content: 'Total a descontar', styles: { halign: 'right' } },
+      ]],
+      body: grupos.map((g) => [g.funcionario, String(g.quantidade), formatarMoeda(g.total)]),
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: COR_ESCURO },
+      columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right', fontStyle: 'bold' } },
+      foot: [[
+        'TOTAL GERAL',
+        { content: String(qtdMes), styles: { halign: 'center' } },
+        { content: formatarMoeda(totalMesCentavos / 100), styles: { halign: 'right' } },
+      ]],
+      footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+    })
+  }
+
+  grupos.forEach((g, i) => {
+    if (!somenteExtratos || i > 0) doc.addPage()
+    let y = cabecalhoVales(doc, `Extrato de vales — ${mesLabel}`, subtitulo, margem)
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(12)
+    doc.text(g.funcionario, margem, y)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text(situacao, 210 - margem, y, { align: 'right' })
+    y += 4
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [['Data', { content: 'Valor', styles: { halign: 'right' } }, 'Observação']],
+      body: g.vales.map((v) => [formatarData(v.data), formatarMoeda(v.valor), v.observacao || '-']),
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: [90, 90, 95] },
+      columnStyles: { 0: { cellWidth: 28 }, 1: { halign: 'right', cellWidth: 32 } },
+      foot: [[
+        `${g.quantidade} vale(s)`,
+        { content: formatarMoeda(g.total), styles: { halign: 'right' } },
+        'TOTAL A DESCONTAR',
+      ]],
+      footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+    })
+
+    y = finalY(doc) + 12
+    if (y > 240) {
+      doc.addPage()
+      y = 30
+    }
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9.5)
+    const declaracao =
+      `Declaro que recebi os valores acima, no total de ${formatarMoeda(g.total)}, a título de ` +
+      `adiantamento salarial (vale) referente a ${mesLabel}, e autorizo o desconto desse valor no meu salário.`
+    const linhas = doc.splitTextToSize(declaracao, 210 - margem * 2)
+    doc.text(linhas, margem, y)
+    y += linhas.length * 4.6 + 22
+
+    doc.setDrawColor(60)
+    doc.setLineWidth(0.3)
+    doc.line(margem, y, margem + 95, y)
+    doc.line(210 - margem - 50, y, 210 - margem, y)
+    doc.setFontSize(8.5)
+    doc.setTextColor(90)
+    doc.text(`Assinatura — ${g.funcionario}`, margem, y + 4.5)
+    doc.text('Data', 210 - margem - 50, y + 4.5)
+    doc.setTextColor(0)
   })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let y = (doc as any).lastAutoTable.finalY + 10
+  // Rodapé com página em todas as folhas
+  const totalPaginas = doc.getNumberOfPages()
+  for (let p = 1; p <= totalPaginas; p++) {
+    doc.setPage(p)
+    doc.setDrawColor(230)
+    doc.setLineWidth(0.2)
+    doc.line(margem, 289, 210 - margem, 289)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(140)
+    doc.text(`Mapa Burger — Vales ${mesLabel}`, margem, 293.5)
+    doc.text(`${p} / ${totalPaginas}`, 210 - margem, 293.5, { align: 'right' })
+    doc.setTextColor(0)
+  }
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
-  doc.text('Detalhamento', margem, y)
-  y += 5
-
-  autoTable(doc, {
-    startY: y,
-    margin: { left: margem, right: margem },
-    head: [['Data', 'Funcionário', 'Valor', 'Observação']],
-    body: vales.map((v) => [formatarData(v.data), v.funcionario, formatarMoeda(v.valor), v.observacao || '-']),
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [90, 90, 95] },
-    columnStyles: { 2: { halign: 'right' } },
-  })
-
-  doc.save(`vales_${mesLabel.replace('/', '-')}.pdf`)
+  const sufixo = somenteExtratos && grupos.length === 1 ? `_${slugify(grupos[0].funcionario)}` : ''
+  doc.save(`vales_${mes}${sufixo}.pdf`)
 }
