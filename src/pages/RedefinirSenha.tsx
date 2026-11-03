@@ -134,7 +134,10 @@ export default function RedefinirSenha() {
                     autoFocus
                     className={`${campo} pr-11`}
                     value={senha}
-                    onChange={(e) => setSenha(e.target.value)}
+                    onChange={(e) => {
+                      setSenha(e.target.value)
+                      setErro(null)
+                    }}
                   />
                   <button
                     type="button"
@@ -161,7 +164,10 @@ export default function RedefinirSenha() {
                   autoComplete="new-password"
                   className={campo}
                   value={confirmacao}
-                  onChange={(e) => setConfirmacao(e.target.value)}
+                  onChange={(e) => {
+                    setConfirmacao(e.target.value)
+                    setErro(null)
+                  }}
                 />
               </label>
               {erro && (
