@@ -114,7 +114,7 @@ function MenuConta({ escuro, alternarTema }: { escuro: boolean; alternarTema: ()
             {email}
           </p>
           <Link to="/cadastros" role="menuitem" className={item} onClick={() => setAberto(false)}>
-            <Settings size={16} /> Cadastros e conta
+            <Settings size={16} /> Cadastros, cópias e conta
           </Link>
           <button
             type="button"

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { AlertCircle, ChevronLeft, ChevronRight, FileDown, FileText } from 'lucide-react'
+import { AlertCircle, ChevronLeft, ChevronRight, FileDown, FileText, Share2 } from 'lucide-react'
 import { listarFechamentos } from '../lib/fechamentoService'
 import { listarRelatorios } from '../lib/relatorioService'
 import { listarValesDoMes } from '../lib/valeService'
 import { agregarVendasPorPrato, formatarMoeda } from '../lib/calculations'
 import type { LinhaRelatorioMensal } from '../lib/pdf'
 import { carregarPdf } from '../lib/pdfSobDemanda'
+import { podeCompartilharArquivos } from '../lib/arquivos'
 import { mensagemErro } from '../lib/erros'
 import { mesValido, nomeMes, rotuloMes, somarMeses, somarValores } from '../lib/vales'
 import { CaixaErro } from '../components/Avisos'
@@ -100,11 +101,12 @@ export default function RelatorioMensal() {
     if (mesValido(novo)) setParams({ mes: novo }, { replace: true })
   }
 
-  async function exportarPdf() {
+  async function exportarPdf(compartilhar = false) {
     setErroPdf(null)
     try {
       const pdf = await carregarPdf()
-      pdf.gerarPdfMensal({
+      await pdf.gerarPdfMensal({
+        compartilhar,
         mes,
         linhas,
         vendasPorPrato,
@@ -117,20 +119,33 @@ export default function RelatorioMensal() {
   }
 
   const maxPrato = vendasPorPrato[0]?.[1] ?? 0
+  const podeCompartilhar = podeCompartilharArquivos()
   const nome = nomeMes(mes)
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-3 pb-24">
       <header className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Relatório mensal</h1>
-        <button
-          type="button"
-          disabled={linhas.length === 0}
-          onClick={exportarPdf}
-          className="flex items-center gap-1.5 rounded-xl bg-gray-900 dark:bg-gray-700 px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-40"
-        >
-          <FileDown size={16} /> PDF
-        </button>
+        <div className="flex gap-2">
+          {podeCompartilhar && (
+            <button
+              type="button"
+              disabled={linhas.length === 0}
+              onClick={() => exportarPdf(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-green-600 px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              <Share2 size={16} /> Enviar
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={linhas.length === 0}
+            onClick={() => exportarPdf()}
+            className="flex items-center gap-1.5 rounded-xl bg-gray-900 dark:bg-gray-700 px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-40"
+          >
+            <FileDown size={16} /> PDF
+          </button>
+        </div>
       </header>
 
       <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-3 flex items-center gap-2">

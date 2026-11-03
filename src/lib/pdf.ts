@@ -1,9 +1,11 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { ConsumoItem, Fechamento, RelatorioDiario, StatusFechamento } from '../types/fechamento'
+import type { ConsumoItem, Fechamento, RelatorioDiario, Sangria, StatusFechamento } from '../types/fechamento'
 import { agregarVendasPorPrato, formatarMoeda, STATUS_LABEL, totalMarmitas } from './calculations'
 import { semAcento } from './texto'
 import { LOGO_MAPA_BURGER_PNG } from './brand'
+import { compartilharOuBaixar, type ResultadoEntrega } from './arquivos'
+import { formasDePagamento, resumoDoMes, situacaoDoCaixa, type ItemPagamento } from './relatorioResumo'
 
 function formatarData(iso: string): string {
   const [ano, mes, dia] = iso.split('-')
@@ -285,158 +287,130 @@ function situacaoTexto(diferenca: number): string {
   return diferenca > 0.005 ? 'Sobrou' : diferenca < -0.005 ? 'Faltou' : 'Fechou'
 }
 
-/** PDF do mês: resumo, uma linha por dia, vendas por prato e dias sem fechamento. */
-export function gerarPdfMensal(params: {
+/** PDF do mês: resumo em linguagem simples, formas de pagamento, dia a dia e pratos. */
+export async function gerarPdfMensal(params: {
   mes: string // YYYY-MM
   linhas: LinhaRelatorioMensal[]
   vendasPorPrato?: [string, number][]
   diasSemFechamento?: string[]
   totalVales?: number | null
-}): void {
-  const { mes, linhas, vendasPorPrato = [], diasSemFechamento = [], totalVales } = params
+  compartilhar?: boolean
+}): Promise<ResultadoEntrega> {
+  const { mes, linhas, vendasPorPrato = [], diasSemFechamento = [], totalVales, compartilhar } = params
   const [ano, m] = mes.split('-')
   const mesLabel = `${m}/${ano}`
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
-  const margem = 14
+  const margem = 16
   const larguraUtil = 210 - margem * 2
+  let y = cabecalhoComLogo(doc, margem, 'Relatório do mês', `${NOMES_MES[Number(m) - 1]} de ${ano}`)
 
-  // Cabeçalho
-  doc.setFillColor(...COR_ACCENT)
-  doc.rect(margem, 12, 2.2, 13, 'F')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(14)
-  doc.setTextColor(...COR_ESCURO)
-  doc.text('MAPA BURGER', margem + 5, 17)
-  doc.setFontSize(11)
-  doc.text(`Relatório mensal de fechamento — ${mesLabel}`, margem + 5, 23)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8.5)
-  doc.setTextColor(110)
-  doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, 210 - margem, 17, { align: 'right' })
-  doc.setTextColor(0)
+  const quebra = criarQuebra(doc)
+  const garantir = (altura: number) => {
+    y = quebra(altura, y)
+  }
 
+  const fechamentos = linhas.flatMap((l) => [l.manha, l.noite].filter(Boolean) as Fechamento[])
   const totalCaixa = somaCentavos(linhas.map((l) => l.totalCaixaDia))
   const totalSistema = somaCentavos(linhas.map((l) => l.totalSistemaDia))
   const totalDiferenca = somaCentavos(linhas.map((l) => l.diferencaFinalDia))
   const totalMarmitasMes = vendasPorPrato.reduce((acc, [, q]) => acc + q, 0)
 
-  // Cards de resumo
+  // Resultado do mês
+  const situacao = situacaoDoCaixa(totalDiferenca)
+  y = faixaSituacao(doc, margem, y, larguraUtil, linhas.length ? `NO MÊS: ${situacao.titulo}` : 'SEM FECHAMENTOS NO MÊS', linhas.length ? situacao.status : null)
+
+  // Cards
   const cards = [
-    { label: 'Total caixa', valor: formatarMoeda(totalCaixa) },
-    { label: 'Total sistema', valor: formatarMoeda(totalSistema) },
-    { label: 'Diferença do mês', valor: formatarMoeda(totalDiferenca), destaque: true },
-    { label: 'Marmitas', valor: String(totalMarmitasMes) },
+    { label: 'Vendas no caixa', valor: formatarMoeda(totalCaixa) },
+    { label: 'Registrado no sistema', valor: formatarMoeda(totalSistema) },
+    { label: 'Dias com fechamento', valor: String(linhas.length) },
+    { label: 'Marmitas vendidas', valor: String(totalMarmitasMes) },
   ]
   const larguraCard = (larguraUtil - 3 * 4) / 4
   cards.forEach((c, i) =>
-    desenharCardResumo(doc, {
-      x: margem + i * (larguraCard + 4),
-      y: 31,
-      largura: larguraCard,
-      altura: 18,
-      label: c.label,
-      valor: c.valor,
-      destaque: c.destaque,
-    }),
+    desenharCardResumo(doc, { x: margem + i * (larguraCard + 4), y, largura: larguraCard, altura: 18, label: c.label, valor: c.valor }),
   )
+  y += 24
 
-  const faltou = linhas.filter((l) => l.diferencaFinalDia < -0.005).length
-  const sobrou = linhas.filter((l) => l.diferencaFinalDia > 0.005).length
-  doc.setFontSize(9)
-  doc.setTextColor(80)
-  const resumoTexto =
-    `${linhas.length} dia(s) com fechamento · ${linhas.length - faltou - sobrou} fecharam · ` +
-    `${sobrou} sobrou · ${faltou} faltou` +
-    (diasSemFechamento.length ? ` · ${diasSemFechamento.length} dia(s) sem fechamento` : '') +
-    (totalVales != null ? ` · Vales do mês: ${formatarMoeda(totalVales)}` : '')
-  doc.text(doc.splitTextToSize(resumoTexto, larguraUtil), margem, 55)
-  doc.setTextColor(0)
+  // Resumo em frases
+  y = tituloSecaoPdf(doc, 'Resumo do mês', y, margem, larguraUtil)
+  const frases = resumoDoMes({ dias: linhas, diasSemFechamento: diasSemFechamento.length, totalMarmitas: totalMarmitasMes })
+  if (totalVales != null && totalVales > 0) frases.push(`Vales (adiantamentos de salário) no mês: ${formatarMoeda(totalVales)}.`)
+  y = listaComMarcadores(doc, frases, margem, y + 1, larguraUtil, quebra)
+  y += 3
 
-  autoTable(doc, {
-    startY: 60,
-    margin: { left: margem, right: margem },
-    head: [[
-      'Data',
-      { content: 'Total Caixa', styles: { halign: 'right' } },
-      { content: 'Total Sistema', styles: { halign: 'right' } },
-      { content: 'Diferença', styles: { halign: 'right' } },
-      'Situação',
-    ]],
-    body: linhas.map((l) => [
-      formatarData(l.data),
-      formatarMoeda(l.totalCaixaDia),
-      formatarMoeda(l.totalSistemaDia),
-      formatarMoeda(l.diferencaFinalDia),
-      situacaoTexto(l.diferencaFinalDia),
-    ]),
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: COR_ESCURO },
-    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
-    didParseCell: (data) => {
-      if (data.section === 'body' && (data.column.index === 3 || data.column.index === 4)) {
-        const d = linhas[data.row.index]?.diferencaFinalDia ?? 0
-        const status = statusPorDiferenca(d)
-        if (status !== 'fechou') data.cell.styles.textColor = COR_STATUS[status]
-      }
-    },
-    foot: [[
-      'TOTAL DO MÊS',
-      { content: formatarMoeda(totalCaixa), styles: { halign: 'right' } },
-      { content: formatarMoeda(totalSistema), styles: { halign: 'right' } },
-      { content: formatarMoeda(totalDiferenca), styles: { halign: 'right' } },
-      situacaoTexto(totalDiferenca),
-    ]],
-    footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-  })
+  // Formas de pagamento
+  const pagamentos = formasDePagamento(fechamentos)
+  if (pagamentos.length > 0) {
+    garantir(16 + pagamentos.length * 7.5)
+    y = tituloSecaoPdf(doc, 'Como o dinheiro entrou no mês', y, margem, larguraUtil)
+    y = desenharBarras(doc, pagamentos, margem, y, larguraUtil)
+    y += 4
+  }
 
-  let y = finalY(doc) + 8
-  if (vendasPorPrato.length > 0) {
-    if (y > 240) {
-      doc.addPage()
-      y = 20
-    }
-    y = tituloSecaoPdf(doc, 'Vendas por prato no mês', y, margem, larguraUtil)
+  // Dia a dia
+  if (linhas.length > 0) {
+    garantir(30)
+    y = tituloSecaoPdf(doc, 'Dia a dia', y, margem, larguraUtil)
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
-      head: [['Prato', { content: 'Quantidade', styles: { halign: 'right' } }]],
-      body: vendasPorPrato.map(([prato, qtd]) => [prato, String(qtd)]),
-      foot: [['TOTAL', { content: String(totalMarmitasMes), styles: { halign: 'right' } }]],
-      styles: { fontSize: 9.5 },
-      headStyles: { fillColor: [60, 60, 64] },
+      head: [[
+        'Dia',
+        { content: 'Vendas no caixa', styles: { halign: 'right' } },
+        { content: 'No sistema', styles: { halign: 'right' } },
+        { content: 'Diferença', styles: { halign: 'right' } },
+        'Resultado',
+      ]],
+      body: linhas.map((l) => [
+        `${formatarData(l.data).slice(0, 5)} ${DIAS_CURTOS[diaSemanaNumero(l.data)]}`,
+        formatarMoeda(l.totalCaixaDia),
+        formatarMoeda(l.totalSistemaDia),
+        formatarMoeda(l.diferencaFinalDia),
+        situacaoTexto(l.diferencaFinalDia),
+      ]),
+      styles: { fontSize: 9, cellPadding: 1.6 },
+      headStyles: { fillColor: COR_ESCURO },
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+      didParseCell: (data) => {
+        if (data.section === 'body' && (data.column.index === 3 || data.column.index === 4)) {
+          const status = statusPorDiferenca(linhas[data.row.index]?.diferencaFinalDia ?? 0)
+          data.cell.styles.textColor = COR_STATUS[status]
+          if (data.column.index === 4) data.cell.styles.fontStyle = 'bold'
+        }
+      },
+      foot: [[
+        'TOTAL',
+        { content: formatarMoeda(totalCaixa), styles: { halign: 'right' } },
+        { content: formatarMoeda(totalSistema), styles: { halign: 'right' } },
+        { content: formatarMoeda(totalDiferenca), styles: { halign: 'right' } },
+        situacaoTexto(totalDiferenca),
+      ]],
       footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-      columnStyles: { 1: { halign: 'right' } },
     })
-    y = finalY(doc) + 8
+    y = finalY(doc) + 6
+  }
+
+  // Pratos
+  if (vendasPorPrato.length > 0) {
+    garantir(30)
+    y = tituloSecaoPdf(doc, 'Marmitas vendidas por prato', y, margem, larguraUtil)
+    y = tabelaPratos(doc, vendasPorPrato, margem, y)
   }
 
   if (diasSemFechamento.length > 0) {
-    if (y > 260) {
-      doc.addPage()
-      y = 20
-    }
-    y = tituloSecaoPdf(doc, 'Dias sem fechamento', y, margem, larguraUtil)
+    garantir(20)
+    y = tituloSecaoPdf(doc, 'Dias sem fechamento registrado', y, margem, larguraUtil)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9.5)
     const texto = diasSemFechamento.map((d) => formatarData(d).slice(0, 5)).join(', ')
-    doc.text(doc.splitTextToSize(texto, larguraUtil), margem, y)
+    const linhasTexto = doc.splitTextToSize(texto, larguraUtil)
+    doc.text(linhasTexto, margem, y)
+    y += linhasTexto.length * 4.6
   }
 
-  const totalPaginas = doc.getNumberOfPages()
-  for (let p = 1; p <= totalPaginas; p++) {
-    doc.setPage(p)
-    doc.setDrawColor(230)
-    doc.setLineWidth(0.2)
-    doc.line(margem, 289, 210 - margem, 289)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    doc.setTextColor(140)
-    doc.text(`Mapa Burger — Relatório mensal ${mesLabel}`, margem, 293.5)
-    doc.text(`${p} / ${totalPaginas}`, 210 - margem, 293.5, { align: 'right' })
-    doc.setTextColor(0)
-  }
-
-  doc.save(`relatorio_mensal_${mes}.pdf`)
+  rodapePaginas(doc, margem, `Mapa Burger — Relatório do mês ${mesLabel}`)
+  return entregarPdf(doc, `Mapa-Burger_relatorio-mensal_${m}-${ano}.pdf`, compartilhar)
 }
 
 // ============================================================
@@ -456,15 +430,6 @@ function tituloSecaoPdf(doc: jsPDF, texto: string, y: number, margem: number, la
   doc.text(texto.toUpperCase(), margem + 5, y + 5.2)
   doc.setTextColor(0, 0, 0)
   return y + 11.5
-}
-
-function subtituloPdf(doc: jsPDF, texto: string, y: number, margem: number): number {
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10)
-  doc.setTextColor(60)
-  doc.text(texto, margem, y)
-  doc.setTextColor(0)
-  return y + 6
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -510,313 +475,502 @@ function desenharCardResumo(
   doc.setTextColor(0)
 }
 
+// ------------------------------------------------------------
+// Peças de layout compartilhadas pelos PDFs para os patrões
+// ------------------------------------------------------------
+
+const NOMES_MES = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+]
+const DIAS_SEMANA = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado']
+const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
+
+function diaSemanaNumero(iso: string): number {
+  const [a, m, d] = iso.split('-').map(Number)
+  return new Date(a, m - 1, d).getDay()
+}
+
+async function entregarPdf(doc: jsPDF, nome: string, compartilhar?: boolean): Promise<ResultadoEntrega> {
+  if (compartilhar) return compartilharOuBaixar(doc.output('blob'), nome, nome.replace(/\.pdf$/, '').replace(/_/g, ' '))
+  doc.save(nome)
+  return 'baixado'
+}
+
+/** Logo + título + subtítulo + linha laranja. Devolve o y logo abaixo. */
+function cabecalhoComLogo(doc: jsPDF, margem: number, titulo: string, subtitulo: string): number {
+  let y = 14
+  try {
+    doc.addImage(LOGO_MAPA_BURGER_PNG, 'PNG', margem, y, 15, 15)
+  } catch {
+    // segue sem logo
+  }
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(17)
+  doc.setTextColor(...COR_ESCURO)
+  doc.text(`Mapa Burger — ${titulo}`, margem + 19, y + 7)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10.5)
+  doc.setTextColor(100)
+  doc.text(subtitulo, margem + 19, y + 13)
+  doc.setTextColor(0)
+  y += 19
+  doc.setDrawColor(...COR_ACCENT)
+  doc.setLineWidth(0.9)
+  doc.line(margem, y, 210 - margem, y)
+  return y + 6
+}
+
+/** Faixa colorida com o resultado (verde/azul/vermelho; cinza sem dados). */
+function faixaSituacao(
+  doc: jsPDF,
+  margem: number,
+  y: number,
+  largura: number,
+  titulo: string,
+  status: StatusFechamento | null,
+  frase?: string,
+): number {
+  const cor: [number, number, number] = status ? COR_STATUS[status] : [120, 120, 125]
+  const linhasFrase = frase ? doc.splitTextToSize(frase, largura - 10) : []
+  const altura = 11 + (linhasFrase.length ? linhasFrase.length * 4.6 + 1.5 : 0)
+  doc.setFillColor(...cor)
+  doc.roundedRect(margem, y, largura, altura, 2.5, 2.5, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.text(titulo, 105, y + 7.6, { align: 'center' })
+  if (linhasFrase.length) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    doc.text(linhasFrase, 105, y + 13.2, { align: 'center' })
+  }
+  doc.setTextColor(0)
+  return y + altura + 5
+}
+
+/** Barras horizontais: rótulo, barra, valor e porcentagem do total. */
+function desenharBarras(doc: jsPDF, itens: ItemPagamento[], x: number, y: number, largura: number): number {
+  const total = itens.reduce((a, i) => a + i.valor, 0) || 1
+  const maior = itens[0]?.valor || 1
+  const lRotulo = 46
+  const lValor = 30
+  const lPct = 13
+  const lBarra = largura - lRotulo - lValor - lPct - 4
+  for (const item of itens) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9.5)
+    doc.setTextColor(40)
+    doc.text(item.rotulo, x, y + 3.8)
+    doc.setFillColor(238, 238, 240)
+    doc.roundedRect(x + lRotulo, y, lBarra, 5, 1.2, 1.2, 'F')
+    doc.setFillColor(...COR_ACCENT)
+    doc.roundedRect(x + lRotulo, y, Math.max(1.5, (lBarra * item.valor) / maior), 5, 1.2, 1.2, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.text(formatarMoeda(item.valor), x + lRotulo + lBarra + 2 + lValor, y + 3.8, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(130)
+    doc.text(`${Math.round((item.valor / total) * 100)}%`, x + largura, y + 3.8, { align: 'right' })
+    y += 7.5
+  }
+  doc.setDrawColor(225)
+  doc.setLineWidth(0.2)
+  doc.line(x, y - 1.5, x + largura, y - 1.5)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(20)
+  doc.text('Total', x, y + 3)
+  doc.text(formatarMoeda(somaCentavos(itens.map((i) => i.valor))), x + lRotulo + lBarra + 2 + lValor, y + 3, { align: 'right' })
+  doc.setTextColor(0)
+  return y + 7
+}
+
+/** Lista com marcadores, quebrando linha e página quando precisa. */
+function listaComMarcadores(
+  doc: jsPDF,
+  itens: string[],
+  x: number,
+  y: number,
+  largura: number,
+  quebra: (altura: number, y: number) => number,
+): number {
+  let atual = y
+  for (const item of itens) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    doc.setTextColor(30)
+    const linhas = doc.splitTextToSize(item, largura - 5)
+    atual = quebra(linhas.length * 4.8 + 1.5, atual)
+    doc.setFillColor(...COR_ACCENT)
+    doc.circle(x + 1.2, atual - 1.2, 0.8, 'F')
+    doc.text(linhas, x + 4.5, atual)
+    atual += linhas.length * 4.8 + 1.5
+  }
+  doc.setTextColor(0)
+  return atual
+}
+
+/** Função de quebra de página: devolve o y a usar (18 se pulou de página). */
+function criarQuebra(doc: jsPDF) {
+  return (altura: number, yAtual: number) => {
+    if (yAtual + altura > 278) {
+      doc.addPage()
+      return 18
+    }
+    return yAtual
+  }
+}
+
+function tabelaPratos(doc: jsPDF, vendas: [string, number][], margem: number, y: number): number {
+  const total = vendas.reduce((a, [, q]) => a + q, 0) || 1
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margem, right: margem },
+    head: [['Prato', { content: 'Quantidade', styles: { halign: 'right' } }, { content: '% do total', styles: { halign: 'right' } }]],
+    body: vendas.map(([prato, qtd]) => [prato, String(qtd), `${Math.round((qtd / total) * 100)}%`]),
+    foot: [['TOTAL', { content: String(total), styles: { halign: 'right' } }, { content: '100%', styles: { halign: 'right' } }]],
+    styles: { fontSize: 9.5, cellPadding: 1.6 },
+    headStyles: { fillColor: [60, 60, 64] },
+    footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
+  })
+  return finalY(doc) + 6
+}
+
+function rodapePaginas(doc: jsPDF, margem: number, texto: string) {
+  const total = doc.getNumberOfPages()
+  const gerado = `Gerado em ${new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p)
+    doc.setDrawColor(230)
+    doc.setLineWidth(0.2)
+    doc.line(margem, 287, 210 - margem, 287)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(140)
+    doc.text(texto, margem, 291.5)
+    doc.text(`${gerado} · página ${p} de ${total}`, 210 - margem, 291.5, { align: 'right' })
+    doc.setTextColor(0)
+  }
+}
+
+function mesmasSangrias(a: Sangria[], b: Sangria[]): boolean {
+  const chave = (l: Sangria[]) =>
+    l.map((s) => `${Math.round(s.valor * 100)}|${s.motivo.trim().toLowerCase()}`).sort().join(';')
+  return chave(a) === chave(b)
+}
+
 /**
- * PDF final pra enviar no WhatsApp (A4, com acentos, visual mais
- * elaborado): fechamento(s) de caixa DETALHADOS + relatório diário
- * completo + (opcional) os prints anexados como páginas extras —
- * tudo num arquivo só. As imagens já vêm como data URL (base64),
- * pois ficam salvas junto com o relatório.
+ * PDF do dia para os patrões (e WhatsApp): página 1 com o resumo em
+ * linguagem simples; depois os detalhes para conferência e, por fim,
+ * os prints anexados (cada um numa página).
  */
 export async function gerarPdfWhatsApp(params: {
   relatorio: RelatorioDiario
   fechamentos: Fechamento[]
   imagens?: (string | null | undefined)[]
-}): Promise<void> {
-  const { relatorio: rel, fechamentos, imagens = [] } = params
+  compartilhar?: boolean
+}): Promise<ResultadoEntrega> {
+  const { relatorio: rel, fechamentos, imagens = [], compartilhar } = params
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const margem = 16
   const larguraUtil = 210 - margem * 2
-  let y = 16
+  const dataLonga = `${DIAS_SEMANA[diaSemanaNumero(rel.data)]}, ${formatarData(rel.data)}`
+  let y = cabecalhoComLogo(doc, margem, 'Relatório do dia', dataLonga)
 
-  const quebrarSeNecessario = (limite = 255) => {
-    if (y > limite) {
-      doc.addPage()
-      y = 18
+  const quebra = criarQuebra(doc)
+  const garantir = (altura: number) => {
+    y = quebra(altura, y)
+  }
+
+  // ---------- Página 1: resumo ----------
+  const totalCaixa = somaCentavos(fechamentos.map((f) => f.resultado.totalCaixa))
+  const totalSistema = somaCentavos(fechamentos.map((f) => f.resultado.totalSistema))
+  const diferenca = somaCentavos(fechamentos.map((f) => f.resultado.diferencaFinal))
+  const ajuste = somaCentavos(fechamentos.map((f) => f.resultado.ajusteAplicado))
+  const sangrias = fechamentos.flatMap((f) => f.sangrias)
+  const totalSangrias = somaCentavos(sangrias.map((s) => s.valor))
+  const marmitas = fechamentos.reduce((acc, f) => acc + totalMarmitas(f.marmitas), 0)
+
+  if (fechamentos.length === 0) {
+    y = faixaSituacao(doc, margem, y, larguraUtil, 'SEM FECHAMENTO DE CAIXA', null, 'O fechamento de caixa deste dia não foi salvo no sistema.')
+  } else {
+    const s = situacaoDoCaixa(diferenca, ajuste)
+    y = faixaSituacao(doc, margem, y, larguraUtil, s.titulo, s.status, s.frase)
+  }
+
+  const cards = [
+    { label: 'Vendas no caixa', valor: formatarMoeda(totalCaixa) },
+    { label: 'Registrado no sistema', valor: formatarMoeda(totalSistema) },
+    { label: 'Marmitas vendidas', valor: String(marmitas || rel.quantidadeVendida || 0) },
+    { label: 'Retiradas (sangrias)', valor: formatarMoeda(totalSangrias) },
+  ]
+  const larguraCard = (larguraUtil - 3 * 4) / 4
+  cards.forEach((c, i) =>
+    desenharCardResumo(doc, { x: margem + i * (larguraCard + 4), y, largura: larguraCard, altura: 18, label: c.label, valor: c.valor }),
+  )
+  y += 24
+
+  const pagamentos = formasDePagamento(fechamentos)
+  if (pagamentos.length > 0) {
+    y = tituloSecaoPdf(doc, 'Como o dinheiro entrou', y, margem, larguraUtil)
+    y = desenharBarras(doc, pagamentos, margem, y, larguraUtil)
+    const dinheiroBrendi = somaCentavos(fechamentos.map((f) => f.brendi.dinheiro))
+    if (dinheiroBrendi > 0) {
+      doc.setFont('helvetica', 'italic')
+      doc.setFontSize(8.5)
+      doc.setTextColor(120)
+      doc.text(
+        doc.splitTextToSize(
+          `O dinheiro recebido pelo Brendi (${formatarMoeda(dinheiroBrendi)}) não está nas vendas do caixa: ele entra só na conferência com o sistema.`,
+          larguraUtil,
+        ),
+        margem,
+        y,
+      )
+      doc.setTextColor(0)
+      y += 9
+    } else {
+      y += 2
     }
   }
 
-  // --- Cabeçalho com a logo ---
-  try {
-    doc.addImage(LOGO_MAPA_BURGER_PNG, 'PNG', margem, y, 16, 16)
-  } catch {
-    // se a logo falhar por algum motivo, segue sem ela
+  // Destaques do dia
+  const destaques: string[] = []
+  if (sangrias.length > 0) {
+    destaques.push(
+      `Retiradas do caixa (sangrias): ${formatarMoeda(totalSangrias)} — ` +
+        sangrias.map((s) => `${s.motivo || 'sem motivo'} (${formatarMoeda(s.valor)})`).join('; ') + '.',
+    )
   }
+  for (const f of fechamentos) {
+    if (f.ajuste.tipo && f.resultado.ajusteAplicado !== 0) {
+      destaques.push(`Ajuste manual no caixa: ${f.resultado.ajusteAplicado > 0 ? '+' : '-'}${formatarMoeda(Math.abs(f.resultado.ajusteAplicado))}.`)
+    }
+    if (f.observacoes.trim()) destaques.push(`Observação do caixa: ${f.observacoes.trim()}`)
+  }
+  if (rel.estragou.length > 0) destaques.push(`Perdas (estragou): ${rel.estragou.join('; ')}.`)
+  const consumoFunc = somaCentavos(rel.consumoLojaMensal.map((c) => c.valor))
+  const consumoMoto = somaCentavos(rel.consumoLojaMotoboys.map((c) => c.valor))
+  const cortesias = somaCentavos(rel.cortesiaClientes.map((c) => c.valor))
+  const partesConsumo = [
+    consumoFunc > 0 ? `funcionários ${formatarMoeda(consumoFunc)}` : '',
+    consumoMoto > 0 ? `motoboys ${formatarMoeda(consumoMoto)}` : '',
+    cortesias > 0 ? `cortesias a clientes ${formatarMoeda(cortesias)}` : '',
+  ].filter(Boolean)
+  if (partesConsumo.length) destaques.push(`Consumo e cortesias: ${partesConsumo.join(' · ')} (detalhes na página seguinte).`)
+  if (rel.funcionariosQueComeram.length > 0) destaques.push(`Funcionários que comeram na loja: ${rel.funcionariosQueComeram.join(', ')}.`)
+  if (destaques.length === 0) destaques.push('Nenhuma ocorrência fora do normal registrada.')
+
+  garantir(20)
+  y = tituloSecaoPdf(doc, 'Destaques do dia', y, margem, larguraUtil)
+  y = listaComMarcadores(doc, destaques, margem, y + 1, larguraUtil, quebra)
+  y += 3
+
+  const vendasPorPrato = agregarVendasPorPrato(fechamentos)
+  if (vendasPorPrato.length > 0) {
+    garantir(22 + vendasPorPrato.length * 6)
+    y = tituloSecaoPdf(doc, 'Marmitas vendidas por prato', y, margem, larguraUtil)
+    y = tabelaPratos(doc, vendasPorPrato, margem, y)
+  }
+
+  // ---------- Detalhes para conferência ----------
+  doc.addPage()
+  y = 18
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(18)
-  doc.text('Mapa Burger', margem + 20, y + 8)
+  doc.setFontSize(13)
+  doc.setTextColor(...COR_ESCURO)
+  doc.text('Detalhes para conferência', margem, y)
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(11)
-  doc.setTextColor(110)
-  doc.text(`Relatório completo do dia — ${formatarData(rel.data)}`, margem + 20, y + 14.5)
+  doc.setFontSize(9)
+  doc.setTextColor(120)
+  doc.text(`${formatarData(rel.data)} · valores zerados não aparecem`, 210 - margem, y, { align: 'right' })
   doc.setTextColor(0)
-  y += 22
-  doc.setDrawColor(...COR_ACCENT)
-  doc.setLineWidth(1)
-  doc.line(margem, y, 210 - margem, y)
-  y += 8
+  y += 6
 
-  // --- Cards de resumo do dia ---
-  const totalCaixaDia = fechamentos.reduce((acc, f) => acc + f.resultado.totalCaixa, 0)
-  const totalSistemaDia = fechamentos.reduce((acc, f) => acc + f.resultado.totalSistema, 0)
-  const diferencaFinalDia = fechamentos.reduce((acc, f) => acc + f.resultado.diferencaFinal, 0)
-  const totalMarmitasDia = fechamentos.reduce((acc, f) => acc + totalMarmitas(f.marmitas), 0)
-
-  const larguraCard = (larguraUtil - 3 * 4) / 4
-  const alturaCard = 20
-  const cards = [
-    { label: 'Total Caixa', valor: formatarMoeda(totalCaixaDia) },
-    { label: 'Total Sistema', valor: formatarMoeda(totalSistemaDia) },
-    { label: 'Diferença', valor: formatarMoeda(diferencaFinalDia), destaque: true },
-    { label: 'Marmitas vendidas', valor: String(totalMarmitasDia) },
-  ]
-  cards.forEach((card, i) => {
-    desenharCardResumo(doc, {
-      x: margem + i * (larguraCard + 4),
-      y,
-      largura: larguraCard,
-      altura: alturaCard,
-      label: card.label,
-      valor: card.valor,
-      destaque: card.destaque,
-    })
-  })
-  y += alturaCard + 6
-
-  if (fechamentos.length > 0) {
-    const statusDia = statusPorDiferenca(diferencaFinalDia)
-    const corStatus = COR_STATUS[statusDia]
-    doc.setFillColor(...corStatus)
-    doc.roundedRect(margem, y, larguraUtil, 9, 2, 2, 'F')
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(10)
-    doc.setTextColor(255, 255, 255)
-    doc.text(STATUS_LABEL[statusDia], 210 / 2, y + 6, { align: 'center' })
-    doc.setTextColor(0)
-    y += 15
-  }
-
-  // --- Fechamento de caixa, detalhado, por turno ---
-  if (fechamentos.length === 0) {
-    y = tituloSecaoPdf(doc, 'Fechamento de Caixa', y, margem, larguraUtil)
-    doc.setFont('helvetica', 'italic')
-    doc.setFontSize(9.5)
-    doc.setTextColor(130)
-    doc.text('Nenhum fechamento de caixa salvo para esta data.', margem, y)
-    doc.setTextColor(0)
-    y += 8
-  }
+  const linha = (rotulo: string, valor: number): [string, string] => [rotulo, formatarMoeda(valor)]
+  const semZero = (linhas: { r: string; v: number }[]) => linhas.filter((l) => l.v !== 0).map((l) => linha(l.r, l.v))
 
   fechamentos.forEach((f) => {
-    quebrarSeNecessario(230)
-    y = tituloSecaoPdf(doc, `Fechamento de Caixa — ${TURNO_LABEL[f.turno]}`, y, margem, larguraUtil)
-
-    y = subtituloPdf(doc, 'LC', y, margem)
-    autoTable(doc, {
-      startY: y,
-      margin: { left: margem, right: margem },
-      theme: 'striped',
-      styles: { fontSize: 9.5, cellPadding: 1.4 },
-      body: [
-        ['Dinheiro abertura', formatarMoeda(f.lc.dinheiroAbertura)],
-        ['Dinheiro fechamento', formatarMoeda(f.lc.dinheiroFechamento)],
-        ['PIX', formatarMoeda(f.lc.pix)],
-        ['Débito', formatarMoeda(f.lc.debito)],
-        ['Crédito', formatarMoeda(f.lc.credito)],
-        ['Consumo loja', formatarMoeda(f.lc.consumoLoja)],
-        ['A prazo', formatarMoeda(f.lc.aPrazo)],
-        ['Ticket', formatarMoeda(f.lc.ticket)],
-        ['Total LC', formatarMoeda(f.resultado.totalLC)],
-      ],
-      columnStyles: { 1: { halign: 'right' } },
-      didParseCell: (data) => {
-        if (data.row.index === 8) data.cell.styles.fontStyle = 'bold'
-      },
-    })
-    y = finalY(doc) + 4
-
-    if (f.sangrias.length > 0) {
-      quebrarSeNecessario(230)
-      y = subtituloPdf(doc, 'Sangrias', y, margem)
-      autoTable(doc, {
-        startY: y,
-        margin: { left: margem, right: margem },
-        head: [['Motivo', 'Valor']],
-        body: f.sangrias.map((s) => [s.motivo, formatarMoeda(s.valor)]),
-        styles: { fontSize: 9 },
-        headStyles: { fillColor: [140, 140, 145] },
-        columnStyles: { 1: { halign: 'right' } },
-      })
-      y = finalY(doc) + 4
-    }
-
-    quebrarSeNecessario(230)
-    y = subtituloPdf(doc, 'Brendi', y, margem)
-    autoTable(doc, {
-      startY: y,
-      margin: { left: margem, right: margem },
-      theme: 'striped',
-      styles: { fontSize: 9.5, cellPadding: 1.4 },
-      body: [
-        ['PIX', formatarMoeda(f.brendi.pix)],
-        ['Débito', formatarMoeda(f.brendi.debito)],
-        ['Crédito', formatarMoeda(f.brendi.credito)],
-        ['Crédito Online', formatarMoeda(f.brendi.creditoOnline)],
-        ['Dinheiro', formatarMoeda(f.brendi.dinheiro)],
-        ['Total Brendi', formatarMoeda(f.resultado.totalBrendi)],
-      ],
-      columnStyles: { 1: { halign: 'right' } },
-      didParseCell: (data) => {
-        if (data.row.index === 5) data.cell.styles.fontStyle = 'bold'
-      },
-    })
-    y = finalY(doc) + 4
-
-    quebrarSeNecessario(230)
-    y = subtituloPdf(doc, 'Resultado', y, margem)
-    const linhasResultado: [string, string][] = [
-      ['Total Caixa', formatarMoeda(f.resultado.totalCaixa)],
-      ['Total LC Sistema', formatarMoeda(f.totalLCSistema)],
-      ['Total Sistema', formatarMoeda(f.resultado.totalSistema)],
-      ['Diferença original', formatarMoeda(f.resultado.diferencaOriginal)],
+    const sufixo = fechamentos.length > 1 ? ` — ${TURNO_LABEL[f.turno]}` : ''
+    garantir(60)
+    y = tituloSecaoPdf(doc, `Conferência do caixa${sufixo}`, y, margem, larguraUtil)
+    const conf: [string, string][] = [
+      linha('Vendas no caixa (Caixa LC + Brendi)', f.resultado.totalCaixa),
+      linha('Total no sistema do LC (computador)', f.totalLCSistema),
+      linha('+ Brendi (cartões e PIX)', f.resultado.totalBrendi),
+      linha('+ Dinheiro recebido pelo Brendi', f.brendi.dinheiro),
+      linha('= Total registrado no sistema', f.resultado.totalSistema),
+      linha('Diferença (caixa - sistema)', f.resultado.diferencaOriginal),
     ]
-    if (f.ajuste.tipo) {
-      linhasResultado.push([
-        `Ajuste (${f.ajuste.tipo === 'adicionar' ? 'adicionado' : 'removido'})`,
-        formatarMoeda(f.resultado.ajusteAplicado),
-      ])
-    }
-    linhasResultado.push(['Diferença final', formatarMoeda(f.resultado.diferencaFinal)])
-    linhasResultado.push(['Situação', STATUS_LABEL[f.resultado.status]])
-    linhasResultado.push(['Marmitas vendidas', String(totalMarmitas(f.marmitas))])
+    if (f.ajuste.tipo && f.resultado.ajusteAplicado !== 0) conf.push(linha('Ajuste manual', f.resultado.ajusteAplicado))
+    conf.push([`Diferença final — ${STATUS_LABEL[f.resultado.status]}`, formatarMoeda(f.resultado.diferencaFinal)])
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
       theme: 'plain',
-      styles: { fontSize: 9.5, cellPadding: 1, fontStyle: 'bold' },
-      body: linhasResultado,
-      columnStyles: { 1: { halign: 'right' } },
+      body: conf,
+      styles: { fontSize: 9.5, cellPadding: { top: 1.2, bottom: 1.2, left: 2, right: 2 } },
+      columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } },
+      didParseCell: (data) => {
+        const ultima = data.row.index === conf.length - 1
+        if (data.row.index === 0 || data.row.index === 4 || ultima) data.cell.styles.fontStyle = 'bold'
+        if (data.row.index % 2 === 1) data.cell.styles.fillColor = [248, 248, 249]
+        if (ultima) {
+          data.cell.styles.textColor = COR_STATUS[f.resultado.status]
+          data.cell.styles.fillColor = [242, 242, 244]
+        }
+      },
     })
-    y = finalY(doc) + 4
+    y = finalY(doc) + 5
 
-    if (f.observacoes) {
-      quebrarSeNecessario(240)
-      doc.setFont('helvetica', 'italic')
-      doc.setFontSize(9)
-      const linhas = doc.splitTextToSize(`Observações: ${f.observacoes}`, larguraUtil)
-      doc.text(linhas, margem, y)
-      y += linhas.length * 4.5 + 4
+    // LC e Brendi lado a lado
+    garantir(60)
+    const meia = (larguraUtil - 6) / 2
+    const lc = semZero([
+      { r: 'Dinheiro', v: f.lc.dinheiroFechamento },
+      { r: 'PIX', v: f.lc.pix },
+      { r: 'Cartão de débito', v: f.lc.debito },
+      { r: 'Cartão de crédito', v: f.lc.credito },
+      { r: 'Ticket', v: f.lc.ticket },
+      { r: 'Consumo da loja', v: f.lc.consumoLoja },
+      { r: 'A prazo', v: f.lc.aPrazo },
+    ])
+    const brendi = semZero([
+      { r: 'PIX', v: f.brendi.pix },
+      { r: 'Cartão de débito', v: f.brendi.debito },
+      { r: 'Cartão de crédito', v: f.brendi.credito },
+      { r: 'Crédito online', v: f.brendi.creditoOnline },
+    ])
+    const inicio = y
+    const tabelaLado = (titulo: string, corpo: [string, string][], total: number, esquerda: number, extra?: string) => {
+      autoTable(doc, {
+        startY: inicio,
+        margin: { left: esquerda, right: 210 - esquerda - meia },
+        tableWidth: meia,
+        head: [[titulo, { content: '', styles: { halign: 'right' } }]],
+        body: corpo.length ? corpo : [['(sem valores)', '']],
+        foot: [[`Total ${titulo}`, { content: formatarMoeda(total), styles: { halign: 'right' } }]],
+        styles: { fontSize: 9, cellPadding: 1.4 },
+        headStyles: { fillColor: [60, 60, 64] },
+        footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+        columnStyles: { 1: { halign: 'right' } },
+      })
+      let fim = finalY(doc)
+      if (extra) {
+        doc.setFont('helvetica', 'italic')
+        doc.setFontSize(8)
+        doc.setTextColor(120)
+        const l = doc.splitTextToSize(extra, meia)
+        doc.text(l, esquerda, fim + 4)
+        doc.setTextColor(0)
+        fim += 3 + l.length * 3.6
+      }
+      return fim
     }
+    const fimLc = tabelaLado(
+      'Caixa LC',
+      lc,
+      f.resultado.totalLC,
+      margem,
+      f.lc.dinheiroAbertura ? `Troco de abertura: ${formatarMoeda(f.lc.dinheiroAbertura)} (não entra no total).` : undefined,
+    )
+    const fimBrendi = tabelaLado(
+      'Brendi',
+      brendi,
+      f.resultado.totalBrendi,
+      margem + meia + 6,
+      f.brendi.dinheiro ? `Dinheiro do Brendi: ${formatarMoeda(f.brendi.dinheiro)} (vai só para o sistema).` : undefined,
+    )
+    y = Math.max(fimLc, fimBrendi) + 6
 
-    y += 4
+    if (f.sangrias.length > 0) {
+      garantir(25)
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margem, right: margem },
+        head: [['Retirada do caixa (sangria) — motivo', { content: 'Valor', styles: { halign: 'right' } }]],
+        body: f.sangrias.map((s) => [s.motivo || '—', formatarMoeda(s.valor)]),
+        foot: [['Total retirado', { content: formatarMoeda(somaCentavos(f.sangrias.map((s) => s.valor))), styles: { halign: 'right' } }]],
+        styles: { fontSize: 9, cellPadding: 1.4 },
+        headStyles: { fillColor: [90, 90, 95] },
+        footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+        columnStyles: { 1: { halign: 'right' } },
+      })
+      y = finalY(doc) + 6
+    }
   })
 
-  // --- Vendas por prato (agregado do dia, ajuda a ver o que vende mais) ---
-  const vendasPorPratoDia = agregarVendasPorPrato(fechamentos)
-  if (vendasPorPratoDia.length > 0) {
-    quebrarSeNecessario(230)
-    y = tituloSecaoPdf(doc, 'Vendas por Prato', y, margem, larguraUtil)
+  // Relatório escrito
+  const consumo = [
+    ...rel.consumoLojaMensal.map((c) => ['Funcionário', c] as const),
+    ...rel.consumoLojaMotoboys.map((c) => ['Motoboy', c] as const),
+    ...rel.cortesiaClientes.map((c) => ['Cortesia', c] as const),
+  ]
+  if (consumo.length > 0) {
+    garantir(30)
+    y = tituloSecaoPdf(doc, 'Consumo e cortesias', y, margem, larguraUtil)
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
-      head: [['Prato', 'Quantidade']],
-      body: vendasPorPratoDia.map(([prato, qtd]) => [prato, String(qtd)]),
-      styles: { fontSize: 9.5 },
-      headStyles: { fillColor: [60, 60, 64] },
-      columnStyles: { 1: { halign: 'right' } },
-    })
-    y = finalY(doc) + 8
-  }
-
-  // --- Resumo do relatório escrito ---
-  quebrarSeNecessario(230)
-  y = tituloSecaoPdf(doc, 'Resumo do Dia (Relatório)', y, margem, larguraUtil)
-  autoTable(doc, {
-    startY: y,
-    margin: { left: margem, right: margem },
-    theme: 'plain',
-    styles: { fontSize: 9.5, cellPadding: 1 },
-    body: [
-      ['Abertura do caixa', formatarMoeda(rel.aberturaCaixa)],
-      ['Fechamento do caixa', formatarMoeda(rel.fechamentoCaixa)],
-      ['Quantidade vendida', String(rel.quantidadeVendida)],
-    ],
-    columnStyles: { 1: { halign: 'right' } },
-  })
-  y = finalY(doc) + 6
-
-  const secaoLista = (titulo: string, itens: string[]) => {
-    if (itens.length === 0) return
-    quebrarSeNecessario(255)
-    y = tituloSecaoPdf(doc, titulo, y, margem, larguraUtil)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
-    itens.forEach((item) => {
-      const linhas = doc.splitTextToSize(`•  ${item}`, larguraUtil)
-      doc.text(linhas, margem, y)
-      y += linhas.length * 5
-    })
-    y += 4
-  }
-
-  secaoLista('Estragou', rel.estragou)
-
-  if (rel.funcionariosQueComeram.length > 0) {
-    quebrarSeNecessario(255)
-    y = tituloSecaoPdf(doc, 'Funcionários que comeram', y, margem, larguraUtil)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
-    doc.text(rel.funcionariosQueComeram.join(', '), margem, y)
-    y += 9
-  }
-
-  const secaoConsumo = (titulo: string, itens: ConsumoItem[]) => {
-    if (itens.length === 0) return
-    quebrarSeNecessario(245)
-    y = tituloSecaoPdf(doc, titulo, y, margem, larguraUtil)
-    autoTable(doc, {
-      startY: y,
-      margin: { left: margem, right: margem },
-      head: [['Pessoa', 'Item', 'Valor']],
-      body: itens.map((it) => [it.pessoa, it.item, formatarMoeda(it.valor)]),
-      styles: { fontSize: 9.5 },
+      head: [['Tipo', 'Quem', 'O que', { content: 'Valor', styles: { halign: 'right' } }]],
+      body: consumo.map(([tipo, c]: readonly [string, ConsumoItem]) => [tipo, c.pessoa || '—', c.item || '—', formatarMoeda(c.valor)]),
+      foot: [['Total', '', '', { content: formatarMoeda(somaCentavos(consumo.map(([, c]) => c.valor))), styles: { halign: 'right' } }]],
+      styles: { fontSize: 9, cellPadding: 1.4 },
       headStyles: { fillColor: [90, 90, 95] },
+      footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+      columnStyles: { 3: { halign: 'right' } },
     })
-    y = finalY(doc) + 8
+    y = finalY(doc) + 6
   }
-  secaoConsumo('Consumo loja mensal', rel.consumoLojaMensal)
-  secaoConsumo('Consumo loja motoboys', rel.consumoLojaMotoboys)
-  secaoConsumo('Cortesia clientes', rel.cortesiaClientes)
 
-  if (rel.sangrias.length > 0) {
-    quebrarSeNecessario(245)
-    y = tituloSecaoPdf(doc, 'Sangrias (relatório)', y, margem, larguraUtil)
+  if (rel.sangrias.length > 0 && !mesmasSangrias(rel.sangrias, sangrias)) {
+    garantir(25)
+    y = tituloSecaoPdf(doc, 'Sangrias anotadas no relatório', y, margem, larguraUtil)
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
-      head: [['Motivo', 'Valor']],
-      body: rel.sangrias.map((s) => [s.motivo, formatarMoeda(s.valor)]),
-      styles: { fontSize: 9.5 },
-      headStyles: { fillColor: [90, 90, 95] },
-    })
-    y = finalY(doc) + 8
-  }
-
-  const itensEstoque = rel.estoqueQuente.itens.filter((i) => i.quantidade > 0)
-  if (itensEstoque.length > 0) {
-    quebrarSeNecessario(230)
-    y = tituloSecaoPdf(doc, 'Estoque quente', y, margem, larguraUtil)
-    autoTable(doc, {
-      startY: y,
-      margin: { left: margem, right: margem },
-      head: [['Produto', 'Quantidade']],
-      body: itensEstoque.map((i) => [i.produto, String(i.quantidade)]),
-      styles: { fontSize: 9 },
+      head: [['Motivo', { content: 'Valor', styles: { halign: 'right' } }]],
+      body: rel.sangrias.map((s) => [s.motivo || '—', formatarMoeda(s.valor)]),
+      styles: { fontSize: 9, cellPadding: 1.4 },
       headStyles: { fillColor: [90, 90, 95] },
       columnStyles: { 1: { halign: 'right' } },
     })
+    y = finalY(doc) + 6
   }
 
-  // --- Anexos (prints enviados junto, cada um em sua própria página) ---
+  const contagem: string[] = []
+  if (rel.aberturaCaixa || rel.fechamentoCaixa) {
+    contagem.push(`Dinheiro contado no relatório: abertura ${formatarMoeda(rel.aberturaCaixa)} · fechamento ${formatarMoeda(rel.fechamentoCaixa)}.`)
+  }
+  if (rel.quantidadeVendida) contagem.push(`Quantidade vendida anotada no relatório: ${rel.quantidadeVendida}.`)
+  if (contagem.length) {
+    garantir(15)
+    y = listaComMarcadores(doc, contagem, margem, y + 2, larguraUtil, quebra) + 2
+  }
+
+  const estoque = rel.estoqueQuente.itens.filter((i) => i.quantidade > 0)
+  if (estoque.length > 0) {
+    garantir(25)
+    y = tituloSecaoPdf(doc, 'Estoque de bebidas (contagem)', y, margem, larguraUtil)
+    const pares: string[][] = []
+    for (let i = 0; i < estoque.length; i += 2) {
+      const a = estoque[i]
+      const b = estoque[i + 1]
+      pares.push([a.produto, String(a.quantidade), b?.produto ?? '', b ? String(b.quantidade) : ''])
+    }
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [['Produto', { content: 'Qtd.', styles: { halign: 'right' } }, 'Produto', { content: 'Qtd.', styles: { halign: 'right' } }]],
+      body: pares,
+      styles: { fontSize: 9, cellPadding: 1.4 },
+      headStyles: { fillColor: [90, 90, 95] },
+      columnStyles: { 1: { halign: 'right', fontStyle: 'bold' }, 3: { halign: 'right', fontStyle: 'bold' } },
+    })
+    y = finalY(doc) + 6
+  }
+
+  // ---------- Anexos (prints) ----------
   let indiceAnexo = 0
   for (const dataUrl of imagens) {
     if (!dataUrl) continue
@@ -832,7 +986,7 @@ export async function gerarPdfWhatsApp(params: {
     doc.text(`Anexo ${indiceAnexo}`, margemAnexo + 5, margemAnexo + 4.8)
     doc.setTextColor(0)
     const larguraDisp = 210 - margemAnexo * 2
-    const alturaDisp = 297 - margemAnexo * 2 - 14
+    const alturaDisp = 297 - margemAnexo * 2 - 18
     const escala = Math.min(larguraDisp / largura, alturaDisp / altura, 1)
     const wFinal = largura * escala
     const hFinal = altura * escala
@@ -841,22 +995,9 @@ export async function gerarPdfWhatsApp(params: {
     doc.addImage(dataUrl, formato, xFinal, margemAnexo + 10, wFinal, hFinal)
   }
 
-  // --- Rodapé (marca + página) em todas as páginas ---
-  const totalPaginas = doc.getNumberOfPages()
-  for (let p = 1; p <= totalPaginas; p++) {
-    doc.setPage(p)
-    doc.setDrawColor(230)
-    doc.setLineWidth(0.2)
-    doc.line(margem, 289, 210 - margem, 289)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    doc.setTextColor(140)
-    doc.text(`Mapa Burger — Relatório do dia ${formatarData(rel.data)}`, margem, 293.5)
-    doc.text(`${p} / ${totalPaginas}`, 210 - margem, 293.5, { align: 'right' })
-    doc.setTextColor(0)
-  }
-
-  doc.save(`relatorio_whatsapp_${rel.data}_${slugify('mapa-burger')}.pdf`)
+  rodapePaginas(doc, margem, `Mapa Burger — Relatório do dia ${formatarData(rel.data)}`)
+  const [a, m, d] = rel.data.split('-')
+  return entregarPdf(doc, `Mapa-Burger_relatorio-do-dia_${d}-${m}-${a}.pdf`, compartilhar)
 }
 
 // ============================================================

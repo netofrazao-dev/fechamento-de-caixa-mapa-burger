@@ -28,6 +28,7 @@ import {
 import { formatarMoeda } from '../lib/calculations'
 import type { GrupoValesPdf } from '../lib/pdf'
 import { carregarPdf } from '../lib/pdfSobDemanda'
+import { baixarArquivo } from '../lib/arquivos'
 import { mesLocal } from '../lib/datas'
 import {
   agruparPorFuncionario,
@@ -63,16 +64,6 @@ function paraPdf(grupos: GrupoFuncionario[]): GrupoValesPdf[] {
   }))
 }
 
-function baixarArquivo(conteudo: string, nome: string, tipo: string) {
-  const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = nome
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
 
 interface DadosMes {
   mes: string
