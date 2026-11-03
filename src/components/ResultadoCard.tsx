@@ -24,10 +24,16 @@ export default function ResultadoCard({
   onObservacoesChange,
 }: Props) {
   const [mostrarObs, setMostrarObs] = useState(false)
+  const obsObrigatoria = Boolean(ajuste.tipo && ajuste.valor > 0)
 
   return (
     <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-4">
-      <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Conferência</h2>
+      <div>
+        <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">5. Conferência com o sistema</h2>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+          Caixa (LC + Brendi) comparado com o Sistema (LC Sistema + Brendi + dinheiro Brendi).
+        </p>
+      </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm rounded-xl bg-gray-50 dark:bg-gray-800 p-3">
         <Linha label="Total LC" valor={resultado.totalLC} />
@@ -37,22 +43,27 @@ export default function ResultadoCard({
       </div>
 
       <CampoMoeda
-        label="Total LC Sistema (do computador do LC)"
+        label="Total LC Sistema"
         value={totalLCSistema}
         onChange={onTotalLCSistemaChange}
         somavel={false}
+        helper="O total que aparece no computador do LC."
       />
 
       <div className="flex justify-between items-center text-sm px-1">
         <span className="text-gray-400 dark:text-gray-500">Diferença original</span>
-        <span className="font-medium text-gray-700 dark:text-gray-300">{formatarMoeda(resultado.diferencaOriginal)}</span>
+        <span className="font-medium tabular-nums text-gray-700 dark:text-gray-300">{formatarMoeda(resultado.diferencaOriginal)}</span>
       </div>
 
       <div className="space-y-2 border-t border-gray-100 dark:border-gray-800 pt-3">
-        <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Ajuste manual</span>
+        <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Ajuste manual (opcional)</span>
+        <p className="text-[11px] text-gray-400 dark:text-gray-500 -mt-1">
+          Só para corrigir algo que você sabe explicar (ex.: troco convertido em PIX). Exige observação.
+        </p>
         <div className="flex gap-2">
           <button
             type="button"
+            aria-pressed={ajuste.tipo === 'adicionar'}
             onClick={() => onAjusteChange({ ...ajuste, tipo: ajuste.tipo === 'adicionar' ? null : 'adicionar' })}
             className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors ${
               ajuste.tipo === 'adicionar' ? 'bg-green-600 text-white' : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
@@ -62,6 +73,7 @@ export default function ResultadoCard({
           </button>
           <button
             type="button"
+            aria-pressed={ajuste.tipo === 'remover'}
             onClick={() => onAjusteChange({ ...ajuste, tipo: ajuste.tipo === 'remover' ? null : 'remover' })}
             className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors ${
               ajuste.tipo === 'remover' ? 'bg-red-600 text-white' : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
@@ -82,12 +94,18 @@ export default function ResultadoCard({
 
       {(ajuste.tipo || observacoes || mostrarObs) && (
         <label className="flex flex-col gap-1 border-t border-gray-100 dark:border-gray-800 pt-3">
-          <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Observações</span>
+          <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">
+            Observações{obsObrigatoria && <span className="text-red-600 dark:text-red-400"> (obrigatória por causa do ajuste)</span>}
+          </span>
           <textarea
             autoFocus={mostrarObs && !observacoes}
-            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-gray-400"
-            rows={2}
-            placeholder="Explique o motivo do ajuste, se houver."
+            maxLength={2000}
+            aria-invalid={obsObrigatoria && !observacoes.trim()}
+            className={`rounded-lg border bg-transparent px-3 py-2 text-sm outline-none focus:border-gray-500 ${
+              obsObrigatoria && !observacoes.trim() ? 'border-red-400 dark:border-red-700' : 'border-gray-200 dark:border-gray-700'
+            }`}
+            rows={3}
+            placeholder="Explique diferenças, ajustes ou algo fora do normal no dia."
             value={observacoes}
             onChange={(e) => onObservacoesChange(e.target.value)}
           />
@@ -106,7 +124,7 @@ export default function ResultadoCard({
       <div className="border-t border-gray-100 dark:border-gray-800 pt-3 space-y-2">
         <div className="flex justify-between items-center text-sm px-1">
           <span className="text-gray-400 dark:text-gray-500">Diferença final</span>
-          <span className="font-semibold text-gray-900 dark:text-gray-100">{formatarMoeda(resultado.diferencaFinal)}</span>
+          <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatarMoeda(resultado.diferencaFinal)}</span>
         </div>
         <div className={`rounded-xl border px-4 py-3 text-center font-semibold ${STATUS_COLOR[resultado.status]}`}>
           {STATUS_LABEL[resultado.status]}
