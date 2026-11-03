@@ -126,3 +126,9 @@ export function resumoQuantidades(q: Record<string, number>): string {
   ]
   return partes.map(([k, r]) => `${q[k] ?? 0} ${r}`).join(' · ')
 }
+
+/** true se a última cópia baixada neste aparelho tem mais de 30 dias (ou nunca baixou). */
+export function copiaAtrasada(): boolean {
+  const ultima = ultimaCopiaBaixada()
+  return !ultima || Date.now() - new Date(ultima).getTime() > 30 * 86_400_000
+}

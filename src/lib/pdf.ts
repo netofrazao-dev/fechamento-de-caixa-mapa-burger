@@ -295,8 +295,12 @@ export async function gerarPdfMensal(params: {
   diasSemFechamento?: string[]
   totalVales?: number | null
   compartilhar?: boolean
+  /** Vendas de cada dia (null = sem fechamento) + médias, para o gráfico de colunas. */
+  grafico?: { dias: { data: string; vendas: number | null }[]; mediaAtual: number; mediaAnterior?: number | null; rotuloAnterior?: string }
+  /** Comparação com o mês anterior, já formatada: [indicador, este mês, mês anterior, variação]. */
+  comparacao?: { titulo: string; frase: string; linhas: [string, string, string, string][] } | null
 }): Promise<ResultadoEntrega> {
-  const { mes, linhas, vendasPorPrato = [], diasSemFechamento = [], totalVales, compartilhar } = params
+  const { mes, linhas, vendasPorPrato = [], diasSemFechamento = [], totalVales, compartilhar, grafico, comparacao } = params
   const [ano, m] = mes.split('-')
   const mesLabel = `${m}/${ano}`
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
@@ -339,6 +343,49 @@ export async function gerarPdfMensal(params: {
   if (totalVales != null && totalVales > 0) frases.push(`Vales (adiantamentos de salário) no mês: ${formatarMoeda(totalVales)}.`)
   y = listaComMarcadores(doc, frases, margem, y + 1, larguraUtil, quebra)
   y += 3
+
+  // Comparação com o mês anterior
+  if (comparacao) {
+    garantir(55)
+    y = tituloSecaoPdf(doc, comparacao.titulo, y, margem, larguraUtil)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9.5)
+    doc.setTextColor(60)
+    const frase = doc.splitTextToSize(comparacao.frase, larguraUtil)
+    doc.text(frase, margem, y)
+    doc.setTextColor(0)
+    y += frase.length * 4.6 + 1
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [[
+        'Indicador',
+        { content: 'Este mês', styles: { halign: 'right' } },
+        { content: 'Mês anterior', styles: { halign: 'right' } },
+        { content: 'Variação', styles: { halign: 'right' } },
+      ]],
+      body: comparacao.linhas,
+      styles: { fontSize: 9.5, cellPadding: 1.6 },
+      headStyles: { fillColor: [60, 60, 64] },
+      columnStyles: { 1: { halign: 'right', fontStyle: 'bold' }, 2: { halign: 'right' }, 3: { halign: 'right', fontStyle: 'bold' } },
+      didParseCell: (data) => {
+        if (data.section !== 'body' || data.column.index !== 3) return
+        const t = String(data.cell.raw ?? '')
+        const menorEhMelhor = data.row.index === 3 // dias que faltou
+        if (t.startsWith('+')) data.cell.styles.textColor = menorEhMelhor ? COR_STATUS.faltou : COR_STATUS.fechou
+        else if (t.startsWith('-')) data.cell.styles.textColor = menorEhMelhor ? COR_STATUS.fechou : COR_STATUS.faltou
+      },
+    })
+    y = finalY(doc) + 6
+  }
+
+  // Gráfico: vendas por dia
+  if (grafico && grafico.dias.some((d) => (d.vendas ?? 0) > 0)) {
+    garantir(68)
+    y = tituloSecaoPdf(doc, 'Vendas por dia', y, margem, larguraUtil)
+    y = desenharColunas(doc, grafico, margem, y + 1, larguraUtil, 48)
+    y += 4
+  }
 
   // Formas de pagamento
   const pagamentos = formasDePagamento(fechamentos)
@@ -590,6 +637,106 @@ function desenharBarras(doc: jsPDF, itens: ItemPagamento[], x: number, y: number
   doc.text(formatarMoeda(somaCentavos(itens.map((i) => i.valor))), x + lRotulo + lBarra + 2 + lValor, y + 3, { align: 'right' })
   doc.setTextColor(0)
   return y + 7
+}
+
+/**
+ * Gráfico de colunas (vendas de cada dia), uma cor só, com linhas de média
+ * do mês e do mês anterior e legenda embaixo. Devolve o y abaixo do gráfico.
+ */
+function desenharColunas(
+  doc: jsPDF,
+  g: { dias: { data: string; vendas: number | null }[]; mediaAtual: number; mediaAnterior?: number | null; rotuloAnterior?: string },
+  x: number,
+  y: number,
+  largura: number,
+  altura: number,
+): number {
+  const esq = 14
+  const base = 6
+  const larguraPlot = largura - esq
+  const alturaPlot = altura - base
+  const maximo = Math.max(...g.dias.map((d) => d.vendas ?? 0), g.mediaAtual, g.mediaAnterior ?? 0)
+  const bruto = maximo / 3 || 1
+  const mag = 10 ** Math.floor(Math.log10(bruto))
+  const passo = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((p) => p >= bruto) ?? 10 * mag
+  const topo = Math.ceil(maximo / passo) * passo || passo
+  const yv = (v: number) => y + alturaPlot - (v / topo) * alturaPlot
+  const rotulo = (v: number) => (v >= 1000 ? `${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil` : String(Math.round(v)))
+
+  // grade
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7)
+  for (let v = 0; v <= topo + 0.001; v += passo) {
+    doc.setDrawColor(v === 0 ? 200 : 232)
+    doc.setLineWidth(v === 0 ? 0.3 : 0.15)
+    doc.line(x + esq, yv(v), x + largura, yv(v))
+    doc.setTextColor(150)
+    doc.text(rotulo(v), x + esq - 1.5, yv(v) + 1, { align: 'right' })
+  }
+
+  // colunas
+  const slot = larguraPlot / Math.max(g.dias.length, 1)
+  const larguraBarra = Math.max(0.8, slot - 0.8)
+  g.dias.forEach((d, i) => {
+    const xb = x + esq + slot * i + (slot - larguraBarra) / 2
+    if (d.vendas && d.vendas > 0) {
+      const h = Math.max(0.4, yv(0) - yv(d.vendas))
+      doc.setFillColor(...COR_ACCENT)
+      doc.roundedRect(xb, yv(0) - h, larguraBarra, h, Math.min(0.6, larguraBarra / 2), Math.min(0.6, larguraBarra / 2), 'F')
+      doc.rect(xb, yv(0) - Math.min(h, 0.8), larguraBarra, Math.min(h, 0.8), 'F') // base reta
+    } else if (d.vendas === null) {
+      doc.setDrawColor(190)
+      doc.setLineWidth(0.3)
+      doc.line(xb + larguraBarra / 2, yv(0) - 1.2, xb + larguraBarra / 2, yv(0))
+    }
+    const dia = Number(d.data.slice(8, 10))
+    if (dia === 1 || dia % 5 === 0) {
+      doc.setTextColor(150)
+      doc.setFontSize(7)
+      doc.text(String(dia), x + esq + slot * i + slot / 2, y + altura - 1.5, { align: 'center' })
+    }
+  })
+
+  // médias
+  const linhaMedia = (v: number, cor: number, padrao: number[]) => {
+    doc.setDrawColor(cor)
+    doc.setLineWidth(0.35)
+    doc.setLineDashPattern(padrao, 0)
+    doc.line(x + esq, yv(v), x + largura, yv(v))
+    doc.setLineDashPattern([], 0)
+  }
+  if (g.mediaAnterior) linhaMedia(g.mediaAnterior, 150, [0.6, 1])
+  if (g.mediaAtual > 0) linhaMedia(g.mediaAtual, 40, [2, 1.2])
+
+  // legenda
+  let ly = y + altura + 4.5
+  let lx = x + esq
+  doc.setFontSize(8)
+  doc.setTextColor(90)
+  doc.setFillColor(...COR_ACCENT)
+  doc.rect(lx, ly - 2.4, 2.6, 2.6, 'F')
+  doc.text('Vendas do dia', lx + 4, ly)
+  lx += 30
+  if (g.mediaAtual > 0) {
+    linhaMediaLegenda(doc, lx, ly - 1, 40, [2, 1.2])
+    doc.text(`Média do mês ${formatarMoeda(g.mediaAtual)}`, lx + 8, ly)
+    lx += 58
+  }
+  if (g.mediaAnterior) {
+    linhaMediaLegenda(doc, lx, ly - 1, 150, [0.6, 1])
+    doc.text(`Média de ${g.rotuloAnterior ?? 'mês anterior'} ${formatarMoeda(g.mediaAnterior)}`, lx + 8, ly)
+  }
+  doc.setTextColor(0)
+  ly += 3
+  return ly
+}
+
+function linhaMediaLegenda(doc: jsPDF, x: number, y: number, cor: number, padrao: number[]) {
+  doc.setDrawColor(cor)
+  doc.setLineWidth(0.4)
+  doc.setLineDashPattern(padrao, 0)
+  doc.line(x, y, x + 6, y)
+  doc.setLineDashPattern([], 0)
 }
 
 /** Lista com marcadores, quebrando linha e página quando precisa. */
@@ -1167,4 +1314,177 @@ export function gerarPdfValesMensal(params: {
 
   const sufixo = somenteExtratos && grupos.length === 1 ? `_${slugify(grupos[0].funcionario)}` : ''
   doc.save(`vales_${mes}${sufixo}.pdf`)
+}
+
+// ============================================================
+// PDF do Acerto do mês — resumo + uma página por funcionário
+// (vales + consumo) com declaração e assinatura.
+// ============================================================
+
+export interface LinhaAcertoPdf {
+  funcionario: string
+  totalVales: number
+  totalConsumo: number
+  total: number
+  vales: { data: string; valor: number; observacao: string }[]
+  consumo: { data: string; item: string; valor: number }[]
+}
+
+export async function gerarPdfAcerto(params: {
+  mes: string // YYYY-MM
+  linhas: LinhaAcertoPdf[]
+  fechadoEm?: string | null
+  somenteExtratos?: boolean
+  compartilhar?: boolean
+}): Promise<ResultadoEntrega> {
+  const { mes, linhas, fechadoEm, somenteExtratos, compartilhar } = params
+  const [ano, m] = mes.split('-')
+  const mesLabel = `${m}/${ano}`
+  const nomeMes = NOMES_MES[Number(m) - 1] ?? m
+  const mesExtenso = `${nomeMes.charAt(0).toUpperCase()}${nomeMes.slice(1)} de ${ano}`
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const margem = 16
+  const larguraUtil = 210 - margem * 2
+  const situacao = fechadoEm
+    ? `Acerto FECHADO em ${new Date(fechadoEm).toLocaleDateString('pt-BR')}`
+    : 'Acerto em aberto (os valores ainda podem mudar)'
+
+  const totalVales = somaCentavos(linhas.map((l) => l.totalVales))
+  const totalConsumo = somaCentavos(linhas.map((l) => l.totalConsumo))
+  const total = somaCentavos(linhas.map((l) => l.total))
+
+  if (!somenteExtratos) {
+    let y = cabecalhoComLogo(doc, margem, 'Acerto do mês', `${mesExtenso} · vales + consumo na loja`)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9.5)
+    doc.setTextColor(90)
+    doc.text(situacao, margem, y)
+    doc.setTextColor(0)
+    y += 5
+    const cards = [
+      { label: 'Total a descontar', valor: formatarMoeda(total), destaque: true },
+      { label: 'Vales', valor: formatarMoeda(totalVales) },
+      { label: 'Consumo na loja', valor: formatarMoeda(totalConsumo) },
+      { label: 'Funcionários', valor: String(linhas.length) },
+    ]
+    const larguraCard = (larguraUtil - 3 * 4) / 4
+    cards.forEach((c, i) =>
+      desenharCardResumo(doc, { x: margem + i * (larguraCard + 4), y, largura: larguraCard, altura: 18, label: c.label, valor: c.valor, destaque: c.destaque }),
+    )
+    y += 24
+    y = tituloSecaoPdf(doc, 'Quanto descontar de cada um', y, margem, larguraUtil)
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [[
+        'Funcionário',
+        { content: 'Vales', styles: { halign: 'right' } },
+        { content: 'Consumo', styles: { halign: 'right' } },
+        { content: 'Total a descontar', styles: { halign: 'right' } },
+      ]],
+      body: linhas.map((l) => [l.funcionario, formatarMoeda(l.totalVales), formatarMoeda(l.totalConsumo), formatarMoeda(l.total)]),
+      foot: [[
+        'TOTAL',
+        { content: formatarMoeda(totalVales), styles: { halign: 'right' } },
+        { content: formatarMoeda(totalConsumo), styles: { halign: 'right' } },
+        { content: formatarMoeda(total), styles: { halign: 'right' } },
+      ]],
+      styles: { fontSize: 10, cellPadding: 2 },
+      headStyles: { fillColor: COR_ESCURO },
+      footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right', fontStyle: 'bold' } },
+    })
+    y = finalY(doc) + 6
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(8.5)
+    doc.setTextColor(120)
+    doc.text(
+      doc.splitTextToSize(
+        'Vales = adiantamentos de salário. Consumo na loja = o que o funcionário consumiu e foi anotado no relatório do dia. ' +
+          'Nas páginas seguintes, o detalhe de cada funcionário com espaço para assinatura.',
+        larguraUtil,
+      ),
+      margem,
+      y,
+    )
+    doc.setTextColor(0)
+  }
+
+  linhas.forEach((l, i) => {
+    if (!somenteExtratos || i > 0) doc.addPage()
+    let y = cabecalhoComLogo(doc, margem, 'Acerto do mês', mesExtenso)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(14)
+    doc.setTextColor(...COR_ESCURO)
+    doc.text(l.funcionario, margem, y + 1)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(100)
+    doc.text(situacao, 210 - margem, y + 1, { align: 'right' })
+    doc.setTextColor(0)
+    y += 7
+
+    const tabela = (titulo: string, cabecalho: string[], corpo: string[][], totalTabela: number) => {
+      autoTable(doc, {
+        startY: y,
+        margin: { left: margem, right: margem },
+        head: [[...cabecalho.slice(0, -1), { content: cabecalho[cabecalho.length - 1], styles: { halign: 'right' } }]],
+        body: corpo.length ? corpo : [['—', 'Nenhum lançamento', '']],
+        foot: [[{ content: `Total ${titulo}`, colSpan: 2 }, { content: formatarMoeda(totalTabela), styles: { halign: 'right' } }]],
+        styles: { fontSize: 9.5, cellPadding: 1.6 },
+        headStyles: { fillColor: [60, 60, 64] },
+        footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+        columnStyles: { 0: { cellWidth: 26 }, 2: { halign: 'right', cellWidth: 32 } },
+      })
+      y = finalY(doc) + 5
+    }
+    tabela(
+      'de vales',
+      ['Data', 'Vale (adiantamento)', 'Valor'],
+      l.vales.map((v) => [formatarData(v.data), v.observacao || 'Vale', formatarMoeda(v.valor)]),
+      l.totalVales,
+    )
+    tabela(
+      'de consumo',
+      ['Data', 'Consumo na loja', 'Valor'],
+      l.consumo.map((c) => [formatarData(c.data), c.item || 'Consumo', formatarMoeda(c.valor)]),
+      l.totalConsumo,
+    )
+
+    if (y > 225) {
+      doc.addPage()
+      y = 20
+    }
+    doc.setFillColor(...COR_ACCENT)
+    doc.roundedRect(margem, y, larguraUtil, 12, 2, 2, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(12)
+    doc.text('TOTAL A DESCONTAR', margem + 5, y + 7.8)
+    doc.text(formatarMoeda(l.total), 210 - margem - 5, y + 7.8, { align: 'right' })
+    doc.setTextColor(0)
+    y += 20
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9.5)
+    const declaracao =
+      `Declaro que recebi os vales (adiantamentos de salário) e fiz o consumo na loja listados acima, ` +
+      `referentes a ${mesLabel}, no total de ${formatarMoeda(l.total)}, e autorizo o desconto desse valor no meu salário.`
+    const linhasTexto = doc.splitTextToSize(declaracao, larguraUtil)
+    doc.text(linhasTexto, margem, y)
+    y += linhasTexto.length * 4.6 + 22
+    doc.setDrawColor(60)
+    doc.setLineWidth(0.3)
+    doc.line(margem, y, margem + 95, y)
+    doc.line(210 - margem - 50, y, 210 - margem, y)
+    doc.setFontSize(8.5)
+    doc.setTextColor(90)
+    doc.text(`Assinatura — ${l.funcionario}`, margem, y + 4.5)
+    doc.text('Data', 210 - margem - 50, y + 4.5)
+    doc.setTextColor(0)
+  })
+
+  rodapePaginas(doc, margem, `Mapa Burger — Acerto do mês ${mesLabel}`)
+  const sufixo = somenteExtratos && linhas.length === 1 ? `_${slugify(linhas[0].funcionario)}` : ''
+  return entregarPdf(doc, `Mapa-Burger_acerto_${m}-${ano}${sufixo}.pdf`, compartilhar)
 }

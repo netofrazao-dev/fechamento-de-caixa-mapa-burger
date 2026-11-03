@@ -1,13 +1,15 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
   FileText,
   History,
+  Home,
   LogOut,
   Moon,
   PlusSquare,
   ScrollText,
   Settings,
+  Smartphone,
   Sun,
   UserCircle2,
   Wallet,
@@ -16,11 +18,13 @@ import {
 import { aplicarTema, lerTemaSalvo } from './lib/theme'
 import { useAuth } from './lib/auth'
 import { useOnline } from './lib/useOnline'
+import { useInstalarApp } from './lib/instalar'
 import { supabaseConfigurado } from './lib/supabase'
 import ErrorBoundary from './components/ErrorBoundary'
 import Login from './pages/Login'
 
 // Cada tela é baixada só quando é aberta (app abre mais rápido no celular).
+const Hoje = lazy(() => import('./pages/Hoje'))
 const NovoFechamento = lazy(() => import('./pages/NovoFechamento'))
 const Historico = lazy(() => import('./pages/Historico'))
 const FechamentoDetalhe = lazy(() => import('./pages/FechamentoDetalhe'))
@@ -30,9 +34,11 @@ const RelatorioForm = lazy(() => import('./pages/RelatorioForm'))
 const Vales = lazy(() => import('./pages/Vales'))
 const NovoVale = lazy(() => import('./pages/NovoVale'))
 const Cadastros = lazy(() => import('./pages/Cadastros'))
+const Acerto = lazy(() => import('./pages/Acerto'))
 
 const abas = [
-  { to: '/novo', label: 'Fechamento', icon: PlusSquare },
+  { to: '/hoje', label: 'Hoje', icon: Home },
+  { to: '/novo', label: 'Fechar', icon: PlusSquare },
   { to: '/historico', label: 'Histórico', icon: History },
   { to: '/mensal', label: 'Mensal', icon: FileText },
   { to: '/relatorios', label: 'Relatórios', icon: ScrollText },
@@ -53,7 +59,7 @@ function NaoEncontrado() {
       <div className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-6 text-center space-y-3">
         <p className="text-lg font-bold text-gray-900 dark:text-gray-100">Página não encontrada</p>
         <p className="text-sm text-gray-500 dark:text-gray-400">O endereço pode estar errado ou o item foi removido.</p>
-        <Link to="/novo" className="inline-block rounded-xl bg-gray-900 dark:bg-gray-700 px-4 py-2.5 text-sm font-semibold text-white">
+        <Link to="/hoje" className="inline-block rounded-xl bg-gray-900 dark:bg-gray-700 px-4 py-2.5 text-sm font-semibold text-white">
           Ir para o início
         </Link>
       </div>
@@ -76,6 +82,7 @@ function TelaAviso({ titulo, texto, acao }: { titulo: string; texto: string; aca
 
 function MenuConta({ escuro, alternarTema }: { escuro: boolean; alternarTema: () => void }) {
   const { email, sair } = useAuth()
+  const instalar = useInstalarApp()
   const [aberto, setAberto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -127,6 +134,19 @@ function MenuConta({ escuro, alternarTema }: { escuro: boolean; alternarTema: ()
           >
             {escuro ? <Sun size={16} /> : <Moon size={16} />} {escuro ? 'Tema claro' : 'Tema escuro'}
           </button>
+          {instalar.podeInstalar && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setAberto(false)
+                instalar.instalar()
+              }}
+              className={item}
+            >
+              <Smartphone size={16} /> Instalar app no celular
+            </button>
+          )}
           <button type="button" role="menuitem" onClick={sair} className={`${item} text-red-600 dark:text-red-400`}>
             <LogOut size={16} /> Sair
           </button>
@@ -139,6 +159,7 @@ function MenuConta({ escuro, alternarTema }: { escuro: boolean; alternarTema: ()
 function Sistema() {
   const [escuro, setEscuro] = useState(() => lerTemaSalvo() === 'dark')
   const online = useOnline()
+  const { pathname } = useLocation()
 
   function alternarTema() {
     const novo = escuro ? 'light' : 'dark'
@@ -149,7 +170,7 @@ function Sistema() {
   return (
     <div className="min-h-screen pb-16">
       <header className="flex items-center gap-2 px-4 py-2 max-w-2xl mx-auto">
-        <Link to="/novo" className="flex items-center gap-2 min-w-0">
+        <Link to="/hoje" className="flex items-center gap-2 min-w-0">
           <img src="/logo.png" alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
           <span className="font-bold text-gray-900 dark:text-gray-100 tracking-tight">Mapa Burger</span>
         </Link>
@@ -170,7 +191,8 @@ function Sistema() {
       <ErrorBoundary>
         <Suspense fallback={<Carregando />}>
           <Routes>
-            <Route path="/" element={<Navigate to="/novo" replace />} />
+            <Route path="/" element={<Navigate to="/hoje" replace />} />
+            <Route path="/hoje" element={<Hoje />} />
             <Route path="/novo" element={<NovoFechamento key="novo" />} />
             <Route path="/historico" element={<Historico />} />
             <Route path="/mensal" element={<RelatorioMensal />} />
@@ -183,6 +205,7 @@ function Sistema() {
             <Route path="/vales/novo" element={<NovoVale key="novo" />} />
             <Route path="/vales/:id/editar" element={<NovoVale key="editar" />} />
             <Route path="/cadastros" element={<Cadastros />} />
+            <Route path="/acerto" element={<Acerto />} />
             <Route path="*" element={<NaoEncontrado />} />
           </Routes>
         </Suspense>
@@ -199,13 +222,15 @@ function Sistema() {
               to={to}
               className={({ isActive }) =>
                 `flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium ${
-                  isActive ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'
+                  isActive || (to === '/vales' && pathname.startsWith('/acerto'))
+                    ? 'text-gray-900 dark:text-gray-100'
+                    : 'text-gray-400 dark:text-gray-500'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <Icon size={20} strokeWidth={isActive ? 2.4 : 1.8} />
+                  <Icon size={20} strokeWidth={isActive || (to === '/vales' && pathname.startsWith('/acerto')) ? 2.4 : 1.8} />
                   {label}
                 </>
               )}
