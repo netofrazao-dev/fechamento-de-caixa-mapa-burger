@@ -205,6 +205,7 @@ function escreverRelatorio(r: ReciboTermico, rel: RelatorioDiario) {
   if (rel.sangrias.length > 0) {
     r.linha('SANGRIAS', { negrito: true })
     rel.sangrias.forEach((s) => r.linhaTexto(s.motivo, formatarMoeda(s.valor)))
+    r.linhaValor('Total retirado', somaCentavos(rel.sangrias.map((s) => s.valor)))
     r.separador()
   }
 
@@ -982,7 +983,9 @@ export async function gerarPdfWhatsApp(params: {
   const totalSistema = somaCentavos(fechamentos.map((f) => f.resultado.totalSistema))
   const diferenca = somaCentavos(fechamentos.map((f) => f.resultado.diferencaFinal))
   const ajuste = somaCentavos(fechamentos.map((f) => f.resultado.ajusteAplicado))
-  const sangrias = fechamentos.flatMap((f) => f.sangrias)
+  // As sangrias agora são lançadas no relatório; fechamentos antigos podem ter as suas.
+  const sangriasDoFechamento = fechamentos.flatMap((f) => f.sangrias)
+  const sangrias = rel.sangrias.length > 0 ? rel.sangrias : sangriasDoFechamento
   const totalSangrias = somaCentavos(sangrias.map((s) => s.valor))
   const marmitas = fechamentos.reduce((acc, f) => acc + totalMarmitas(f.marmitas), 0)
 
@@ -1218,16 +1221,18 @@ export async function gerarPdfWhatsApp(params: {
     y = finalY(doc) + 6
   }
 
-  if (rel.sangrias.length > 0 && !mesmasSangrias(rel.sangrias, sangrias)) {
+  if (rel.sangrias.length > 0 && !mesmasSangrias(rel.sangrias, sangriasDoFechamento)) {
     garantir(25)
-    y = tituloSecaoPdf(doc, 'Sangrias anotadas no relatório', y, margem, larguraUtil)
+    y = tituloSecaoPdf(doc, 'Retiradas do caixa (sangrias)', y, margem, larguraUtil)
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
       head: [['Motivo', { content: 'Valor', styles: { halign: 'right' } }]],
       body: rel.sangrias.map((s) => [s.motivo || '—', formatarMoeda(s.valor)]),
+      foot: [['Total retirado', { content: formatarMoeda(somaCentavos(rel.sangrias.map((s) => s.valor))), styles: { halign: 'right' } }]],
       styles: { fontSize: 9, cellPadding: 1.4 },
       headStyles: { fillColor: [90, 90, 95] },
+      footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
       columnStyles: { 1: { halign: 'right' } },
     })
     y = finalY(doc) + 6

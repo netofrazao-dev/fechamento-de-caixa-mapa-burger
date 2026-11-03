@@ -88,4 +88,5 @@ jobs:
         with:
           name: prints-das-telas
           path: e2e/.saida
+          include-hidden-files: true
           retention-days: 7

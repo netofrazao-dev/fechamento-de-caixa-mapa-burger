@@ -29,7 +29,7 @@ export default function ResultadoCard({
   return (
     <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-4">
       <div>
-        <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">5. Conferência com o sistema</h2>
+        <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">4. Conferência com o sistema</h2>
         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
           Caixa (LC + Brendi) comparado com o Sistema (LC Sistema + Brendi + dinheiro Brendi).
         </p>

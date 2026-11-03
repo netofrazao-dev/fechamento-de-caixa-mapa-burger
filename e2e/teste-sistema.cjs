@@ -55,18 +55,22 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   await page.getByRole('heading', { name: 'Fechamento do caixa' }).waitFor()
   ok(true, 'login certo abre o fechamento')
 
-  console.log('2. Fechamento: vírgula, sangria sem motivo, avisos, salvar + PDF')
-  await campo('Dinheiro no fechamento').fill('150,50')
-  await campo('PIX').first().fill('200')
+  console.log('2. Fechamento: vírgula, sem sangrias (ficam no relatório), avisos, salvar + PDF')
+  // Digita e sai do campo; confere que o valor ficou (se não ficar, avisa no log e digita de novo).
+  const preencher = async (loc, valor, formatado) => {
+    for (let i = 0; i < 3; i++) {
+      await loc.fill(valor)
+      await loc.press('Tab')
+      if ((await loc.inputValue()) === formatado) return
+      console.log(`  ⚠ campo ficou "${await loc.inputValue()}" em vez de "${formatado}"; digitando de novo`)
+    }
+  }
+  await preencher(campo('Dinheiro no fechamento'), '150,50', '150,50')
+  await preencher(campo('PIX').first(), '200', '200,00')
   await esperarTexto('SOBROU DINHEIRO R$ 350,50')
   ok(true, 'resultado ao vivo no rodapé: SOBROU DINHEIRO R$ 350,50')
-  await page.getByRole('button', { name: /4\. Sangrias/ }).click()
-  await page.getByRole('button', { name: 'Adicionar sangria' }).click()
-  await campo('Valor da linha 1').fill('30')
-  await page.getByRole('button', { name: 'Salvar e gerar PDF' }).click()
-  await esperarTexto('Toda sangria com valor precisa ter um motivo')
-  ok(db.fechamentos.length === 0, 'sangria sem motivo: não salva')
-  await campo('Motivo da linha 1').fill('pagamento do gás')
+  ok(!(await texto()).includes('Sangrias') && (await page.getByRole('button', { name: 'Adicionar sangria' }).count()) === 0, 'fechamento não tem mais a parte de sangrias')
+  ok((await texto()).includes('4. Conferência com o sistema'), 'seções renumeradas (4. Conferência)')
   await page.getByRole('button', { name: 'Salvar e gerar PDF' }).click()
   await page.getByText('Confira antes de salvar').waitFor()
   ok((await texto()).includes('Total LC Sistema" está zerado'), 'avisa Total LC Sistema zerado')
@@ -79,8 +83,17 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   await page.getByText('Fechamento salvo.').waitFor()
   const f = db.fechamentos[0]
   ok(f && f.dinheiro_fechamento === 150.5 && f.total_lc === 350.5 && f.status === 'fechou', 'gravado: 150,50 + 200 = 350,50, CAIXA FECHOU')
-  ok(db.sangrias.length === 1 && db.sangrias[0].motivo === 'pagamento do gás', 'sangria gravada com motivo')
+  ok(db.sangrias.length === 0, 'fechamento salvo sem sangrias')
   await shot('12-detalhe')
+
+  console.log('2b. Fechamento antigo com sangrias: aviso para lançar no relatório')
+  db.sangrias.push({ id: 'sg-antiga', fechamento_id: f.id, valor: 12, motivo: 'troco' })
+  await page.goto(`${BASE}/fechamento/${f.id}/editar`)
+  await esperarTexto('sangria(s) lançada(s) antes')
+  ok((await texto()).includes('troco') && (await texto()).includes('Relatório do dia'), 'mostra a sangria antiga e onde lançar agora')
+  await page.getByRole('button', { name: /Tirar do fechamento/ }).click()
+  ok(!(await texto()).includes('lançada(s) antes'), '"Tirar do fechamento" some com o aviso')
+  db.sangrias = []
 
   console.log('3. Fechamento duplicado na mesma data')
   await page.goto(`${BASE}/novo`)
@@ -114,10 +127,26 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   await page.getByRole('button', { name: /Puxar abertura/ }).click()
   await esperarTexto('Puxado do fechamento')
   ok(await campo('Fechamento do caixa').inputValue() === '150,50', 'fechamento do caixa preenchido com 150,50')
+  await page.getByRole('button', { name: /^Sangrias/ }).click()
+  await page.getByRole('button', { name: 'Adicionar sangria' }).click()
+  await preencher(campo('Valor da linha 1'), '30', '30,00')
+  await page.getByRole('button', { name: 'Salvar', exact: true }).click()
+  await esperarTexto('Toda sangria com valor precisa ter um motivo')
+  ok(db.relatorios.length === 0, 'sangria sem motivo no relatório: não salva')
+  await campo('Motivo da linha 1').fill('pagamento do gás')
   await page.getByRole('button', { name: 'Salvar', exact: true }).click()
   await page.getByText('Relatório salvo.').waitFor()
   ok(db.relatorios.length === 1 && db.relatorios[0].fechamento_caixa === 150.5, 'relatório gravado')
+  ok(db.relatorios[0].sangrias.length === 1 && db.relatorios[0].sangrias[0].motivo === 'pagamento do gás' && db.relatorios[0].sangrias[0].valor === 30,
+    'sangria gravada no relatório com motivo')
   await shot('15-relatorio')
+  const [pdfDia] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'PDF WhatsApp', exact: true }).click()])
+  await pdfDia.saveAs(`${SHOTS}/dia.pdf`)
+  const textoDia = require('child_process').execSync(`pdftotext -layout ${SHOTS}/dia.pdf -`).toString()
+  ok(/RETIRADAS \(SANGRIAS\)/.test(textoDia) && textoDia.includes('R$ 30,00'), 'PDF do dia: card de retiradas R$ 30,00')
+  ok(textoDia.includes('pagamento do gás') && textoDia.includes('Retiradas do caixa (sangrias)') && textoDia.includes('Total retirado'),
+    'PDF do dia: fechamento + sangrias do relatório (motivo e total)')
+  ok(textoDia.includes('Caixa LC') && textoDia.includes('150,50'), 'PDF do dia: fechamento completo junto')
   await page.goto(`${BASE}/relatorios/novo?data=${f.data}`)
   await page.getByRole('button', { name: 'Salvar', exact: true }).click()
   await page.getByText('Abrir o relatório existente').waitFor()
@@ -165,7 +194,7 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   ok(db.fechamentos.length === 1, 'primeiro toque só pede confirmação')
   await page.getByRole('button', { name: 'Sim, excluir' }).click()
   await page.waitForURL(/\/historico/)
-  ok(db.fechamentos.length === 0 && db.sangrias.length === 0, 'excluído (com as sangrias)')
+  ok(db.fechamentos.length === 0, 'fechamento excluído')
 
   console.log('10. Sem internet')
   await context.setOffline(true)
