@@ -4,7 +4,8 @@
 -- Rodar no SQL Editor. Se o banco já existe, use só o arquivo
 -- de migração mais recente (ex.: migration_vales.sql).
 -- Depois deste arquivo, rode (nesta ordem) migration_vales_v2.sql,
--- migration_v3_cadastros_integridade.sql e migration_v4_seguranca.sql (veja o README).
+-- migration_v3_cadastros_integridade.sql, migration_v5_manter_ativo.sql e
+-- migration_v4_seguranca.sql (veja o README).
 -- ============================================================
 
 create extension if not exists "pgcrypto";

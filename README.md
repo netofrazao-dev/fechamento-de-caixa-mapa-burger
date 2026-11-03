@@ -20,6 +20,7 @@ Os arquivos ficam em `supabase/`. Todos podem ser rodados de novo sem problema e
 2. `migration_rascunhos.sql` (só se ainda não tem a tabela de rascunhos)
 3. `migration_vales_v2.sql` — vales à prova de erro
 4. `migration_v3_cadastros_integridade.sql` — banco confere as contas, auditoria, cadastros
+5. `migration_v5_manter_ativo.sql` — verificação automática (impede o Supabase grátis de pausar)
 
 **B. Crie os logins:** Supabase → Authentication → Users → *Add user* (e-mail + senha, marque
 *Auto Confirm User*) para cada pessoa que usa o sistema. Depois, em Authentication → Sign In /
@@ -40,6 +41,17 @@ Para tirar o acesso: `update public.usuarios_autorizados set ativo = false where
   `VITE_SUPABASE_ANON_KEY` (Supabase → Project Settings → API). **Nunca** use a chave
   `service_role` no app.
 - Na Vercel, configure as mesmas variáveis (Production e Preview). Framework Preset: **Vite**.
+
+## Verificação automática (Supabase grátis não pausa)
+O Supabase grátis pausa o banco após 7 dias sem uso. A Vercel chama `/api/manter-ativo`
+de 3 em 3 dias, ao meio-dia UTC (`crons` no `vercel.json`). A função
+(`api/manter-ativo.js`) roda `manter_ativo()` no banco: confere se as tabelas respondem e
+registra a verificação na tabela `sistema_verificacoes`. Ela não devolve nenhum dado do sistema.
+- Ver se está rodando: Vercel → projeto → **Settings → Cron Jobs** (botão *Run* para testar na hora)
+  e **Logs** (procure `[manter-ativo]`).
+- Opcional (recomendado): crie a variável `CRON_SECRET` na Vercel com um texto aleatório
+  longo; aí só a própria Vercel consegue chamar a função.
+- De 3 em 3 dias, e não de 5 em 5: se uma chamada falhar, a seguinte ainda acontece antes dos 7 dias.
 
 ## Segurança
 - **Login obrigatório** (e-mail e senha do Supabase) + lista de e-mails autorizados no banco.
