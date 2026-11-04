@@ -6,7 +6,7 @@ import { buscarIdRelatorioPorData } from '../lib/relatorioService'
 import { listarAuditoria } from '../lib/auditoriaService'
 import { mudancasFechamento, ROTULO_OPERACAO_AUDITORIA } from '../lib/auditoria'
 import { formatarMoeda, STATUS_COLOR, STATUS_LABEL, totalMarmitas } from '../lib/calculations'
-import { carregarPdf } from '../lib/pdfSobDemanda'
+import { carregarPdf, DICA_PAPEL_80MM } from '../lib/pdfSobDemanda'
 import { mensagemErro } from '../lib/erros'
 import { diaDaSemana, formatarDataBr, formatarDataHora } from '../lib/datas'
 import { somarValores } from '../lib/vales'
@@ -24,6 +24,7 @@ export default function FechamentoDetalhe() {
   const [f, setF] = useState<Fechamento | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
+  const [dica, setDica] = useState<string | null>(null)
   const [relatorioId, setRelatorioId] = useState<string | null | undefined>(undefined)
   const [auditoria, setAuditoria] = useState<RegistroAuditoria[] | null>(null)
   const [verAuditoria, setVerAuditoria] = useState(false)
@@ -58,6 +59,7 @@ export default function FechamentoDetalhe() {
     try {
       const pdf = await carregarPdf()
       pdf.gerarPdfFechamento(f)
+      setDica(DICA_PAPEL_80MM)
     } catch (e) {
       setAviso(mensagemErro(e, 'Não consegui gerar o PDF.'))
     }
@@ -143,6 +145,11 @@ export default function FechamentoDetalhe() {
           <FileText size={18} /> {relatorioId ? 'Relatório do dia' : 'Criar relatório'}
         </Link>
       </div>
+      {dica && (
+        <p role="status" className="rounded-xl bg-blue-50 dark:bg-blue-950/40 px-3.5 py-2.5 text-xs text-blue-900 dark:text-blue-200">
+          {dica}
+        </p>
+      )}
       {aviso && <CaixaErro>{aviso}</CaixaErro>}
 
       <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-2">

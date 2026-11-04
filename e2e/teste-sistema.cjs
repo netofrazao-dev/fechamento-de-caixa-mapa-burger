@@ -65,6 +65,19 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
       console.log(`  ⚠ campo ficou "${await loc.inputValue()}" em vez de "${formatado}"; digitando de novo`)
     }
   }
+  // Tocar dois campos de dinheiro em seguida (no mesmo instante) não pode fazer um roubar o foco do outro.
+  const focoFicou = await page.evaluate(async () => {
+    const [a, b] = [...document.querySelectorAll('input[inputmode="decimal"]')]
+    let trocas = 0
+    a.focus(); b.focus()
+    const contar = () => trocas++
+    document.addEventListener('focusin', contar, true)
+    await new Promise((r) => setTimeout(r, 300))
+    document.removeEventListener('focusin', contar, true)
+    b.blur()
+    return trocas === 0 && document.activeElement !== a
+  })
+  ok(focoFicou, 'campos de dinheiro tocados em seguida: o foco fica no último (sem vai e vem)')
   await preencher(campo('Dinheiro no fechamento'), '150,50', '150,50')
   await preencher(campo('PIX').first(), '200', '200,00')
   await esperarTexto('SOBROU DINHEIRO R$ 350,50')
@@ -177,14 +190,43 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   await page.getByRole('button', { name: 'Carlos', exact: true }).waitFor()
   ok(await page.getByRole('button', { name: 'Diogo', exact: true }).count() === 0, 'Diogo desativado some do seletor de vales')
 
+  console.log('7b. Produtos do estoque: adicionar, desativar, relatório')
+  await page.goto(`${BASE}/cadastros#produtos-estoque`)
+  const secaoProdutos = page.locator('#produtos-estoque')
+  await secaoProdutos.getByText('Monster Azul').waitFor()
+  await secaoProdutos.getByLabel('Adicionar em Produtos do estoque (bebidas)').fill('  Pepsi   Lata ')
+  await secaoProdutos.getByRole('button', { name: 'Adicionar' }).click()
+  await secaoProdutos.getByText('Pepsi Lata').waitFor()
+  ok(db.produtos_estoque.at(-1).nome === 'Pepsi Lata', 'produto novo cadastrado (vai para o fim da lista)')
+  await secaoProdutos.locator('li', { hasText: 'Monster Azul' }).getByRole('button', { name: 'Desativar' }).click()
+  await secaoProdutos.getByRole('button', { name: /Ver desativados \(1\)/ }).waitFor()
+  ok(db.produtos_estoque.find((p) => p.nome === 'Monster Azul').ativo === false, 'Monster Azul desativado')
+  await page.goto(`${BASE}/relatorios/novo?data=2026-11-02`)
+  await page.getByRole('button', { name: /Estoque quente/ }).click()
+  await page.getByLabel('Quantidade de Pepsi Lata').waitFor()
+  ok(await page.getByLabel('Quantidade de Monster Azul').count() === 0, 'relatório novo: desativado não aparece, novo aparece')
+  await page.getByLabel('Quantidade de Pepsi Lata').fill('7')
+  await page.getByRole('button', { name: 'Salvar', exact: true }).click()
+  await page.getByText('Relatório salvo.').waitFor().catch(() => {})
+  await page.waitForURL(/\/relatorios\/(?!novo)/)
+  const relNovo = db.relatorios.find((r) => r.data === '2026-11-02')
+  ok(relNovo && relNovo.estoque_quente.itens.some((i) => i.produto === 'Pepsi Lata' && i.quantidade === 7), 'contagem do produto novo gravada')
+  // Relatório antigo com contagem de um produto que foi desativado depois: não perde a contagem.
+  relNovo.estoque_quente = { itens: [{ produto: 'Monster Azul', quantidade: 3 }, { produto: 'Coca KS', quantidade: 5 }] }
+  await page.goto(`${BASE}/relatorios/${relNovo.id}`)
+  await page.getByRole('button', { name: /Estoque quente/ }).click()
+  await page.getByLabel('Quantidade de Monster Azul').waitFor()
+  ok(await page.getByLabel('Quantidade de Monster Azul').inputValue() === '3' && (await texto()).includes('desativado'), 'relatório antigo mantém a contagem do produto desativado')
+  await shot('16b-estoque')
+
   console.log('7b. Cópia de segurança')
   await page.goto(`${BASE}/cadastros`)
   const [copia] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Baixar cópia completa agora' }).click()])
   await copia.saveAs(`${SHOTS}/copia.json`)
   const conteudo = JSON.parse(fs.readFileSync(`${SHOTS}/copia.json`, 'utf8'))
   ok(/^copia-mapa-burger_.*\.json$/.test(copia.suggestedFilename()), 'cópia baixada: ' + copia.suggestedFilename())
-  ok(conteudo.fechamentos.length === 1 && conteudo.relatorios.length === 1 && conteudo.funcionarios.length >= 6 && conteudo.relatorios[0].imagem1 === undefined,
-    'cópia tem fechamentos, relatórios (sem prints), funcionários')
+  ok(conteudo.fechamentos.length === 1 && conteudo.relatorios.length === 2 && conteudo.produtos_estoque?.length === 5 && conteudo.funcionarios.length >= 6 && conteudo.relatorios[0].imagem1 === undefined,
+    'cópia tem fechamentos, relatórios (sem prints), funcionários e produtos do estoque')
   await esperarTexto('Cópia baixada:')
   ok((await texto()).includes('Última cópia baixada neste aparelho'), 'mostra quando foi a última cópia')
   const [auto] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /Baixar cópia de/ }).click()])

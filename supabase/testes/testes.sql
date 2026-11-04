@@ -104,6 +104,27 @@ select reabrir_acerto_mes('2026-11-01', 'teste');
 select public.t_confere(not exists (select 1 from vales_meses_fechados where mes = '2026-11-01'), 'reabrir acerto reabre os vales');
 reset role;
 
+-- ---------------- Produtos do estoque (v8) ----------------
+select public.t_confere((select count(*) = 15 from produtos_estoque), 'estoque começa com os 15 produtos de antes (sem duplicar ao rodar 2x)');
+select public.t_confere((select nome = 'Coca KS' from produtos_estoque order by ordem limit 1), 'mantém a ordem antiga');
+set role anon;
+select public.t_deve_falhar('select count(*) from produtos_estoque', 'permission denied', 'sem login não lê produtos');
+reset role;
+select public.t_como('intruso@teste.com');
+set role authenticated;
+select public.t_confere((select count(*) = 0 from produtos_estoque), 'não autorizado não vê produtos');
+reset role;
+select public.t_como('dono@teste.com');
+set role authenticated;
+insert into produtos_estoque (nome) values ('  Pepsi   Lata ');
+select public.t_confere((select nome = 'Pepsi Lata' and ordem = 16 from produtos_estoque where nome = 'Pepsi Lata'), 'produto novo: espaços limpos e vai para o fim');
+select public.t_deve_falhar('insert into produtos_estoque (nome) values (''pepsi lata'')', 'duplicate', 'não deixa nome repetido');
+update produtos_estoque set ativo = false where nome = 'Monster Azul';
+select public.t_confere((select not ativo from produtos_estoque where nome = 'Monster Azul'), 'desativa produto');
+select public.t_deve_falhar('delete from produtos_estoque where nome = ''Monster Azul''', 'permission denied', 'apagar não pode (só desativar)');
+reset role;
+select public.t_confere((select count(*) >= 2 from auditoria where tabela = 'produtos_estoque'), 'auditoria registra produtos');
+
 -- ---------------- Cópias de segurança (v6) ----------------
 select public.t_confere((select count(*) >= 1 from copias_seguranca), 'migração já deixa uma cópia pronta');
 set role anon;
@@ -114,6 +135,7 @@ update copias_seguranca set criada_em = now() - interval '3 days';
 set role anon; select manter_ativo(); reset role;
 select public.t_confere((select count(*) = 2 from copias_seguranca), 'cópia nova depois de 2 dias');
 select public.t_confere((select (quantidades ? 'acertos_mes') from copias_seguranca order by id desc limit 1), 'cópia inclui os acertos');
+select public.t_confere((select (quantidades ->> 'produtos_estoque')::int = 16 from copias_seguranca order by id desc limit 1), 'cópia inclui os produtos do estoque');
 set role anon;
 select public.t_deve_falhar('select count(*) from copias_seguranca', 'permission denied', 'sem login não lê cópias');
 reset role;
