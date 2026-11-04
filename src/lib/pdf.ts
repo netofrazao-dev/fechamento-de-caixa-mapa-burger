@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable'
 import type { ConsumoItem, Fechamento, RelatorioDiario, Sangria, StatusFechamento } from '../types/fechamento'
 import { agregarVendasPorPrato, formatarMoeda, STATUS_LABEL, totalMarmitas } from './calculations'
 import { semAcento } from './texto'
+import { centralizar, COLUNAS_RECIBO, linhaComValor, quebrarTexto, separadorTexto } from './reciboTexto'
 import { LOGO_MAPA_BURGER_PNG } from './brand'
 import { compartilharOuBaixar, type ResultadoEntrega } from './arquivos'
 import { formasDePagamento, resumoDoMes, situacaoDoCaixa, type ItemPagamento } from './relatorioResumo'
@@ -41,77 +42,76 @@ function statusPorDiferenca(diferenca: number): StatusFechamento {
 
 // ============================================================
 // Recibo térmico (80mm) — usado pro fechamento de caixa e pro
-// relatório diário. Sem acentos/cedilha (bugam na impressão
-// térmica); layout mantido igual ao que já funciona.
+// relatório diário. Sem acentos/cedilha (bugam na impressão térmica).
+//
+// O recibo é TEXTO em colunas fixas (letra de largura fixa, espaços de
+// verdade entre nome e valor, separador de traços), porque os aplicativos
+// de impressora costumam ler só o texto do PDF e ignorar a posição.
+// A página tem exatamente a altura do conteúdo: uma página A4 de 297 mm
+// fazia a impressora soltar papel em branco sem parar.
 // ============================================================
 
+const FONTE_RECIBO = 8.5 // pt: 40 colunas de Courier cabem em 72 mm
+const MM_POR_PT = 25.4 / 72
+
+interface LinhaRecibo {
+  texto: string
+  negrito: boolean
+  tamanho: number
+  y: number
+}
+
 class ReciboTermico {
-  doc: jsPDF
   y = 8
   margem = 4
   larguraMM = 80
+  private linhas: LinhaRecibo[] = []
 
-  constructor() {
-    this.doc = new jsPDF({ unit: 'mm', format: [this.larguraMM, 297] })
+  private escrever(texto: string, negrito = false, tamanho = FONTE_RECIBO) {
+    this.linhas.push({ texto, negrito, tamanho, y: this.y })
+    this.y += tamanho * MM_POR_PT * 1.35
   }
 
   linha(texto: string, opts?: { negrito?: boolean; tamanho?: number; centro?: boolean }) {
-    this.doc.setFont('helvetica', opts?.negrito ? 'bold' : 'normal')
-    this.doc.setFontSize(opts?.tamanho ?? 9)
+    const tamanho = opts?.tamanho ?? FONTE_RECIBO
+    const colunas = Math.floor((COLUNAS_RECIBO * FONTE_RECIBO) / tamanho)
     const t = semAcento(texto)
-    if (opts?.centro) {
-      this.doc.text(t, this.larguraMM / 2, this.y, { align: 'center' })
-    } else {
-      this.doc.text(t, this.margem, this.y)
-    }
-    this.y += (opts?.tamanho ?? 9) / 2 + 1.6
+    const partes = opts?.centro ? centralizar(t, colunas) : quebrarTexto(t, colunas)
+    partes.forEach((l) => this.escrever(l, opts?.negrito, tamanho))
   }
 
   linhaValor(label: string, valor: number) {
-    this.doc.setFont('helvetica', 'normal')
-    this.doc.setFontSize(9)
-    this.doc.text(semAcento(label), this.margem, this.y)
-    this.doc.text(formatarMoeda(valor), this.larguraMM - this.margem, this.y, { align: 'right' })
-    this.y += 5.2
+    this.linhaTexto(label, formatarMoeda(valor))
   }
 
-  linhaTexto(label: string, texto: string) {
-    this.doc.setFont('helvetica', 'normal')
-    this.doc.setFontSize(9)
-    this.doc.text(semAcento(label), this.margem, this.y)
-    this.doc.text(semAcento(texto), this.larguraMM - this.margem, this.y, { align: 'right' })
-    this.y += 5.2
+  linhaTexto(label: string, texto: string, opts?: { negrito?: boolean }) {
+    linhaComValor(semAcento(label), semAcento(texto)).forEach((l) => this.escrever(l, opts?.negrito))
   }
 
   paragrafo(texto: string) {
-    const largura = this.larguraMM - this.margem * 2
-    this.doc.setFont('helvetica', 'normal')
-    this.doc.setFontSize(8.5)
-    const linhas = this.doc.splitTextToSize(semAcento(texto), largura)
-    this.doc.text(linhas, this.margem, this.y)
-    this.y += linhas.length * 4
+    quebrarTexto(semAcento(texto)).forEach((l) => this.escrever(l))
   }
 
   separador() {
-    this.doc.setLineWidth(0.1)
-    this.doc.line(this.margem, this.y, this.larguraMM - this.margem, this.y)
-    this.y += 4
+    this.escrever(separadorTexto())
   }
 
   espaco(mm = 2) {
     this.y += mm
   }
 
-  quebrarPaginaSeNecessario(limite = 280) {
-    if (this.y > limite) {
-      this.doc.addPage([this.larguraMM, 297])
-      this.y = 8
+  /** Monta o PDF com a altura exata do conteúdo (mais uma pequena margem para o corte). */
+  montar(): jsPDF {
+    const altura = Math.max(this.larguraMM + 1, Math.ceil(this.y + 10))
+    const doc = new jsPDF({ unit: 'mm', format: [this.larguraMM, altura], orientation: 'portrait' })
+    for (const l of this.linhas) {
+      doc.setFont('courier', l.negrito ? 'bold' : 'normal')
+      doc.setFontSize(l.tamanho)
+      doc.text(l.texto, this.margem, l.y)
     }
+    return doc
   }
 
-  salvar(nomeArquivo: string) {
-    this.doc.save(nomeArquivo)
-  }
 }
 
 /** Escreve o bloco completo de um fechamento (LC, Brendi, Resultado) no recibo. */
@@ -156,11 +156,11 @@ function escreverFechamento(r: ReciboTermico, f: Fechamento) {
     r.linhaValor(`Ajuste (${f.ajuste.tipo === 'adicionar' ? '+' : '-'})`, f.resultado.ajusteAplicado)
   }
   r.espaco(1)
-  r.linha(`DIFERENCA FINAL: ${formatarMoeda(f.resultado.diferencaFinal)}`, { negrito: true })
+  r.linhaTexto('DIFERENCA FINAL', formatarMoeda(f.resultado.diferencaFinal), { negrito: true })
   r.espaco(1)
   r.linha(STATUS_LABEL[f.resultado.status], { negrito: true, centro: true, tamanho: 11 })
   r.separador()
-  r.linhaTexto('Marmitas vendidas', String(totalMarmitas(f.marmitas)))
+  r.linhaTexto('Marmitas vendidas', String(totalMarmitas(f.marmitas)), { negrito: true })
   f.marmitas.forEach((m) => r.linhaTexto(`  ${m.prato}`, String(m.quantidade)))
 
   if (f.observacoes) {
@@ -220,15 +220,19 @@ function escreverRelatorio(r: ReciboTermico, rel: RelatorioDiario) {
  * Recibo do fechamento de caixa, estilo cupom (80mm). Mesmo
  * layout de sempre — só sem acentos e com a contagem de marmitas.
  */
-export function gerarPdfFechamento(f: Fechamento): void {
+export function montarReciboFechamento(f: Fechamento): jsPDF {
   const r = new ReciboTermico()
   r.linha('MAPA BURGER', { negrito: true, tamanho: 12, centro: true })
-  r.linha('Fechamento de Caixa', { centro: true, tamanho: 9 })
+  r.linha('Fechamento de Caixa', { centro: true })
   r.espaco(1)
   r.linha(`Data: ${formatarData(f.data)}`, { centro: true })
   r.separador()
   escreverFechamento(r, f)
-  r.salvar(`fechamento_${f.data}_${f.turno}.pdf`)
+  return r.montar()
+}
+
+export function gerarPdfFechamento(f: Fechamento): void {
+  montarReciboFechamento(f).save(`fechamento_${f.data}_${f.turno}.pdf`)
 }
 
 /**
@@ -236,39 +240,39 @@ export function gerarPdfFechamento(f: Fechamento): void {
  * (manhã/noite, o que existir) + relatório diário completo,
  * tudo num único recibo, sem acentos.
  */
-export function imprimirDiaCompleto(params: { relatorio: RelatorioDiario; fechamentos: Fechamento[] }): void {
+export function montarReciboDiaCompleto(params: { relatorio: RelatorioDiario; fechamentos: Fechamento[] }): jsPDF {
   const { relatorio, fechamentos } = params
   const r = new ReciboTermico()
 
   r.linha('MAPA BURGER', { negrito: true, tamanho: 12, centro: true })
-  r.linha('Relatorio do Dia', { centro: true, tamanho: 9 })
+  r.linha('Relatorio do Dia', { centro: true })
   r.espaco(1)
   r.linha(`Data: ${formatarData(relatorio.data)}`, { centro: true })
   r.separador()
 
   if (fechamentos.length === 0) {
-    r.linha('(nenhum fechamento de caixa salvo para esta data)', { tamanho: 8 })
+    r.paragrafo('(nenhum fechamento de caixa salvo para esta data)')
     r.separador()
   }
 
   fechamentos.forEach((f) => {
-    r.quebrarPaginaSeNecessario(250)
     escreverFechamento(r, f)
     r.espaco(2)
   })
 
   const vendasPorPratoDia = agregarVendasPorPrato(fechamentos)
   if (vendasPorPratoDia.length > 0) {
-    r.quebrarPaginaSeNecessario(250)
     r.linha('VENDAS POR PRATO', { negrito: true })
     vendasPorPratoDia.forEach(([prato, qtd]) => r.linhaTexto(prato, String(qtd)))
     r.separador()
   }
 
-  r.quebrarPaginaSeNecessario(250)
   escreverRelatorio(r, relatorio)
+  return r.montar()
+}
 
-  r.salvar(`relatorio_dia_completo_${relatorio.data}.pdf`)
+export function imprimirDiaCompleto(params: { relatorio: RelatorioDiario; fechamentos: Fechamento[] }): void {
+  montarReciboDiaCompleto(params).save(`relatorio_dia_completo_${params.relatorio.data}.pdf`)
 }
 
 export interface LinhaRelatorioMensal {

@@ -80,6 +80,14 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   await esperarTexto('CAIXA FECHOU')
   const [pdf] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Salvar e gerar PDF' }).click()])
   ok(/^fechamento_\d{4}-\d{2}-\d{2}_manha\.pdf$/.test(pdf.suggestedFilename()), 'PDF do fechamento baixado: ' + pdf.suggestedFilename())
+  await pdf.saveAs(`${SHOTS}/recibo-fechamento.pdf`)
+  {
+    const bruto = fs.readFileSync(`${SHOTS}/recibo-fechamento.pdf`).toString('latin1')
+    const info = require('child_process').execSync(`pdfinfo ${SHOTS}/recibo-fechamento.pdf`).toString()
+    const alturaMm = Number(/Page size:\s+[\d.]+ x ([\d.]+)/.exec(info)[1]) * 25.4 / 72
+    ok(/Pages:\s+1\b/.test(info) && alturaMm < 200, `recibo: 1 página da altura do conteúdo (${Math.round(alturaMm)} mm, não 297)`)
+    ok(/\(PIX +R\$ 200,00\) Tj/.test(bruto) && /\(Dinheiro fechamento +R\$ 150,50\) Tj/.test(bruto), 'recibo: nome e valor na mesma linha, separados por espaços')
+  }
   await page.getByText('Fechamento salvo.').waitFor()
   const f = db.fechamentos[0]
   ok(f && f.dinheiro_fechamento === 150.5 && f.total_lc === 350.5 && f.status === 'fechou', 'gravado: 150,50 + 200 = 350,50, CAIXA FECHOU')
