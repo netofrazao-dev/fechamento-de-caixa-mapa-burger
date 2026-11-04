@@ -9,7 +9,7 @@ import {
   excluirRelatorio,
 } from '../lib/relatorioService'
 import { listarFechamentos } from '../lib/fechamentoService'
-import { carregarPdf } from '../lib/pdfSobDemanda'
+import { carregarPdf, DICA_PAPEL_80MM } from '../lib/pdfSobDemanda'
 import { mensagemErro } from '../lib/erros'
 import { formatarMoeda, totalMarmitas } from '../lib/calculations'
 import CampoMoeda from '../components/CampoMoeda'
@@ -275,6 +275,8 @@ export default function RelatorioForm() {
         relatorio: { id: id ?? '', ...payload(), createdAt: '', updatedAt: '' },
         fechamentos,
       })
+      // Com papel "Carta"/A4 a impressora térmica solta uma folha inteira de papel em branco.
+      setInfo(DICA_PAPEL_80MM)
     } catch (e) {
       setErro(mensagemErro(e, 'Erro ao gerar a impressão.'))
       mostrarAlertas()

@@ -78,7 +78,13 @@ export default function CampoMoeda({
           value={texto}
           onFocus={(e) => {
             setEditando(textoParaEdicao(value))
-            requestAnimationFrame(() => e.target.select())
+            // Seleciona o texto no próximo quadro, mas só se o campo ainda estiver em foco:
+            // select() também puxa o foco, e sem essa conferência dois campos tocados em
+            // seguida ficavam "roubando" o foco um do outro (e o que foi digitado se perdia).
+            const campo = e.currentTarget
+            requestAnimationFrame(() => {
+              if (document.activeElement === campo) campo.select()
+            })
           }}
           onBlur={() => setEditando(null)}
           onChange={(e) => digitar(e.target.value)}

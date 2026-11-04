@@ -36,6 +36,10 @@ a chave pública que fica dentro do app não abre mais nada.
 
 **F. Acerto do mês:** rode `migration_v7_acerto_mes.sql` (depois da v4).
 
+**G. Produtos do estoque:** rode `migration_v8_produtos_estoque.sql` (depois da v7). A lista de bebidas
+do "Estoque quente" passa a ficar em **Cadastros → Produtos do estoque**, onde dá para adicionar,
+renomear, desativar e reativar. Sem essa migração o relatório continua com a lista antiga.
+
 Para incluir alguém depois: crie o login (passo B) e rode
 `insert into public.usuarios_autorizados (email, nome) values ('email@exemplo.com', 'Nome');`
 Para tirar o acesso: `update public.usuarios_autorizados set ativo = false where email = '...';`
@@ -178,3 +182,12 @@ Para apagar um vale de verdade (só em caso extremo, pelo SQL Editor):
 - O turno da noite foi desativado na tela (a coluna `turno` continua no banco, caso volte a ser usado).
 - Cálculos do caixa: `src/lib/calculations.ts` (fonte de verdade).
 - Produtos do estoque quente: `src/lib/produtos.ts`.
+
+## Impressora térmica (recibo de 80 mm)
+O botão **Impressão** (relatório do dia) e **PDF (impressão)** (fechamento) baixam um recibo de 80 mm,
+com a altura exata do conteúdo. Na tela de impressão do Chrome, abra **Ver mais** e escolha:
+- **Tamanho do papel:** o papel de rolo de 80 mm da impressora (ex.: *Roll Paper 80 x 297 mm*), nunca *Carta* ou *A4*
+  — com Carta/A4 a impressora solta uma folha inteira de papel em branco;
+- **Margens:** Nenhuma; **Escala:** Padrão.
+O Chrome lembra essa escolha nas próximas vezes. Se ainda sobrar papel, no Windows abra
+*Impressoras → EPSON → Preferências de impressão* e ligue a redução de papel (*Paper Reduction*: margem inferior).

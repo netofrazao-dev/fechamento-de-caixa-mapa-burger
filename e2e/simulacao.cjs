@@ -31,6 +31,7 @@ function criarDb2() {
   const db = base.criarDb()
   db.fechamentos = []; db.sangrias = []; db.relatorios = []; db.pratos = []; db.rascunhos = []
   for (const nome of ['Estrogonofe', 'Frango Grelhado', 'Bife Acebolado']) db.pratos.push({ id: uid(), nome, ativo: true })
+  db.produtos_estoque = ['Coca KS', 'Sprite 350ml', 'Monster Azul', 'Água S/G 330ml'].map((nome, i) => ({ id: uid(), nome, ativo: true, ordem: i + 1 }))
   db.funcionarios.forEach((f) => (f.ativo = true))
   db.usuarios = { 'dono@teste.com': 'senha-forte-123', 'intruso@teste.com': 'senha-forte-123' }
   db.autorizados = new Set(['dono@teste.com'])
@@ -103,6 +104,15 @@ function handle2(db, method, path, params, body, wantsObject, hooks) {
     const qs = Object.fromEntries(params)
     if ((qs.select || '').includes('dados')) return responder([{ dados: { sistema: 'Mapa Burger', fechamentos: db.fechamentos } }])
     return responder([copia])
+  }
+  if (t === 'produtos_estoque' && db.produtos_estoque) {
+    const tabela = db.produtos_estoque
+    if (method === 'GET') return responder([...tabela].sort((a, b) => a.ordem - b.ordem))
+    if (method === 'POST') {
+      if (tabela.some((p) => norm(p.nome) === norm(body.nome))) return { status: 409, body: { code: '23505', message: 'duplicate' } }
+      const p = { id: uid(), nome: body.nome, ativo: true, ordem: Math.max(0, ...tabela.map((x) => x.ordem)) + 1 }; tabela.push(p); return responder([p], 201)
+    }
+    if (method === 'PATCH') { const alvo = filtrar(tabela, params); alvo.forEach((r) => Object.assign(r, body)); return responder(alvo) }
   }
   if (t === 'pratos' || (t === 'funcionarios' && method !== 'GET' && method !== 'POST')) {
     const tabela = db[t]

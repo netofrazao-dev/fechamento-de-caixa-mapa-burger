@@ -24,6 +24,7 @@ const TABELAS: { nome: string; ordem: string; colunas?: string; colunasSemImagen
   { nome: 'vales_historico', ordem: 'id' },
   { nome: 'funcionarios', ordem: 'nome' },
   { nome: 'pratos', ordem: 'nome' },
+  { nome: 'produtos_estoque', ordem: 'ordem' },
 ]
 
 const POR_PAGINA = 500
