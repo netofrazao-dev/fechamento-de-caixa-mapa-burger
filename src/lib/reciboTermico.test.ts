@@ -1,4 +1,3 @@
-import { writeFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { montarReciboDiaCompleto, montarReciboFechamento } from './pdf'
 import { calcularResultado } from './calculations'
@@ -35,7 +34,6 @@ function textoDoPdf(pdf: string): string[] {
 describe('recibo térmico', () => {
   it('fechamento: uma página só, da altura do conteúdo, e cada valor separado do nome', () => {
     const doc = montarReciboFechamento(fechamentoDaFoto())
-    if (process.env.RECIBO_SAIDA) writeFileSync(process.env.RECIBO_SAIDA, Buffer.from(doc.output('arraybuffer')))
     expect(doc.getNumberOfPages()).toBe(1)
     const altura = doc.internal.pageSize.getHeight()
     expect(altura).toBeLessThan(260) // antes: 297 mm fixos (A4) => papel em branco sobrando
