@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable'
 import type { ConsumoItem, Fechamento, RelatorioDiario, Sangria, StatusFechamento } from '../types/fechamento'
 import { agregarVendasPorPrato, formatarMoeda, STATUS_LABEL, totalMarmitas } from './calculations'
 import { semAcento } from './texto'
+import { infoTipoSangria, resumoSangrias, tipoDaSangria } from './sangrias'
 import { centralizar, COLUNAS_RECIBO, linhaComValor, quebrarTexto, separadorTexto } from './reciboTexto'
 import { LOGO_MAPA_BURGER_PNG } from './brand'
 import { compartilharOuBaixar, type ResultadoEntrega } from './arquivos'
@@ -202,10 +203,26 @@ function escreverRelatorio(r: ReciboTermico, rel: RelatorioDiario) {
   listaConsumo('CONSUMO LOJA MOTOBOYS', rel.consumoLojaMotoboys)
   listaConsumo('CORTESIA CLIENTES', rel.cortesiaClientes)
 
-  if (rel.sangrias.length > 0) {
-    r.linha('SANGRIAS', { negrito: true })
-    rel.sangrias.forEach((s) => r.linhaTexto(s.motivo, formatarMoeda(s.valor)))
-    r.linhaValor('Total retirado', somaCentavos(rel.sangrias.map((s) => s.valor)))
+  const rs = resumoSangrias(rel.sangrias)
+  if (rs.compras.length + rs.pagamentos.length > 0) {
+    r.linha('SANGRIAS (saem do caixa)', { negrito: true })
+    const grupos: [string, Sangria[]][] = [
+      [infoTipoSangria('compra').rotuloRecibo, rs.compras],
+      [infoTipoSangria('pagamento').rotuloRecibo, rs.pagamentos],
+    ]
+    for (const [rotulo, lista] of grupos) {
+      if (lista.length === 0) continue
+      r.linha(rotulo)
+      lista.forEach((s) => r.linhaTexto(`  ${s.motivo}`, formatarMoeda(s.valor)))
+    }
+    r.linhaTexto('Total de sangrias', formatarMoeda(rs.totalSangrias), { negrito: true })
+    r.separador()
+  }
+  if (rs.pix.length > 0) {
+    r.linha('PIX (nao sai do caixa)', { negrito: true })
+    rs.pix.forEach((s) => r.linhaTexto(`  ${s.motivo}`, formatarMoeda(s.valor)))
+    r.linhaValor('Total no PIX', rs.totalPix)
+    r.paragrafo('(fora do total de sangrias)')
     r.separador()
   }
 
@@ -988,8 +1005,11 @@ export async function gerarPdfWhatsApp(params: {
   const diferenca = somaCentavos(fechamentos.map((f) => f.resultado.diferencaFinal))
   const ajuste = somaCentavos(fechamentos.map((f) => f.resultado.ajusteAplicado))
   // As sangrias agora são lançadas no relatório; fechamentos antigos podem ter as suas.
+  // Só compras e pagamentos saíram do caixa; o PIX do patrão fica fora do total.
   const sangriasDoFechamento = fechamentos.flatMap((f) => f.sangrias)
-  const sangrias = rel.sangrias.length > 0 ? rel.sangrias : sangriasDoFechamento
+  const resumoRel = resumoSangrias(rel.sangrias)
+  const sangriasCaixaRel = [...resumoRel.compras, ...resumoRel.pagamentos]
+  const sangrias = sangriasCaixaRel.length > 0 ? sangriasCaixaRel : sangriasDoFechamento
   const totalSangrias = somaCentavos(sangrias.map((s) => s.valor))
   const marmitas = fechamentos.reduce((acc, f) => acc + totalMarmitas(f.marmitas), 0)
 
@@ -1038,10 +1058,18 @@ export async function gerarPdfWhatsApp(params: {
 
   // Destaques do dia
   const destaques: string[] = []
+  const listaSangrias = (l: Sangria[]) => l.map((s) => `${s.motivo || 'sem motivo'} (${formatarMoeda(s.valor)})`).join('; ')
   if (sangrias.length > 0) {
+    const g = resumoSangrias(sangrias)
+    const partes = [
+      g.compras.length ? `compras: ${listaSangrias(g.compras)}` : '',
+      g.pagamentos.length ? `pagamentos: ${listaSangrias(g.pagamentos)}` : '',
+    ].filter(Boolean)
+    destaques.push(`Retiradas do caixa (sangrias): ${formatarMoeda(totalSangrias)} — ${partes.join(' · ')}.`)
+  }
+  if (resumoRel.pix.length > 0) {
     destaques.push(
-      `Retiradas do caixa (sangrias): ${formatarMoeda(totalSangrias)} — ` +
-        sangrias.map((s) => `${s.motivo || 'sem motivo'} (${formatarMoeda(s.valor)})`).join('; ') + '.',
+      `Compras no PIX do patrão (não saíram do caixa, fora do total de sangrias): ${formatarMoeda(resumoRel.totalPix)} — ${listaSangrias(resumoRel.pix)}.`,
     )
   }
   for (const f of fechamentos) {
@@ -1225,18 +1253,35 @@ export async function gerarPdfWhatsApp(params: {
     y = finalY(doc) + 6
   }
 
-  if (rel.sangrias.length > 0 && !mesmasSangrias(rel.sangrias, sangriasDoFechamento)) {
+  if (sangriasCaixaRel.length > 0 && !mesmasSangrias(sangriasCaixaRel, sangriasDoFechamento)) {
     garantir(25)
     y = tituloSecaoPdf(doc, 'Retiradas do caixa (sangrias)', y, margem, larguraUtil)
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
-      head: [['Motivo', { content: 'Valor', styles: { halign: 'right' } }]],
-      body: rel.sangrias.map((s) => [s.motivo || '—', formatarMoeda(s.valor)]),
-      foot: [['Total retirado', { content: formatarMoeda(somaCentavos(rel.sangrias.map((s) => s.valor))), styles: { halign: 'right' } }]],
+      head: [['Tipo', 'Motivo', { content: 'Valor', styles: { halign: 'right' } }]],
+      body: sangriasCaixaRel.map((s) => [infoTipoSangria(tipoDaSangria(s)).rotulo, s.motivo || '—', formatarMoeda(s.valor)]),
+      foot: [[{ content: 'Total retirado do caixa', colSpan: 2 }, { content: formatarMoeda(resumoRel.totalSangrias), styles: { halign: 'right' } }]],
       styles: { fontSize: 9, cellPadding: 1.4 },
       headStyles: { fillColor: [90, 90, 95] },
       footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 30 }, 2: { halign: 'right' } },
+    })
+    y = finalY(doc) + 6
+  }
+
+  if (resumoRel.pix.length > 0) {
+    garantir(25)
+    y = tituloSecaoPdf(doc, 'Compras no PIX do patrão (não saem do caixa)', y, margem, larguraUtil)
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [['O que foi comprado', { content: 'Valor', styles: { halign: 'right' } }]],
+      body: resumoRel.pix.map((s) => [s.motivo || '—', formatarMoeda(s.valor)]),
+      foot: [['Total no PIX (fora do total de sangrias)', { content: formatarMoeda(resumoRel.totalPix), styles: { halign: 'right' } }]],
+      styles: { fontSize: 9, cellPadding: 1.4 },
+      headStyles: { fillColor: [37, 99, 235] },
+      footStyles: { fillColor: [235, 242, 254], textColor: [0, 0, 0], fontStyle: 'bold' },
       columnStyles: { 1: { halign: 'right' } },
     })
     y = finalY(doc) + 6

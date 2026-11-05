@@ -53,13 +53,26 @@ describe('recibo térmico', () => {
       id: 'r', data: '2026-11-03', createdAt: '', updatedAt: '', aberturaCaixa: 522, fechamentoCaixa: 135, quantidadeVendida: 41,
       estragou: ['2 pães'], funcionariosQueComeram: ['Pâmela', 'Neto'],
       consumoLojaMensal: [{ pessoa: 'Pâmela', item: 'Coca lata', valor: 6 }], consumoLojaMotoboys: [], cortesiaClientes: [],
-      sangrias: [{ valor: 30, motivo: 'pagamento do gás' }], estoqueQuente: { itens: [{ produto: 'Coca 2L', quantidade: 4 }] },
+      sangrias: [
+        { valor: 12.5, motivo: 'pão', tipo: 'compra' },
+        { valor: 30, motivo: 'pagamento do gás', tipo: 'pagamento' },
+        { valor: 80, motivo: 'carne no açougue', tipo: 'pix' },
+      ], estoqueQuente: { itens: [{ produto: 'Coca 2L', quantidade: 4 }] },
       imagem1: null, imagem2: null,
     } as unknown as RelatorioDiario
     const doc = montarReciboDiaCompleto({ relatorio: rel, fechamentos: [fechamentoDaFoto()] })
     expect(doc.getNumberOfPages()).toBe(1)
     const linhas = textoDoPdf(doc.output())
-    expect(linhas.find((l) => l.startsWith('pagamento do gas'))).toMatch(/^pagamento do gas +R\$ 30,00$/)
+    expect(linhas.find((l) => l.includes('pagamento do gas'))).toMatch(/^ {2}pagamento do gas +R\$ 30,00$/)
+    // Compras e pagamentos somam no total; o PIX fica separado, fora do total.
+    const i = linhas.indexOf('SANGRIAS (saem do caixa)')
+    const j = linhas.indexOf('PIX (nao sai do caixa)')
+    expect(i).toBeGreaterThan(-1)
+    expect(j).toBeGreaterThan(i)
+    expect(linhas.slice(i, j).find((l) => l.startsWith('Total de sangrias'))).toMatch(/R\$ 42,50$/)
+    expect(linhas.slice(i, j).some((l) => l.includes('carne'))).toBe(false)
+    expect(linhas.slice(j).find((l) => l.includes('carne no acougue'))).toMatch(/R\$ 80,00$/)
+    expect(linhas.slice(j).find((l) => l.startsWith('Total no PIX'))).toMatch(/R\$ 80,00$/)
     expect(linhas.find((l) => l.startsWith('Pamela (Coca lata)'))).toMatch(/ +R\$ 6,00$/)
     expect(linhas.find((l) => l.startsWith('Coca 2L'))).toMatch(/^Coca 2L +4$/)
   })

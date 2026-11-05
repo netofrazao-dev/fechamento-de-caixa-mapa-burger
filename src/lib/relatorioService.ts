@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { tipoDaSangria } from './sangrias'
 import { arredondarCentavos } from './moeda'
 import type { ConsumoItem, EstoqueSnapshot, RelatorioDiario, RelatorioDiarioInput, Sangria } from '../types/fechamento'
 
@@ -35,7 +36,7 @@ function rowToRelatorio(row: RelatorioRow): RelatorioDiario {
     consumoLojaMensal: row.consumo_loja_mensal ?? [],
     consumoLojaMotoboys: row.consumo_loja_motoboys ?? [],
     cortesiaClientes: row.cortesia_clientes ?? [],
-    sangrias: row.sangrias ?? [],
+    sangrias: (row.sangrias ?? []).map((s) => ({ ...s, tipo: tipoDaSangria(s) })),
     estoqueQuente: row.estoque_quente ?? ESTOQUE_VAZIO,
     imagem1: row.imagem1 ?? null,
     imagem2: row.imagem2 ?? null,
@@ -77,7 +78,7 @@ export function normalizarRelatorio(input: RelatorioDiarioInput): RelatorioDiari
     consumoLojaMotoboys: limparConsumo(input.consumoLojaMotoboys),
     cortesiaClientes: limparConsumo(input.cortesiaClientes),
     sangrias: input.sangrias
-      .map((s) => ({ valor: dinheiro(s.valor), motivo: texto(s.motivo, 200) }))
+      .map((s) => ({ valor: dinheiro(s.valor), motivo: texto(s.motivo, 200), tipo: tipoDaSangria(s) }))
       .filter((s) => s.valor > 0 || s.motivo),
     estoqueQuente: {
       itens: input.estoqueQuente.itens.map((i) => ({ produto: i.produto, quantidade: inteiro(i.quantidade) })),

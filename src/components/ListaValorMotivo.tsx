@@ -9,6 +9,8 @@ interface Props {
   onChange: (value: Sangria[]) => void
   placeholderMotivo?: string
   textoAdicionar?: string
+  /** Nome de cada linha para leitores de tela: "Valor da linha 1", "Valor da compra 1"... */
+  nomeLinha?: (i: number) => string
 }
 
 /** Lista de valor + motivo (sangrias). Valor sem motivo fica marcado em vermelho. */
@@ -17,6 +19,7 @@ export default function ListaValorMotivo({
   onChange,
   placeholderMotivo = 'Motivo (obrigatório)',
   textoAdicionar = 'Adicionar sangria',
+  nomeLinha = (i) => `da linha ${i + 1}`,
 }: Props) {
   const adicionar = () => onChange([...value, { valor: 0, motivo: '' }])
   const remover = (i: number) => onChange(value.filter((_, idx) => idx !== i))
@@ -33,13 +36,13 @@ export default function ListaValorMotivo({
           <div key={i} className="space-y-1">
             <div className="flex gap-2 items-center">
               <div className="w-32 shrink-0">
-                <CampoMoeda compacto ariaLabel={`Valor da linha ${i + 1}`} value={s.valor} onChange={(v) => atualizar(i, 'valor', v)} />
+                <CampoMoeda compacto ariaLabel={`Valor ${nomeLinha(i)}`} value={s.valor} onChange={(v) => atualizar(i, 'valor', v)} />
               </div>
               <input
                 type="text"
                 maxLength={200}
                 placeholder={placeholderMotivo}
-                aria-label={`Motivo da linha ${i + 1}`}
+                aria-label={`Motivo ${nomeLinha(i)}`}
                 aria-invalid={semMotivo}
                 className={`flex-1 min-w-0 rounded-lg border bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-gray-500 ${
                   semMotivo ? 'border-red-400 dark:border-red-700' : 'border-gray-200 dark:border-gray-700'
@@ -51,7 +54,7 @@ export default function ListaValorMotivo({
                 type="button"
                 onClick={() => remover(i)}
                 className="shrink-0 p-2 text-gray-400 dark:text-gray-500 hover:text-red-500"
-                aria-label={`Remover linha ${i + 1}`}
+                aria-label={`Remover ${nomeLinha(i).replace(/^d[aeo] /, '')}`}
               >
                 <Trash2 size={16} />
               </button>
