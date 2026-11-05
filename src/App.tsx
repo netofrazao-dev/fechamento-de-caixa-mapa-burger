@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 import {
   BarChart3,
   History,
@@ -38,6 +38,17 @@ const NovoVale = lazy(() => import('./pages/NovoVale'))
 const Cadastros = lazy(() => import('./pages/Cadastros'))
 const Acerto = lazy(() => import('./pages/Acerto'))
 
+// Formulário novo aberto por link de um dia (?data=...): cada dia é uma tela nova
+// (sem levar valores nem rascunho de um dia para o outro).
+function NovoFechamentoDoDia() {
+  const [sp] = useSearchParams()
+  return <NovoFechamento key={`novo-${sp.get('data') ?? ''}`} />
+}
+function NovoRelatorioDoDia() {
+  const [sp] = useSearchParams()
+  return <RelatorioForm key={`novo-${sp.get('data') ?? ''}`} />
+}
+
 const abas = [
   { to: '/hoje', label: 'Hoje', icon: Home },
   { to: '/novo', label: 'Fechar', icon: PlusSquare },
@@ -73,7 +84,7 @@ function TelaAviso({ titulo, texto, acao }: { titulo: string; texto: string; aca
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
       <div role="alert" className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-6 space-y-3 text-center">
-        <img src="/logo.png" alt="" className="w-14 h-14 rounded-full object-cover mx-auto" />
+        <img src="/logo-pequeno.jpg" alt="" className="w-14 h-14 rounded-full object-cover mx-auto" />
         <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">{titulo}</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400">{texto}</p>
         {acao}
@@ -173,7 +184,7 @@ function Sistema() {
     <div className="min-h-screen pb-16">
       <header className="flex items-center gap-2 px-4 py-2 max-w-2xl mx-auto">
         <Link to="/hoje" className="flex items-center gap-2 min-w-0">
-          <img src="/logo.png" alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+          <img src="/logo-pequeno.jpg" alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
           <span className="font-bold text-gray-900 dark:text-gray-100 tracking-tight">Mapa Burger</span>
         </Link>
         <div className="ml-auto">
@@ -195,12 +206,12 @@ function Sistema() {
           <Routes>
             <Route path="/" element={<Navigate to="/hoje" replace />} />
             <Route path="/hoje" element={<Hoje />} />
-            <Route path="/novo" element={<NovoFechamento key="novo" />} />
+            <Route path="/novo" element={<NovoFechamentoDoDia />} />
             <Route path="/historico" element={<Historico />} />
             <Route path="/mensal" element={<RelatorioMensal />} />
             <Route path="/semanal" element={<RelatorioSemanal />} />
             <Route path="/relatorios" element={<Relatorios />} />
-            <Route path="/relatorios/novo" element={<RelatorioForm key="novo" />} />
+            <Route path="/relatorios/novo" element={<NovoRelatorioDoDia />} />
             <Route path="/relatorios/:id" element={<RelatorioForm key="editar" />} />
             <Route path="/fechamento/:id" element={<FechamentoDetalhe />} />
             <Route path="/fechamento/:id/editar" element={<NovoFechamento key="editar" />} />

@@ -46,6 +46,8 @@ export default function Hoje() {
   const instalar = useInstalarApp()
   const [dados, setDados] = useState<Dados | null>(null)
   const [falhou, setFalhou] = useState(false)
+  // Muda quando a pessoa toca em "Tentar de novo" (busca outra vez).
+  const [tentativa, setTentativa] = useState(0)
 
   const hoje = hojeLocal()
   const mes = hoje.slice(0, 7)
@@ -66,7 +68,7 @@ export default function Hoje() {
     ]).then((r) => {
       if (!ativo) return
       const ok = <T,>(i: number, padrao: T): T => (r[i].status === 'fulfilled' ? (r[i] as PromiseFulfilledResult<T>).value : padrao)
-      if (r[0].status === 'rejected') setFalhou(true)
+      if (r[0].status === 'rejected' || r[2].status === 'rejected') setFalhou(true)
       setDados({
         fechamentos: ok<Fechamento[]>(0, []),
         fechamentosAnterior: ok<Fechamento[]>(1, []),
@@ -79,7 +81,7 @@ export default function Hoje() {
     return () => {
       ativo = false
     }
-  }, [mes, mesAnterior])
+  }, [mes, mesAnterior, tentativa])
 
   const todosFechamentos = useMemo(() => (dados ? [...dados.fechamentosAnterior, ...dados.fechamentos] : []), [dados])
   const fechamentoHoje = todosFechamentos.find((f) => f.data === hoje)
@@ -145,8 +147,19 @@ export default function Hoje() {
       </header>
 
       {falhou && (
-        <div role="alert" className="rounded-xl bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-400">
-          Não consegui carregar os dados agora (sem internet?). Os atalhos abaixo continuam funcionando.
+        <div role="alert" className="rounded-xl bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-400 space-y-2">
+          <p>Não consegui carregar os dados agora (sem internet?). Os atalhos abaixo continuam funcionando.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setFalhou(false)
+              setDados(null)
+              setTentativa((t) => t + 1)
+            }}
+            className="font-semibold underline"
+          >
+            Tentar de novo
+          </button>
         </div>
       )}
 
@@ -166,7 +179,7 @@ export default function Hoje() {
           <Link to="/novo" className="rounded-2xl bg-gray-900 dark:bg-gray-700 text-white p-4 space-y-1.5 shadow-sm">
             <PlusSquare size={20} />
             <p className="font-semibold leading-tight">Fazer o fechamento de hoje</p>
-            <p className="text-[11px] text-gray-300">{dados ? 'Ainda não foi feito' : 'Carregando...'}</p>
+            <p className="text-[11px] text-gray-300">{!dados ? 'Carregando...' : falhou ? 'Não consegui conferir agora' : 'Ainda não foi feito'}</p>
           </Link>
         )}
         {relatorioHoje ? (
@@ -181,7 +194,7 @@ export default function Hoje() {
           <Link to={`/relatorios/novo?data=${hoje}`} className={`${caixa} p-4 space-y-1.5 border border-dashed border-gray-300 dark:border-gray-700`}>
             <FileText size={20} className="text-gray-500" />
             <p className="font-semibold leading-tight text-gray-800 dark:text-gray-200">Relatório do dia</p>
-            <p className="text-[11px] text-gray-400">{dados ? 'Ainda não foi feito' : 'Carregando...'}</p>
+            <p className="text-[11px] text-gray-400">{!dados ? 'Carregando...' : falhou ? 'Não consegui conferir agora' : 'Ainda não foi feito'}</p>
           </Link>
         )}
       </div>

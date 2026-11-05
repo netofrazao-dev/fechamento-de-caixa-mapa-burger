@@ -18,10 +18,13 @@ export default function SeletorFuncionarios({ value, onChange, unico }: Props) {
   const [falhou, setFalhou] = useState(false)
   const [adicionando, setAdicionando] = useState(false)
 
+  // Busca a lista (sem mexer no estado antes da resposta chegar).
   function carregar() {
-    setFalhou(false)
-    listarFuncionarios()
-      .then(setFuncionarios)
+    return listarFuncionarios()
+      .then((lista) => {
+        setFuncionarios(lista)
+        setFalhou(false)
+      })
       .catch(() => setFalhou(true))
   }
 

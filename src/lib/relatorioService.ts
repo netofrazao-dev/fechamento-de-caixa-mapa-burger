@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { tipoDaSangria } from './sangrias'
+import { buscarTodasAsPaginas } from './paginacao'
 import { arredondarCentavos } from './moeda'
 import type { ConsumoItem, EstoqueSnapshot, RelatorioDiario, RelatorioDiarioInput, Sangria } from '../types/fechamento'
 
@@ -106,13 +107,15 @@ function inputToRow(entrada: RelatorioDiarioInput) {
 }
 
 export async function listarRelatorios(params?: { dataInicio: string; dataFim: string }): Promise<RelatorioDiario[]> {
-  let query = supabase.from('relatorios').select(COLUNAS_LISTA)
-  if (params) {
-    query = query.gte('data', params.dataInicio).lte('data', params.dataFim)
-  }
-  const { data, error } = await query.order('data', { ascending: false }).order('created_at', { ascending: false })
-  if (error) throw error
-  return (data as unknown as RelatorioRow[]).map(rowToRelatorio)
+  const linhas = await buscarTodasAsPaginas<RelatorioRow>((de, ate) => {
+    let query = supabase.from('relatorios').select(COLUNAS_LISTA)
+    if (params) query = query.gte('data', params.dataInicio).lte('data', params.dataFim)
+    return query
+      .order('data', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range(de, ate) as unknown as PromiseLike<{ data: RelatorioRow[] | null; error: unknown }>
+  })
+  return linhas.map(rowToRelatorio)
 }
 
 export async function buscarRelatorioPorId(id: string): Promise<RelatorioDiario> {

@@ -118,11 +118,32 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
 
   console.log('3. Fechamento duplicado na mesma data')
   await page.goto(`${BASE}/novo`)
+  await esperarTexto(`Já existe um fechamento salvo em ${f.data.split('-').reverse().join('/')}`)
+  ok(await page.getByRole('link', { name: 'Abrir o fechamento', exact: true }).getAttribute('href') === `/fechamento/${f.id}`,
+    'avisa logo ao abrir (antes de preencher): já existe fechamento nesta data, com link')
   await campo('PIX').first().fill('10')
   await campo('Total LC Sistema').fill('10')
   await page.getByRole('button', { name: 'Salvar e gerar PDF' }).click()
   await page.getByText('Abrir o fechamento existente').waitFor()
   ok(db.fechamentos.length === 1, 'não duplica; oferece link para o existente')
+
+  console.log('3b. Rascunho de outro dia não se mistura com o de hoje')
+  await page.goto(`${BASE}/novo?data=2026-11-02`)
+  await page.getByRole('heading', { name: 'Fechamento do caixa' }).waitFor()
+  await page.waitForTimeout(400) // tempo de restaurar, se fosse restaurar
+  ok(!(await texto()).includes('Rascunho restaurado') && (await campo('PIX').first().inputValue()) === '' &&
+    (await page.locator('input[type="date"]').inputValue()) === '2026-11-02',
+    'fechamento de 02/11 (pelo link) abre limpo e com a data certa, sem pegar o rascunho de hoje')
+  await preencher(campo('PIX').first(), '7', '7,00')
+  ok(await page.evaluate(() => JSON.parse(localStorage.getItem('mapa-burger-rascunho-fechamento') || 'null')?.dados?.lc?.pix) === 10,
+    'rascunho de hoje continua guardado (não foi sobrescrito)')
+  await page.goto(`${BASE}/novo`)
+  await esperarTexto('Rascunho restaurado')
+  ok((await campo('PIX').first().inputValue()) === '10,00' && (await page.locator('input[type="date"]').inputValue()) === f.data,
+    'voltando ao fechamento de hoje, o rascunho de hoje volta')
+  await page.goto(`${BASE}/novo?data=2026-11-02`)
+  await esperarTexto('Rascunho restaurado')
+  ok((await campo('PIX').first().inputValue()) === '7,00', 'e o rascunho de 02/11 fica separado')
 
   console.log('4. Histórico')
   await page.goto(`${BASE}/historico`)
@@ -205,9 +226,29 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
     'PDF do dia: compras no PIX separadas, fora do total')
   ok(textoDia.includes('Caixa LC') && textoDia.includes('150,50'), 'PDF do dia: fechamento completo junto')
   await page.goto(`${BASE}/relatorios/novo?data=${f.data}`)
+  await esperarTexto(`Já existe um relatório de ${f.data.split('-').reverse().join('/')}`)
+  ok(await page.getByRole('link', { name: 'Abrir o relatório', exact: true }).count() === 1, 'relatório: avisa logo ao abrir que já existe um nesta data')
   await page.getByRole('button', { name: 'Salvar', exact: true }).click()
   await page.getByText('Abrir o relatório existente').waitFor()
   ok(db.relatorios.length === 1, 'segundo relatório na mesma data: bloqueado com link')
+
+  console.log('6b. Resumo do mês: retiradas do caixa (sangrias + vales)')
+  {
+    const mesAtual = f.data.slice(0, 7)
+    const reais = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const valesMes = db.vales.filter((v) => !v.excluido_em && v.data.startsWith(mesAtual)).reduce((a, v) => a + Math.round(v.valor * 100), 0) / 100
+    const esperado = 12.5 + 30 + valesMes
+    await page.goto(`${BASE}/mensal?mes=${mesAtual}`)
+    await esperarTexto('Retiradas do caixa (sangrias)')
+    const ret = (await page.getByLabel('Retiradas do caixa', { exact: true }).innerText()).replace(/\u00a0/g, ' ')
+    ok(ret.includes('Total retirado do caixa') && ret.includes(reais(esperado)) && /PIX do patrão[\s\S]*R\$ 80,00/.test(ret),
+      `mensal mostra retiradas do caixa ${reais(esperado)} (compras + pagamentos + vales) e o PIX à parte`)
+    const [pdfMesRet] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'PDF', exact: true }).click()])
+    await pdfMesRet.saveAs(`${SHOTS}/mensal-retiradas.pdf`)
+    const txt = require('child_process').execSync(`pdftotext -layout ${SHOTS}/mensal-retiradas.pdf -`).toString().replace(/\u00a0/g, ' ')
+    ok(/RETIRADAS DO CAIXA \(SANGRIAS\)/.test(txt) && new RegExp('Total retirado do caixa\\s+' + reais(esperado).replace(/[$.]/g, '\\$&')).test(txt) && txt.includes('PIX do patrão'),
+      'PDF do mês também traz as retiradas do caixa')
+  }
 
   console.log('7. Cadastros')
   await page.goto(`${BASE}/cadastros`)

@@ -19,12 +19,14 @@ export default function FechamentoDetalhe() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
-  const salvo = (location.state as { salvo?: string } | null)?.salvo
+  const estado = location.state as { salvo?: string; pdfBaixado?: boolean } | null
+  const salvo = estado?.salvo
 
   const [f, setF] = useState<Fechamento | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
-  const [dica, setDica] = useState<string | null>(null)
+  // Fechamento novo já baixa o recibo ao salvar: mostra a dica do papel junto.
+  const [dica, setDica] = useState<string | null>(() => (estado?.pdfBaixado ? DICA_PAPEL_80MM : null))
   const [relatorioId, setRelatorioId] = useState<string | null | undefined>(undefined)
   const [auditoria, setAuditoria] = useState<RegistroAuditoria[] | null>(null)
   const [verAuditoria, setVerAuditoria] = useState(false)
@@ -294,7 +296,15 @@ function Linha({ label, valor, destaque, nota }: { label: string; valor: number;
         {label}
         {nota && <span className="text-[11px] text-gray-400 dark:text-gray-500"> ({nota})</span>}
       </span>
-      <span className={`tabular-nums ${destaque ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'}`}>
+      <span
+        className={`tabular-nums ${
+          destaque
+            ? 'font-semibold text-gray-900 dark:text-gray-100'
+            : valor === 0
+              ? 'text-gray-300 dark:text-gray-600' // zerado: mais apagado, pra os valores de verdade se destacarem
+              : 'text-gray-700 dark:text-gray-300'
+        }`}
+      >
         {formatarMoeda(valor)}
       </span>
     </div>

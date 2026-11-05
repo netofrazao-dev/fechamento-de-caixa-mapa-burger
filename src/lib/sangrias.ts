@@ -117,3 +117,46 @@ export function descricaoVale(v: ValeDaSangria): string {
   const obs = (v.observacao ?? '').trim()
   return `Vale — ${v.funcionario}${obs ? ` (${obs})` : ''}`
 }
+
+export interface RetiradasPeriodo {
+  compras: number
+  pagamentos: number
+  vales: number
+  /** Compras + pagamentos + vales: o que saiu do dinheiro do caixa no período. */
+  total: number
+  /** Compras no PIX do patrão: só registradas, fora do total. */
+  pix: number
+}
+
+/**
+ * Quanto saiu do caixa num período (semana/mês), por tipo.
+ * Cada dia usa as sangrias do relatório; dias antigos, de antes de as sangrias
+ * irem para o relatório, usam as do fechamento (sem contar duas vezes).
+ */
+export function retiradasDoPeriodo(params: {
+  relatorios: { data: string; sangrias: Sangria[] }[]
+  fechamentos: { data: string; sangrias: Sangria[] }[]
+  totalVales: number | null
+}): RetiradasPeriodo {
+  const doFechamento = new Map<string, Sangria[]>()
+  for (const f of params.fechamentos) doFechamento.set(f.data, [...(doFechamento.get(f.data) ?? []), ...f.sangrias])
+  const dias = new Set([...params.relatorios.map((r) => r.data), ...doFechamento.keys()])
+  const porData = new Map(params.relatorios.map((r) => [r.data, r.sangrias]))
+
+  const todas: Sangria[] = []
+  for (const dia of dias) {
+    const doRelatorio = porData.get(dia) ?? []
+    const caixaRelatorio = doRelatorio.filter(saiDoCaixa)
+    todas.push(...(caixaRelatorio.length > 0 ? caixaRelatorio : (doFechamento.get(dia) ?? [])))
+    todas.push(...doRelatorio.filter((s) => !saiDoCaixa(s)))
+  }
+  const r = resumoSangrias(todas)
+  const vales = Math.round((params.totalVales ?? 0) * 100) / 100
+  return {
+    compras: r.totalCompras,
+    pagamentos: r.totalPagamentos,
+    vales,
+    total: Math.round((r.totalCompras + r.totalPagamentos + vales) * 100) / 100,
+    pix: r.totalPix,
+  }
+}

@@ -1,11 +1,16 @@
 import { forwardRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, Trash2 } from 'lucide-react'
 
-/** Caixa vermelha de erro. */
-export function CaixaErro({ children }: { children: ReactNode }) {
+/** Caixa vermelha de erro (com botão "Tentar de novo" quando dá pra repetir a busca). */
+export function CaixaErro({ children, onTentarDeNovo }: { children: ReactNode; onTentarDeNovo?: () => void }) {
   return (
-    <div role="alert" className="rounded-xl bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-400">
-      {children}
+    <div role="alert" className="rounded-xl bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-400 space-y-2">
+      <div>{children}</div>
+      {onTentarDeNovo && (
+        <button type="button" onClick={onTentarDeNovo} className="font-semibold underline">
+          Tentar de novo
+        </button>
+      )}
     </div>
   )
 }

@@ -4,8 +4,8 @@
  * funcionar sem internet. NUNCA guarda dados do Supabase nem da /api:
  * tudo que é dado vem sempre da internet, na hora.
  */
-const CACHE = 'mapa-burger-app-v1'
-const BASICO = ['/', '/manifest.webmanifest', '/icon-192.png', '/logo.png', '/favicon-32.png']
+const CACHE = 'mapa-burger-app-v2'
+const BASICO = ['/', '/manifest.webmanifest', '/icon-192.png', '/logo-pequeno.jpg', '/favicon-32.png']
 const LIMITE_ARQUIVOS = 80
 
 self.addEventListener('install', (evento) => {
@@ -33,6 +33,10 @@ async function limitar(cache) {
 
 async function guardar(pedido, resposta) {
   if (!resposta || !resposta.ok || resposta.type !== 'basic') return
+  // Arquivo do build que voltou como página (versão antiga que não existe mais): não guarda.
+  const tipo = resposta.headers.get('content-type') || ''
+  const url = typeof pedido === 'string' ? pedido : pedido.url
+  if (url.includes('/assets/') && tipo.includes('text/html')) return
   const cache = await caches.open(CACHE)
   await cache.put(pedido, resposta.clone())
   limitar(cache)

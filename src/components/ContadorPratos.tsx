@@ -18,10 +18,13 @@ export default function ContadorPratos({ value, onChange }: Props) {
   const [erroNovo, setErroNovo] = useState<string | null>(null)
   const [adicionando, setAdicionando] = useState(false)
 
+  // Busca a lista (sem mexer no estado antes da resposta chegar).
   function carregar() {
-    setFalhou(false)
-    listarPratos()
-      .then(setPratos)
+    return listarPratos()
+      .then((lista) => {
+        setPratos(lista)
+        setFalhou(false)
+      })
       .catch(() => setFalhou(true))
   }
 

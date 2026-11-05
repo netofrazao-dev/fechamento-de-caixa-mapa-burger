@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { descricaoVale, resumoSangrias, saiDoCaixa, tipoDaSangria } from './sangrias'
+import { descricaoVale, resumoSangrias, retiradasDoPeriodo, saiDoCaixa, tipoDaSangria } from './sangrias'
 
 describe('sangrias do relatório', () => {
   const lista = [
@@ -38,5 +38,30 @@ describe('sangrias do relatório', () => {
     expect(r.totalSangrias).toBe(193.2) // 12,70 + 30 + 150,50
     expect(r.totalPix).toBe(80.1)
     expect(descricaoVale(vales[1])).toBe('Vale — Pâmela (adiantamento)')
+  })
+
+  it('retiradas do período: soma por tipo, vales entram no total, PIX fica de fora', () => {
+    const r = retiradasDoPeriodo({
+      relatorios: [
+        { data: '2026-11-02', sangrias: [{ valor: 30, motivo: 'gás', tipo: 'pagamento' }, { valor: 80, motivo: 'carne', tipo: 'pix' }] },
+        { data: '2026-11-03', sangrias: [{ valor: 12.5, motivo: 'pão', tipo: 'compra' }] },
+      ],
+      fechamentos: [],
+      totalVales: 150,
+    })
+    expect(r).toEqual({ compras: 12.5, pagamentos: 30, vales: 150, total: 192.5, pix: 80 })
+  })
+
+  it('dia antigo usa as sangrias do fechamento; dia com sangrias no relatório não conta as do fechamento de novo', () => {
+    const r = retiradasDoPeriodo({
+      relatorios: [{ data: '2026-11-02', sangrias: [{ valor: 20, motivo: 'gelo', tipo: 'compra' }] }],
+      fechamentos: [
+        { data: '2026-11-01', sangrias: [{ valor: 15, motivo: 'troco' }] }, // antigo: só no fechamento
+        { data: '2026-11-02', sangrias: [{ valor: 20, motivo: 'gelo' }] }, // repetido no relatório
+      ],
+      totalVales: null,
+    })
+    expect(r.compras).toBe(35)
+    expect(r.total).toBe(35)
   })
 })
