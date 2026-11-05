@@ -16,6 +16,7 @@ import { BotaoExcluir, CaixaErro } from '../components/Avisos'
 import { dataValida } from '../lib/vales'
 import { listarFuncionarios } from '../lib/funcionarioService'
 import { buscarAcerto } from '../lib/acertoService'
+import { listarValesDoDia } from '../lib/valeService'
 import type { Funcionario } from '../types/fechamento'
 import { formatarHoraRascunho } from '../lib/draft'
 import { useRascunho } from '../lib/useRascunho'
@@ -26,7 +27,7 @@ import ListaConsumo from '../components/ListaConsumo'
 import SangriasRelatorio from '../components/SangriasRelatorio'
 import { resumoSangrias } from '../lib/sangrias'
 import EstoqueForm from '../components/EstoqueForm'
-import type { ConsumoItem, EstoqueSnapshot, Fechamento, Sangria } from '../types/fechamento'
+import type { ConsumoItem, EstoqueSnapshot, Fechamento, Sangria, Vale } from '../types/fechamento'
 import { diaDaSemana, formatarDataBr, hojeLocal as hoje } from '../lib/datas'
 
 const ESTOQUE_VAZIO: EstoqueSnapshot = { itens: [] }
@@ -124,6 +125,30 @@ export default function RelatorioForm() {
 
   // Marmitas vendidas também vêm do fechamento (o contador de pratos de lá).
   const marmitasDoDia = fDia ? totalMarmitas(fDia.marmitas) : quantidadeVendida
+
+  // Vales do dia: são sangrias (saem do caixa) e ficam na tabela de vales (acerto do mês).
+  const [valesDoDia, setValesDoDia] = useState<{ data: string; vales: Vale[] | null; erro?: string } | undefined>(undefined)
+  const [versaoVales, setVersaoVales] = useState(0)
+  useEffect(() => {
+    if (!dataValida(data)) return
+    let ativo = true
+    listarValesDoDia(data)
+      .then((vales) => ativo && setValesDoDia({ data, vales }))
+      .catch((e) => ativo && setValesDoDia({ data, vales: [], erro: mensagemErro(e, 'Não consegui carregar os vales do dia.') }))
+    return () => {
+      ativo = false
+    }
+  }, [data, versaoVales])
+  const valesAtuais = valesDoDia?.data === data ? valesDoDia : undefined
+
+  /** Vales do dia na hora de gerar PDF/impressão (busca de novo para não perder nenhum). */
+  async function valesParaPdf(): Promise<Vale[]> {
+    try {
+      return await listarValesDoDia(data)
+    } catch {
+      return valesAtuais?.vales ?? []
+    }
+  }
 
   function aplicarRelatorio(r: Awaited<ReturnType<typeof buscarRelatorioPorId>>) {
     setData(r.data)
@@ -260,10 +285,11 @@ export default function RelatorioForm() {
     setErro(null)
     setProcessando(true)
     try {
-      const [fechamentos, pdf] = await Promise.all([buscarFechamentosDoDia(), carregarPdf()])
+      const [fechamentos, pdf, vales] = await Promise.all([buscarFechamentosDoDia(), carregarPdf(), valesParaPdf()])
       pdf.imprimirDiaCompleto({
         relatorio: { id: id ?? '', ...payload(), createdAt: '', updatedAt: '' },
         fechamentos,
+        vales,
       })
       // Com papel "Carta"/A4 a impressora térmica solta uma folha inteira de papel em branco.
       setInfo(DICA_PAPEL_80MM)
@@ -280,9 +306,11 @@ export default function RelatorioForm() {
     setProcessando(true)
     try {
       const [fechamentos, pdf] = await Promise.all([buscarFechamentosDoDia(), carregarPdf()])
+      const vales = await valesParaPdf()
       const resultado = await pdf.gerarPdfWhatsApp({
         relatorio: { id: id ?? '', ...payload(), createdAt: '', updatedAt: '' },
         fechamentos,
+        vales,
         imagens: [imagem1, imagem2],
         compartilhar: true,
       })
@@ -456,11 +484,18 @@ export default function RelatorioForm() {
 
       <Secao
         titulo="Sangrias"
-        resumo={resumoSecaoSangrias(sangrias)}
+        resumo={resumoSecaoSangrias(sangrias, valesAtuais?.vales ?? [])}
         alerta={sangrias.some((s) => s.valor > 0 && !s.motivo.trim())}
-        ajuda="Compras e pagamentos com dinheiro do caixa (entram no total de sangrias) e compras no PIX do patrão (só registradas). Saem no PDF do dia junto com o fechamento. Não mexem no Total LC."
+        ajuda="Compras, pagamentos e vales com dinheiro do caixa (entram no total de sangrias) e compras no PIX do patrão (só registradas). Saem no PDF do dia junto com o fechamento. Não mexem no Total LC."
       >
-        <SangriasRelatorio value={sangrias} onChange={setSangrias} />
+        <SangriasRelatorio
+          value={sangrias}
+          onChange={setSangrias}
+          data={data}
+          vales={valesAtuais ? valesAtuais.vales : null}
+          erroVales={valesAtuais?.erro}
+          onValesMudou={() => setVersaoVales((v) => v + 1)}
+        />
       </Secao>
 
       <Secao titulo="Estoque quente" ajuda="Quantidade de cada bebida/produto contada agora.">
@@ -652,11 +687,12 @@ function AnexoImagem({
   )
 }
 
-/** Resumo da seção fechada: "Sangrias R$ 42,50 · PIX R$ 80,00". */
-function resumoSecaoSangrias(sangrias: Sangria[]): string {
-  if (sangrias.length === 0) return 'Nenhuma'
-  const r = resumoSangrias(sangrias)
+/** Resumo da seção fechada: "Sangrias R$ 142,50 · 1 vale(s) · PIX R$ 80,00". */
+function resumoSecaoSangrias(sangrias: Sangria[], vales: Vale[]): string {
+  if (sangrias.length === 0 && vales.length === 0) return 'Nenhuma'
+  const r = resumoSangrias(sangrias, vales)
   const partes = [`Sangrias ${formatarMoeda(r.totalSangrias)}`]
+  if (r.vales.length > 0) partes.push(`${r.vales.length} vale(s)`)
   if (r.pix.length > 0) partes.push(`PIX ${formatarMoeda(r.totalPix)}`)
   if (sangrias.some((s) => s.valor > 0 && !s.motivo.trim())) partes.push('falta motivo')
   return partes.join(' · ')

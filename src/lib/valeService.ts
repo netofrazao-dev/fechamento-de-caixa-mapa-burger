@@ -145,6 +145,22 @@ export async function listarValesDoMes(mes: string): Promise<Vale[]> {
   }
 }
 
+/** Vales (não excluídos) de um dia — usados como sangrias no relatório desse dia. */
+export async function listarValesDoDia(data: string): Promise<Vale[]> {
+  try {
+    const { data: linhas, error } = await supabase
+      .from('vales')
+      .select(COLUNAS_VALE)
+      .eq('data', data)
+      .is('excluido_em', null)
+      .order('created_at', { ascending: true })
+    if (error) throw error
+    return ((linhas ?? []) as unknown as ValeRow[]).map(rowToVale)
+  } catch (e) {
+    throw traduzirErro(e, 'Erro ao carregar os vales do dia.')
+  }
+}
+
 export async function buscarValePorId(id: string): Promise<Vale> {
   try {
     const { data, error } = await supabase.from('vales').select(COLUNAS_VALE).eq('id', id).single()
