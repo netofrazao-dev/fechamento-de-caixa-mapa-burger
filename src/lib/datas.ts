@@ -82,3 +82,9 @@ export function diaAnterior(iso: string): string {
   const [a, m, d] = iso.split('-').map(Number)
   return dataLocal(new Date(a, m - 1, d - 1))
 }
+
+/** Soma (ou subtrai) dias de uma data YYYY-MM-DD ("2026-11-03", -45 -> "2026-09-19"). */
+export function somarDias(iso: string, dias: number): string {
+  const [a, m, d] = iso.split('-').map(Number)
+  return dataLocal(new Date(a, m - 1, d + dias))
+}

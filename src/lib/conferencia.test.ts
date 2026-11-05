@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { avisosFechamento, errosFechamento } from './conferencia'
+import { avisosFechamento, avisosValoresFora, errosFechamento } from './conferencia'
 import { calcularResultado } from './calculations'
 import type { NovoFechamentoInput } from '../types/fechamento'
 
@@ -47,5 +47,45 @@ describe('avisosFechamento', () => {
     const avisos = avisosFechamento(faltou, res(faltou), '2026-11-03')
     expect(avisos.join(' ')).toContain('faltando')
     expect(avisosFechamento({ ...faltou, observacoes: 'cliente não pagou' }, res(faltou), '2026-11-03')).toEqual([])
+  })
+})
+
+describe('avisosValoresFora (valor fora do normal)', () => {
+  // 10 dias "normais": dinheiro ~300, PIX ~1500, ticket ~60, a prazo sempre zerado.
+  const historico = Array.from({ length: 10 }, (_, i) => ({
+    lc: { dinheiroAbertura: 100, dinheiroFechamento: 280 + i * 5, pix: 1400 + i * 20, debito: 400, credito: 300, consumoLoja: 20, aPrazo: 0, ticket: 50 + i },
+    brendi: { pix: 300, debito: 0, credito: 100, creditoOnline: 80, dinheiro: 40 },
+    totalLCSistema: 2500,
+  }))
+  const normal = { ...historico[0], lc: { ...historico[0].lc } }
+
+  it('dia normal não gera aviso', () => {
+    expect(avisosValoresFora(normal, historico)).toEqual([])
+  })
+
+  it('"15050" em vez de "150,50" no dinheiro é percebido', () => {
+    const a = avisosValoresFora({ ...normal, lc: { ...normal.lc, dinheiroFechamento: 15050 } }, historico)
+    expect(a).toHaveLength(1)
+    expect(a[0]).toContain('Dinheiro no fechamento')
+    expect(a[0]).toContain('vírgula')
+  })
+
+  it('ticket sem vírgula (5600 em vez de 56,00) é percebido mesmo com o total parecendo possível', () => {
+    expect(avisosValoresFora({ ...normal, lc: { ...normal.lc, ticket: 5600 } }, historico)[0]).toContain('Ticket')
+  })
+
+  it('campo que sempre fica zerado recebendo valor alto: avisa que pode ser o campo errado', () => {
+    expect(avisosValoresFora({ ...normal, lc: { ...normal.lc, aPrazo: 1500 } }, historico)[0]).toContain('campo certo')
+    // valor pequeno num campo normalmente zerado não incomoda
+    expect(avisosValoresFora({ ...normal, lc: { ...normal.lc, aPrazo: 120 } }, historico)).toEqual([])
+  })
+
+  it('com pouco histórico (loja nova) não compara', () => {
+    expect(avisosValoresFora({ ...normal, lc: { ...normal.lc, pix: 999999 } }, historico.slice(0, 3))).toEqual([])
+  })
+
+  it('entra nos avisos do fechamento (pede confirmação)', () => {
+    const errado = { ...base, lc: { ...base.lc, pix: 140000 }, totalLCSistema: 140500 }
+    expect(avisosFechamento(errado, res(errado), '2026-11-03', historico).some((a) => a.startsWith('PIX (LC)'))).toBe(true)
   })
 })

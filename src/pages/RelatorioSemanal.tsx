@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { AlertCircle, ChevronLeft, ChevronRight, FileDown, FileText, Share2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FileDown, FileText, Share2 } from 'lucide-react'
 import AbasResumo from '../components/AbasResumo'
 import GraficoVendasDia, { type DiaGrafico } from '../components/GraficoVendasDia'
 import GraficoSobraFalta from '../components/graficos/GraficoSobraFalta'
 import BarrasHorizontais from '../components/graficos/BarrasHorizontais'
 import RetiradasCaixa from '../components/RetiradasCaixa'
+import PainelDiasSemFechamento from '../components/PainelDiasSemFechamento'
+import { listarDiasLojaFechada, semDiasFechados, type DiaLojaFechada } from '../lib/lojaFechadaService'
 import { retiradasDoPeriodo } from '../lib/sangrias'
 import BarraResultados from '../components/graficos/BarraResultados'
 import { CaixaErro } from '../components/Avisos'
@@ -30,6 +32,7 @@ interface Dados {
   anterior: Fechamento[]
   relatorios: RelatorioDiario[]
   totalVales: number | null
+  fechados: DiaLojaFechada[]
 }
 
 function Selo({ v, menorEhMelhor }: { v: Variacao; menorEhMelhor?: boolean }) {
@@ -68,9 +71,11 @@ export default function RelatorioSemanal() {
       Promise.all(meses.map((m) => listarValesDoMes(m)))
         .then((l) => somarValores(l.flat().filter((v) => !v.excluidoEm && v.data >= inicio && v.data <= fim).map((v) => v.valor)))
         .catch(() => null),
+      // Dias de loja fechada (folga, feriado): não contam como "sem fechamento".
+      listarDiasLojaFechada(inicio, fim).catch(() => [] as DiaLojaFechada[]),
     ])
-      .then(([fechamentos, anterior, relatorios, totalVales]) => {
-        if (ativo) setDados({ inicio, fechamentos, anterior, relatorios, totalVales })
+      .then(([fechamentos, anterior, relatorios, totalVales, fechados]) => {
+        if (ativo) setDados({ inicio, fechamentos, anterior, relatorios, totalVales, fechados })
       })
       .catch((e) => ativo && setErro({ inicio, mensagem: mensagemErro(e, 'Erro ao carregar a semana.') }))
     return () => {
@@ -112,7 +117,10 @@ export default function RelatorioSemanal() {
       status: l ? statusPorDiferenca(l.diferencaFinalDia) : undefined,
     }
   })
-  const semFechamento = dias.filter((d) => d <= hoje && !porData.has(d))
+  const semFechamento = semDiasFechados(
+    dias.filter((d) => d <= hoje && !porData.has(d)),
+    atual?.fechados ?? [],
+  )
   const vendasPorPrato = agregarVendasPorPrato(atual?.fechamentos ?? [])
   const totalMarmitas = vendasPorPrato.reduce((a, [, q]) => a + q, 0)
   const total = somarValores(linhas.map((l) => l.totalCaixaDia))
@@ -141,6 +149,7 @@ export default function RelatorioSemanal() {
         linhas,
         vendasPorPrato,
         diasSemFechamento: semFechamento,
+        diasLojaFechada: (atual?.fechados ?? []).map((f) => f.data),
         totalVales: atual?.totalVales ?? null,
         retiradas,
         compartilhar,
@@ -326,20 +335,12 @@ export default function RelatorioSemanal() {
             </>
           )}
 
-          {semFechamento.length > 0 && (
-            <section className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 space-y-2">
-              <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-900 dark:text-amber-200">
-                <AlertCircle size={15} /> {semFechamento.length} dia(s) sem fechamento nesta semana
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {semFechamento.map((d) => (
-                  <Link key={d} to={`/novo?data=${d}`} className="rounded-full bg-white/80 dark:bg-gray-900/60 px-2.5 py-1 text-xs font-medium text-amber-900 dark:text-amber-200">
-                    {diaDaSemana(d).slice(0, 3)} {formatarDiaMes(d)}
-                  </Link>
-                ))}
-              </div>
-            </section>
-          )}
+          <PainelDiasSemFechamento
+            semFechamento={semFechamento}
+            fechados={atual.fechados}
+            contexto="nesta semana"
+            onMudou={() => setTentativa((t) => t + 1)}
+          />
 
           {linhas.length > 0 && (
             <div className={`${caixa} overflow-hidden`}>

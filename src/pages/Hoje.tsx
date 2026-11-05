@@ -6,6 +6,7 @@ import {
   ChevronRight,
   DatabaseBackup,
   FileText,
+  PencilLine,
   PlusSquare,
   Smartphone,
   Wallet,
@@ -20,6 +21,10 @@ import { compararMeses, variacao } from '../lib/comparacao'
 import GraficoVendasDia from '../components/GraficoVendasDia'
 import { statusPorDiferenca } from '../lib/relatorioResumo'
 import { useInstalarApp } from '../lib/instalar'
+import { listarDiasLojaFechada, marcarLojaFechada, semDiasFechados, type DiaLojaFechada } from '../lib/lojaFechadaService'
+import { mensagemErro } from '../lib/erros'
+import { caixaDoRascunho, listarRascunhosAbertos, rascunhosDoAparelho, type RascunhoAberto } from '../lib/rascunhosAbertos'
+import { formatarHoraRascunho } from '../lib/draft'
 import { nomeMes, rotuloMes, somarMeses, somarValores } from '../lib/vales'
 import { datasEntre, diaAnterior, diaDaSemana, formatarDataBr, formatarDiaMes, hojeLocal, limitesDoMes } from '../lib/datas'
 import type { AcertoFechado, Fechamento, RelatorioDiario, Vale } from '../types/fechamento'
@@ -31,6 +36,7 @@ interface Dados {
   vales: Vale[] | null
   valesAnterior: Vale[] | null
   acertoAnterior: AcertoFechado | null | 'indisponivel'
+  fechados: DiaLojaFechada[]
 }
 
 function saudacao(): string {
@@ -48,6 +54,31 @@ export default function Hoje() {
   const [falhou, setFalhou] = useState(false)
   // Muda quando a pessoa toca em "Tentar de novo" (busca outra vez).
   const [tentativa, setTentativa] = useState(0)
+  const [rascunhos, setRascunhos] = useState<RascunhoAberto[]>(() => rascunhosDoAparelho())
+  useEffect(() => {
+    let ativo = true
+    listarRascunhosAbertos().then((l) => ativo && setRascunhos(l))
+    return () => {
+      ativo = false
+    }
+  }, [tentativa])
+  const [marcando, setMarcando] = useState(false)
+  const [erroMarcar, setErroMarcar] = useState<string | null>(null)
+
+  /** "Ontem ficou sem fechamento" → a loja não abriu (folga, feriado). */
+  async function marcarFechada(data: string) {
+    if (marcando) return
+    setMarcando(true)
+    setErroMarcar(null)
+    try {
+      await marcarLojaFechada(data)
+      setTentativa((t) => t + 1)
+    } catch (e) {
+      setErroMarcar(mensagemErro(e, 'Não consegui marcar a loja fechada.'))
+    } finally {
+      setMarcando(false)
+    }
+  }
 
   const hoje = hojeLocal()
   const mes = hoje.slice(0, 7)
@@ -65,6 +96,7 @@ export default function Hoje() {
       listarValesDoMes(mes),
       listarValesDoMes(mesAnterior),
       buscarAcerto(mesAnterior),
+      listarDiasLojaFechada(antLim.inicio, atualLim.fim),
     ]).then((r) => {
       if (!ativo) return
       const ok = <T,>(i: number, padrao: T): T => (r[i].status === 'fulfilled' ? (r[i] as PromiseFulfilledResult<T>).value : padrao)
@@ -76,6 +108,7 @@ export default function Hoje() {
         vales: ok<Vale[] | null>(3, null),
         valesAnterior: ok<Vale[] | null>(4, null),
         acertoAnterior: r[5].status === 'fulfilled' ? (r[5] as PromiseFulfilledResult<AcertoFechado | null>).value : 'indisponivel',
+        fechados: ok<DiaLojaFechada[]>(6, []),
       })
     })
     return () => {
@@ -87,6 +120,18 @@ export default function Hoje() {
   const fechamentoHoje = todosFechamentos.find((f) => f.data === hoje)
   const fechamentoOntem = todosFechamentos.find((f) => f.data === ontem)
   const relatorioHoje = dados?.relatorios.find((r) => r.data === hoje)
+
+  // Começou e ainda não salvou: mostra "em andamento" (rascunho deste aparelho ou de outro).
+  const fechamentoEmAndamento = fechamentoHoje
+    ? undefined
+    : rascunhos.find((r) => r.tipo === 'fechamento' && !r.edicao && r.data === hoje)
+  const relatorioEmAndamento = relatorioHoje
+    ? undefined
+    : rascunhos.find((r) => r.tipo === 'relatorio' && !r.edicao && r.data === hoje)
+  const fechamentoComAlteracoes =
+    fechamentoHoje && rascunhos.some((r) => r.tipo === 'fechamento' && r.edicao && r.registroId === fechamentoHoje.id)
+  const relatorioComAlteracoes =
+    relatorioHoje && rascunhos.some((r) => r.tipo === 'relatorio' && r.edicao && r.registroId === relatorioHoje.id)
   const relatorioOntem = dados?.relatorios.find((r) => r.data === ontem)
 
   const comparacao = useMemo(
@@ -97,8 +142,10 @@ export default function Hoje() {
     if (!dados) return []
     const { inicio } = limitesDoMes(mes)
     const com = new Set(dados.fechamentos.map((f) => f.data))
-    // até ontem (o de hoje ainda pode ser feito)
-    return inicio <= ontem && ontem.slice(0, 7) === mes ? datasEntre(inicio, ontem).filter((d) => !com.has(d)) : []
+    // até ontem (o de hoje ainda pode ser feito); dias de loja fechada não contam
+    return inicio <= ontem && ontem.slice(0, 7) === mes
+      ? semDiasFechados(datasEntre(inicio, ontem).filter((d) => !com.has(d)), dados.fechados)
+      : []
   }, [dados, mes, ontem])
 
   const totalValesMes = dados?.vales ? somarValores(dados.vales.filter((v) => !v.excluidoEm).map((v) => v.valor)) : null
@@ -129,8 +176,11 @@ export default function Hoje() {
   const media7 = comVenda7.length ? Math.round((somarValores(comVenda7.map((d) => d.vendas ?? 0)) / comVenda7.length) * 100) / 100 : 0
   const vVendas = comparacao ? variacao(comparacao.atual.vendas, comparacao.anterior.vendas) : null
 
-  const pendencias: { texto: string; link: string; acao: string }[] = []
-  if (dados && !fechamentoOntem) pendencias.push({ texto: `Ontem (${formatarDiaMes(ontem)}) ficou sem fechamento de caixa.`, link: `/novo?data=${ontem}`, acao: 'Lançar' })
+  const ontemLojaFechada = Boolean(dados?.fechados.some((f) => f.data === ontem))
+  const pendencias: { texto: string; link: string; acao: string; lojaFechada?: string }[] = []
+  if (dados && !fechamentoOntem && !ontemLojaFechada) {
+    pendencias.push({ texto: `Ontem (${formatarDiaMes(ontem)}) ficou sem fechamento de caixa.`, link: `/novo?data=${ontem}`, acao: 'Lançar', lojaFechada: ontem })
+  }
   if (dados && fechamentoOntem && !relatorioOntem) pendencias.push({ texto: `Ontem (${formatarDiaMes(ontem)}) ficou sem relatório do dia.`, link: `/relatorios/novo?data=${ontem}`, acao: 'Criar' })
   if (diasSemFechamento.length > 1) pendencias.push({ texto: `${diasSemFechamento.length} dias sem fechamento em ${rotuloMes(mes)}.`, link: `/mensal?mes=${mes}`, acao: 'Ver' })
   if (acertoAnteriorAberto) pendencias.push({ texto: `O acerto de ${nomeAnterior} (vales + consumo) ainda está aberto. Feche depois de descontar na folha.`, link: `/acerto?mes=${mesAnterior}`, acao: 'Abrir' })
@@ -174,6 +224,20 @@ export default function Hoje() {
             <span className={`inline-block text-[10px] font-semibold rounded-full border px-2 py-0.5 ${STATUS_COLOR[fechamentoHoje.resultado.status]}`}>
               {STATUS_LABEL[fechamentoHoje.resultado.status]}
             </span>
+            {fechamentoComAlteracoes && <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">Alterações não salvas</p>}
+          </Link>
+        ) : fechamentoEmAndamento ? (
+          <Link
+            to={fechamentoEmAndamento.link}
+            className="rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-4 space-y-1.5"
+          >
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
+              <PencilLine size={14} /> Fechamento em andamento
+            </p>
+            <p className="text-lg font-bold tabular-nums text-gray-900 dark:text-gray-100">{formatarMoeda(caixaDoRascunho(fechamentoEmAndamento.dados))}</p>
+            <p className="text-[11px] text-amber-800 dark:text-amber-300">
+              Caixa até agora · salvo {formatarHoraRascunho(fechamentoEmAndamento.salvoEm)}. Toque para continuar.
+            </p>
           </Link>
         ) : (
           <Link to="/novo" className="rounded-2xl bg-gray-900 dark:bg-gray-700 text-white p-4 space-y-1.5 shadow-sm">
@@ -188,7 +252,24 @@ export default function Hoje() {
               <CheckCircle2 size={14} /> Relatório feito
             </p>
             <p className="text-sm text-gray-600 dark:text-gray-300">{relatorioHoje.quantidadeVendida} vendidas</p>
-            <p className="text-[11px] text-gray-400">Toque para abrir ou enviar o PDF</p>
+            {relatorioComAlteracoes ? (
+              <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">Alterações não salvas</p>
+            ) : (
+              <p className="text-[11px] text-gray-400">Toque para abrir ou enviar o PDF</p>
+            )}
+          </Link>
+        ) : relatorioEmAndamento ? (
+          <Link
+            to={relatorioEmAndamento.link}
+            className="rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-4 space-y-1.5"
+          >
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
+              <PencilLine size={14} /> Relatório em andamento
+            </p>
+            <p className="font-semibold leading-tight text-gray-800 dark:text-gray-200">Relatório do dia</p>
+            <p className="text-[11px] text-amber-800 dark:text-amber-300">
+              Salvo {formatarHoraRascunho(relatorioEmAndamento.salvoEm)}. Toque para continuar.
+            </p>
           </Link>
         ) : (
           <Link to={`/relatorios/novo?data=${hoje}`} className={`${caixa} p-4 space-y-1.5 border border-dashed border-gray-300 dark:border-gray-700`}>
@@ -209,11 +290,25 @@ export default function Hoje() {
             {pendencias.map((p) => (
               <li key={p.texto} className="flex items-center justify-between gap-3 text-sm text-amber-900 dark:text-amber-200">
                 <span>{p.texto}</span>
-                <Link to={p.link} className="shrink-0 rounded-lg bg-white/80 dark:bg-gray-900/60 px-2.5 py-1 text-xs font-semibold">
-                  {p.acao}
-                </Link>
+                <span className="shrink-0 flex gap-1.5">
+                  {p.lojaFechada && (
+                    <button
+                      type="button"
+                      disabled={marcando}
+                      onClick={() => marcarFechada(p.lojaFechada!)}
+                      className="rounded-lg bg-white/80 dark:bg-gray-900/60 px-2.5 py-1 text-xs font-semibold disabled:opacity-50"
+                      title="A loja não abriu nesse dia (folga, feriado)"
+                    >
+                      Loja fechada
+                    </button>
+                  )}
+                  <Link to={p.link} className="rounded-lg bg-white/80 dark:bg-gray-900/60 px-2.5 py-1 text-xs font-semibold">
+                    {p.acao}
+                  </Link>
+                </span>
               </li>
             ))}
+            {erroMarcar && <li role="alert" className="text-xs text-red-700 dark:text-red-400">{erroMarcar}</li>}
           </ul>
         </section>
       )}

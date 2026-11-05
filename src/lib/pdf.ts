@@ -372,6 +372,8 @@ export async function gerarPdfMensal(params: {
   linhas: LinhaRelatorioMensal[]
   vendasPorPrato?: [string, number][]
   diasSemFechamento?: string[]
+  /** Dias marcados como loja fechada (folga, feriado): aparecem numa frase, não como "sem fechamento". */
+  diasLojaFechada?: string[]
   totalVales?: number | null
   /** Quanto saiu do caixa no período (compras, pagamentos, vales) e o PIX do patrão à parte. */
   retiradas?: RetiradasPeriodo | null
@@ -387,7 +389,7 @@ export async function gerarPdfMensal(params: {
   /** Comparação com o mês anterior, já formatada: [indicador, este mês, mês anterior, variação]. */
   comparacao?: { titulo: string; frase: string; linhas: [string, string, string, string][] } | null
 }): Promise<ResultadoEntrega> {
-  const { mes, linhas, vendasPorPrato = [], diasSemFechamento = [], totalVales, retiradas, compartilhar, grafico, comparacao } = params
+  const { mes, linhas, vendasPorPrato = [], diasSemFechamento = [], diasLojaFechada = [], totalVales, retiradas, compartilhar, grafico, comparacao } = params
   const [ano, m] = mes.split('-')
   const mesLabel = `${m}/${ano}`
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
@@ -441,6 +443,10 @@ export async function gerarPdfMensal(params: {
   y = tituloSecaoPdf(doc, textos.resumo, y, margem, larguraUtil)
   const frases = resumoDoMes({ dias: linhas, diasSemFechamento: diasSemFechamento.length, totalMarmitas: totalMarmitasMes, periodo: textos.periodoFrase })
   if (totalVales != null && totalVales > 0) frases.push(`Vales (adiantamentos de salário) ${textos.valesNo}: ${formatarMoeda(totalVales)}.`)
+  if (diasLojaFechada.length > 0) {
+    const lista = diasLojaFechada.map((d) => d.slice(8, 10) + '/' + d.slice(5, 7)).join(', ')
+    frases.push(`Loja fechada (folga/feriado) em ${diasLojaFechada.length} dia(s): ${lista}.`)
+  }
   y = listaComMarcadores(doc, frases, margem, y + 1, larguraUtil, quebra)
   y += 3
 

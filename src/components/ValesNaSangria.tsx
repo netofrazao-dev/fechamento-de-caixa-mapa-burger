@@ -15,8 +15,8 @@ interface Props {
   /** Vales já lançados nesse dia (null = carregando). */
   vales: Vale[] | null
   erroCarregar?: string | null
-  /** Chamado depois de lançar ou excluir, para recarregar a lista. */
-  onMudou: (aviso?: string) => void
+  /** Chamado depois de lançar ou excluir (a tela atualiza na hora e confere de novo com o banco). */
+  onMudou: (mudanca: { lancado?: Vale; excluidoId?: string }) => void
 }
 
 /**
@@ -67,7 +67,7 @@ export default function ValesNaSangria({ data, vales, erroCarregar, onMudou }: P
       setOk(`Vale de ${v.funcionario} (${formatarMoeda(v.valor)}) lançado. Já entrou nas sangrias e nos vales de ${v.funcionario}.`)
       limparForm()
       setAbrindo(false)
-      onMudou()
+      onMudou({ lancado: v })
     } catch (e) {
       setErro(mensagemDeErro(e, 'Não consegui lançar o vale.'))
       setAvisos(null)
@@ -87,7 +87,7 @@ export default function ValesNaSangria({ data, vales, erroCarregar, onMudou }: P
       const v = await excluirVale(excluindo.id, excluindo.motivo)
       setOk(`Vale de ${v.funcionario} excluído (fica no histórico dos vales).`)
       setExcluindo(null)
-      onMudou()
+      onMudou({ excluidoId: v.id })
     } catch (e) {
       setErro(mensagemDeErro(e, 'Não consegui excluir o vale.'))
     } finally {

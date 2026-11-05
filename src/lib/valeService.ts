@@ -10,6 +10,7 @@ import type {
 import { limitesDoMes } from './datas'
 import { limparNome, mesValido, validarVale } from './vales'
 import { ErroAmigavel, mensagemErro } from './erros'
+import { buscarTodasAsPaginas } from './paginacao'
 
 // ============================================================
 // Erros com mensagem clara (em vez do texto técnico do banco)
@@ -140,6 +141,26 @@ export async function listarValesDoMes(mes: string): Promise<Vale[]> {
       .range(0, 9999)
     if (error) throw error
     return ((data ?? []) as unknown as ValeRow[]).map(rowToVale)
+  } catch (e) {
+    throw traduzirErro(e, 'Erro ao carregar os vales.')
+  }
+}
+
+/** Vales (não excluídos) de um período — usados na busca do Histórico. */
+export async function listarValesDoPeriodo(inicio: string, fim: string): Promise<Vale[]> {
+  try {
+    const linhas = await buscarTodasAsPaginas<ValeRow>((de, ate) =>
+      supabase
+        .from('vales')
+        .select(COLUNAS_VALE)
+        .gte('data', inicio)
+        .lte('data', fim)
+        .is('excluido_em', null)
+        .order('data', { ascending: true })
+        .order('created_at', { ascending: true })
+        .range(de, ate) as unknown as PromiseLike<{ data: ValeRow[] | null; error: unknown }>,
+    )
+    return linhas.map(rowToVale)
   } catch (e) {
     throw traduzirErro(e, 'Erro ao carregar os vales.')
   }

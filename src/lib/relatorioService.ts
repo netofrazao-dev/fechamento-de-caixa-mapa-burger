@@ -124,6 +124,14 @@ export async function buscarRelatorioPorId(id: string): Promise<RelatorioDiario>
   return rowToRelatorio(data as unknown as RelatorioRow)
 }
 
+/** Relatório de uma data (sem as imagens), ou null se o dia não tem relatório. */
+export async function buscarRelatorioDoDia(data: string): Promise<RelatorioDiario | null> {
+  const { data: linhas, error } = await supabase.from('relatorios').select(COLUNAS_LISTA).eq('data', data).limit(1)
+  if (error) throw error
+  const linha = (linhas as unknown as RelatorioRow[])[0]
+  return linha ? rowToRelatorio(linha) : null
+}
+
 /** Id do relatório de uma data (ignorando o que está sendo editado), ou null. */
 export async function buscarIdRelatorioPorData(data: string, ignorarId?: string): Promise<string | null> {
   let query = supabase.from('relatorios').select('id').eq('data', data).limit(1)
