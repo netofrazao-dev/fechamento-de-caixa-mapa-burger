@@ -173,19 +173,19 @@ function escreverFechamento(r: ReciboTermico, f: Fechamento) {
 
 /**
  * Escreve o bloco completo do relatório diário escrito no recibo.
- * Abertura e fechamento do dinheiro já saem no bloco do fechamento do caixa;
+ * Abertura/fechamento do dinheiro e marmitas vendidas já saem no bloco do fechamento do caixa;
  * aqui só aparecem se o dia não tiver fechamento salvo (relatórios antigos).
  */
 function escreverRelatorio(r: ReciboTermico, rel: RelatorioDiario, temFechamento: boolean) {
   r.linha('RELATORIO DIARIO', { negrito: true, centro: true })
   r.separador()
 
-  if (!temFechamento && (rel.aberturaCaixa || rel.fechamentoCaixa)) {
+  if (!temFechamento && (rel.aberturaCaixa || rel.fechamentoCaixa || rel.quantidadeVendida)) {
     r.linhaValor('Abertura do caixa', rel.aberturaCaixa)
     r.linhaValor('Fechamento do caixa', rel.fechamentoCaixa)
+    r.linhaTexto('Vendidas', String(rel.quantidadeVendida))
+    r.separador()
   }
-  r.linhaTexto('Vendidas', String(rel.quantidadeVendida))
-  r.separador()
 
   if (rel.estragou.length > 0) {
     r.linha('ESTRAGOU', { negrito: true })
@@ -1298,7 +1298,7 @@ export async function gerarPdfWhatsApp(params: {
   if (fechamentos.length === 0 && (rel.aberturaCaixa || rel.fechamentoCaixa)) {
     contagem.push(`Dinheiro anotado no relatório: abertura ${formatarMoeda(rel.aberturaCaixa)} · fechamento ${formatarMoeda(rel.fechamentoCaixa)}.`)
   }
-  if (rel.quantidadeVendida) contagem.push(`Quantidade vendida anotada no relatório: ${rel.quantidadeVendida}.`)
+  if (fechamentos.length === 0 && rel.quantidadeVendida) contagem.push(`Quantidade vendida anotada no relatório: ${rel.quantidadeVendida}.`)
   if (contagem.length) {
     garantir(15)
     y = listaComMarcadores(doc, contagem, margem, y + 2, larguraUtil, quebra) + 2

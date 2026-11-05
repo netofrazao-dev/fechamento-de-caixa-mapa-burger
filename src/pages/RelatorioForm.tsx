@@ -102,7 +102,8 @@ export default function RelatorioForm() {
   }, [mesDoRelatorio])
   const consumoTravado = acertoFechado?.mes === mesDoRelatorio && acertoFechado?.fechado === true
 
-  // Abertura e fechamento do dinheiro vêm do fechamento do caixa do mesmo dia (não se digita de novo aqui).
+  // Abertura e fechamento do dinheiro e marmitas vendidas vêm do fechamento do caixa do mesmo dia
+  // (não se digita de novo aqui).
   // undefined = buscando; null = não há fechamento salvo nesse dia.
   const [fechamentoDoDia, setFechamentoDoDia] = useState<{ data: string; f: Fechamento | null; erro?: boolean } | undefined>(undefined)
   useEffect(() => {
@@ -121,12 +122,8 @@ export default function RelatorioForm() {
   const aberturaDoDia = fDia ? fDia.lc.dinheiroAbertura : aberturaCaixa
   const fechamentoDoDiaValor = fDia ? fDia.lc.dinheiroFechamento : fechamentoCaixa
 
-  // Quantidade vendida: se estiver vazia, preenche com as marmitas do fechamento (continua editável).
-  const marmitasDoDia = fDia ? totalMarmitas(fDia.marmitas) : 0
-  useEffect(() => {
-    if (carregando || marmitasDoDia <= 0) return
-    setQuantidadeVendida((q) => (q > 0 ? q : marmitasDoDia))
-  }, [carregando, marmitasDoDia])
+  // Marmitas vendidas também vêm do fechamento (o contador de pratos de lá).
+  const marmitasDoDia = fDia ? totalMarmitas(fDia.marmitas) : quantidadeVendida
 
   function aplicarRelatorio(r: Awaited<ReturnType<typeof buscarRelatorioPorId>>) {
     setData(r.data)
@@ -158,7 +155,7 @@ export default function RelatorioForm() {
       data,
       aberturaCaixa: aberturaDoDia,
       fechamentoCaixa: fechamentoDoDiaValor,
-      quantidadeVendida,
+      quantidadeVendida: marmitasDoDia,
       estragou: estragou.filter((s) => s.trim()),
       funcionariosQueComeram,
       consumoLojaMensal: consumoLojaMensal.filter((c) => c.pessoa.trim() || c.item.trim() || c.valor),
@@ -361,13 +358,13 @@ export default function RelatorioForm() {
             {semana && <span className="text-sm text-gray-400 dark:text-gray-500">{semana}</span>}
           </div>
         </label>
-        <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 px-3.5 py-3 space-y-2" aria-label="Dinheiro do caixa do dia">
-          <p className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Dinheiro do caixa</p>
+        <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 px-3.5 py-3 space-y-2" aria-label="Dados do fechamento do dia">
+          <p className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Do fechamento do caixa</p>
           {!fechamentoAtual ? (
             <p className="text-sm text-gray-400 dark:text-gray-500">Buscando o fechamento do dia...</p>
           ) : fDia ? (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <p className="text-[11px] text-gray-500 dark:text-gray-400">Abertura</p>
                   <p className="text-base font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatarMoeda(aberturaDoDia)}</p>
@@ -375,6 +372,10 @@ export default function RelatorioForm() {
                 <div>
                   <p className="text-[11px] text-gray-500 dark:text-gray-400">Fechamento</p>
                   <p className="text-base font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatarMoeda(fechamentoDoDiaValor)}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Marmitas</p>
+                  <p className="text-base font-semibold tabular-nums text-gray-900 dark:text-gray-100">{marmitasDoDia}</p>
                 </div>
               </div>
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
@@ -391,22 +392,22 @@ export default function RelatorioForm() {
                 {fechamentoAtual.erro
                   ? 'Não consegui buscar o fechamento do dia agora (sem internet?).'
                   : `Ainda não há fechamento do caixa em ${formatarDataBr(data)}.`}{' '}
-                A abertura e o fechamento do dinheiro vêm de lá automaticamente.
+                A abertura, o fechamento do dinheiro e as marmitas vendidas vêm de lá automaticamente.
               </p>
               {!fechamentoAtual.erro && (
                 <Link to={`/novo?data=${data}`} className="inline-block text-sm font-semibold text-gray-900 dark:text-gray-100 underline">
                   Fazer o fechamento do caixa
                 </Link>
               )}
-              {(aberturaCaixa > 0 || fechamentoCaixa > 0) && (
+              {(aberturaCaixa > 0 || fechamentoCaixa > 0 || quantidadeVendida > 0) && (
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                  Anotado antes neste relatório: abertura {formatarMoeda(aberturaCaixa)} · fechamento {formatarMoeda(fechamentoCaixa)}.
+                  Anotado antes neste relatório: abertura {formatarMoeda(aberturaCaixa)} · fechamento {formatarMoeda(fechamentoCaixa)} ·{' '}
+                  {quantidadeVendida} marmitas.
                 </p>
               )}
             </>
           )}
         </div>
-        <CampoInteiro label="Quantidade vendida" value={quantidadeVendida} onChange={setQuantidadeVendida} />
       </section>
 
       <Secao
@@ -645,25 +646,6 @@ function AnexoImagem({
         onChange={(e) => {
           selecionar(e.target.files?.[0])
           e.target.value = ''
-        }}
-      />
-    </label>
-  )
-}
-
-function CampoInteiro({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">{label}</span>
-      <input
-        type="text"
-        inputMode="numeric"
-        placeholder="0"
-        className="w-32 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm text-right tabular-nums outline-none focus:border-gray-500"
-        value={value ? String(value) : ''}
-        onChange={(e) => {
-          const digitos = e.target.value.replace(/\D/g, '').slice(0, 6)
-          onChange(digitos ? parseInt(digitos, 10) : 0)
         }}
       />
     </label>

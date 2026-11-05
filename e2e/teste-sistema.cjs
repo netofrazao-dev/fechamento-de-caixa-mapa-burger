@@ -147,9 +147,11 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   await page.goto(`${BASE}/relatorios/novo?data=${f.data}`)
   // Abertura e fechamento do dinheiro vêm sozinhos do fechamento do dia (não se digita de novo).
   await esperarTexto('Vem do fechamento do caixa deste dia')
-  const dinheiroDia = (await page.getByLabel('Dinheiro do caixa do dia').innerText()).replace(/\u00a0/g, ' ')
-  ok(/Fechamento\s*R\$ 150,50/.test(dinheiroDia) && /Abertura\s*R\$ 0,00/.test(dinheiroDia), 'relatório mostra abertura e fechamento do fechamento do dia')
-  ok(await page.getByRole('textbox', { name: 'Fechamento do caixa', exact: true }).count() === 0, 'relatório não pede de novo abertura/fechamento')
+  const dinheiroDia = (await page.getByLabel('Dados do fechamento do dia').innerText()).replace(/\u00a0/g, ' ')
+  ok(/Fechamento\s*R\$ 150,50/.test(dinheiroDia) && /Abertura\s*R\$ 0,00/.test(dinheiroDia) && /Marmitas\s*0/.test(dinheiroDia),
+    'relatório mostra abertura, fechamento e marmitas do fechamento do dia')
+  ok(await page.getByRole('textbox', { name: 'Fechamento do caixa', exact: true }).count() === 0 &&
+    await page.getByRole('textbox', { name: 'Quantidade vendida' }).count() === 0, 'relatório não pede de novo abertura/fechamento nem marmitas')
   await page.getByRole('button', { name: /^Sangrias/ }).click()
   // Pagamento sem motivo: não salva.
   await page.getByRole('button', { name: 'Adicionar pagamento' }).click()

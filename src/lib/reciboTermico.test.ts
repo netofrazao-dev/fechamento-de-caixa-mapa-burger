@@ -77,10 +77,12 @@ describe('recibo térmico', () => {
     expect(linhas.find((l) => l.startsWith('Coca 2L'))).toMatch(/^Coca 2L +4$/)
     // Abertura e fechamento do dinheiro saem uma vez só (no bloco do fechamento), sem repetir no relatório.
     expect(linhas.filter((l) => l.startsWith('Dinheiro abertura'))).toHaveLength(1)
-    expect(linhas.some((l) => l.startsWith('Abertura do caixa') || l.startsWith('Fechamento do caixa'))).toBe(false)
+    expect(linhas.some((l) => l.startsWith('Abertura do caixa') || l.startsWith('Fechamento do caixa') || l.startsWith('Vendidas'))).toBe(false)
+    expect(linhas.filter((l) => l.startsWith('Marmitas vendidas'))).toHaveLength(1)
 
     // Dia sem fechamento salvo (relatório antigo): mostra o que foi anotado no relatório.
     const semFechamento = textoDoPdf(montarReciboDiaCompleto({ relatorio: rel, fechamentos: [] }).output())
     expect(semFechamento.find((l) => l.startsWith('Abertura do caixa'))).toMatch(/R\$ 522,00$/)
+    expect(semFechamento.find((l) => l.startsWith('Vendidas'))).toMatch(/ 41$/)
   })
 })
