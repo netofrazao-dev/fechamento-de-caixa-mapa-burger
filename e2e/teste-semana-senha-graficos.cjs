@@ -105,6 +105,8 @@ function fech(data, caixa, dif = 0) {
   console.log('4. Relatório semanal')
   await page.goto(`${BASE}/semanal`)
   await esperar('Relatório da semana')
+  // O título aparece antes dos números: espera os dados da semana carregarem antes de conferir.
+  await esperar('maiores que os mesmos')
   const t = await texto()
   ok(t.includes('02/11 a 08/11/2026') && t.includes('semana atual'), 'abre na semana atual (seg 02/11 a dom 08/11)')
   ok(t.includes('R$ 8.400,00'), 'vendas da semana: R$ 8.400,00')
