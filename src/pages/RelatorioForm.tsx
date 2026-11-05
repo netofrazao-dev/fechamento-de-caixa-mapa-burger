@@ -14,7 +14,7 @@ import { mensagemErro } from '../lib/erros'
 import { formatarMoeda, totalMarmitas } from '../lib/calculations'
 import CampoMoeda from '../components/CampoMoeda'
 import { BotaoExcluir, CaixaErro } from '../components/Avisos'
-import { dataValida, somarValores } from '../lib/vales'
+import { dataValida } from '../lib/vales'
 import { listarFuncionarios } from '../lib/funcionarioService'
 import { buscarAcerto } from '../lib/acertoService'
 import type { Funcionario } from '../types/fechamento'
@@ -24,7 +24,8 @@ import Secao from '../components/Secao'
 import SeletorFuncionarios from '../components/SeletorFuncionarios'
 import ListaLivre from '../components/ListaLivre'
 import ListaConsumo from '../components/ListaConsumo'
-import ListaValorMotivo from '../components/ListaValorMotivo'
+import SangriasRelatorio from '../components/SangriasRelatorio'
+import { resumoSangrias } from '../lib/sangrias'
 import EstoqueForm from '../components/EstoqueForm'
 import type { ConsumoItem, EstoqueSnapshot, Fechamento, Sangria } from '../types/fechamento'
 import { diaDaSemana, formatarDataBr, hojeLocal as hoje } from '../lib/datas'
@@ -195,7 +196,7 @@ export default function RelatorioForm() {
       return
     }
     if (sangrias.some((s) => s.valor > 0 && !s.motivo.trim())) {
-      setErro('Toda sangria com valor precisa ter um motivo escrito.')
+      setErro('Toda sangria (compra, pagamento ou PIX) com valor precisa ter um motivo escrito.')
       mostrarAlertas()
       return
     }
@@ -251,7 +252,7 @@ export default function RelatorioForm() {
       if (qtd > 0) setQuantidadeVendida(qtd)
       // Fechamentos antigos tinham sangrias; agora elas ficam no relatório.
       const sangriasAntigas = sangrias.length === 0 ? fechamentos.flatMap((x) => x.sangrias) : []
-      if (sangriasAntigas.length > 0) setSangrias(sangriasAntigas.map((x) => ({ valor: x.valor, motivo: x.motivo })))
+      if (sangriasAntigas.length > 0) setSangrias(sangriasAntigas.map((x) => ({ valor: x.valor, motivo: x.motivo, tipo: 'compra' as const })))
       setInfo(
         `Puxado do fechamento: abertura ${formatarMoeda(f.lc.dinheiroAbertura)}, fechamento ${formatarMoeda(
           f.lc.dinheiroFechamento,
@@ -429,17 +430,11 @@ export default function RelatorioForm() {
 
       <Secao
         titulo="Sangrias"
-        resumo={
-          sangrias.length > 0
-            ? `${sangrias.length} · ${formatarMoeda(somarValores(sangrias.map((s) => s.valor)))}${
-                sangrias.some((s) => s.valor > 0 && !s.motivo.trim()) ? ' · falta motivo' : ''
-              }`
-            : 'Nenhuma'
-        }
+        resumo={resumoSecaoSangrias(sangrias)}
         alerta={sangrias.some((s) => s.valor > 0 && !s.motivo.trim())}
-        ajuda="Dinheiro retirado do caixa durante o dia, com o motivo. Sai no PDF do dia junto com o fechamento. Só informativo: não entra no Total LC."
+        ajuda="Compras e pagamentos com dinheiro do caixa (entram no total de sangrias) e compras no PIX do patrão (só registradas). Saem no PDF do dia junto com o fechamento. Não mexem no Total LC."
       >
-        <ListaValorMotivo value={sangrias} onChange={setSangrias} />
+        <SangriasRelatorio value={sangrias} onChange={setSangrias} />
       </Secao>
 
       <Secao titulo="Estoque quente" ajuda="Quantidade de cada bebida/produto contada agora.">
@@ -648,4 +643,14 @@ function CampoInteiro({ label, value, onChange }: { label: string; value: number
       />
     </label>
   )
+}
+
+/** Resumo da seção fechada: "Sangrias R$ 42,50 · PIX R$ 80,00". */
+function resumoSecaoSangrias(sangrias: Sangria[]): string {
+  if (sangrias.length === 0) return 'Nenhuma'
+  const r = resumoSangrias(sangrias)
+  const partes = [`Sangrias ${formatarMoeda(r.totalSangrias)}`]
+  if (r.pix.length > 0) partes.push(`PIX ${formatarMoeda(r.totalPix)}`)
+  if (sangrias.some((s) => s.valor > 0 && !s.motivo.trim())) partes.push('falta motivo')
+  return partes.join(' · ')
 }

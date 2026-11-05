@@ -25,11 +25,22 @@ export interface DadosBrendi {
   dinheiro: number
 }
 
-/** Uma sangria: retirada de dinheiro do caixa durante o expediente. */
+/**
+ * Tipo de sangria do relatório do dia:
+ * - compra: compra paga com dinheiro do caixa (entra no total de sangrias);
+ * - pagamento: pagamento feito com dinheiro do caixa (entra no total);
+ * - pix: compra paga no PIX do patrão. NÃO sai do caixa, então não entra
+ *   no total de sangrias — fica só registrada.
+ * Sangrias antigas (sem tipo) contam como compra.
+ */
+export type TipoSangria = 'compra' | 'pagamento' | 'pix'
+
+/** Uma sangria: retirada de dinheiro do caixa durante o expediente (ou compra no PIX, só registrada). */
 export interface Sangria {
   id?: string
   valor: number
   motivo: string
+  tipo?: TipoSangria
 }
 
 /** Ajuste manual aplicado sobre a diferença original. */
