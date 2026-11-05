@@ -22,6 +22,7 @@ const TABELAS: { nome: string; ordem: string; colunas?: string; colunasSemImagen
   { nome: 'vales', ordem: 'data' },
   { nome: 'vales_meses_fechados', ordem: 'mes' },
   { nome: 'vales_historico', ordem: 'id' },
+  { nome: 'acertos_mes', ordem: 'mes' },
   { nome: 'funcionarios', ordem: 'nome' },
   { nome: 'pratos', ordem: 'nome' },
   { nome: 'produtos_estoque', ordem: 'ordem' },

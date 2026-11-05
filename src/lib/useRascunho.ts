@@ -50,9 +50,14 @@ interface Opcoes<T> {
   aplicar: (dados: T) => void
   /** Deixe false enquanto o formulário ainda está carregando do banco. */
   habilitado?: boolean
+  /**
+   * Versão sem os campos pesados (ex.: fotos). Vai para a internet (o rascunho
+   * remoto é reenviado a cada mudança) e é o plano B quando o aparelho está sem espaço.
+   */
+  leve?: (dados: T) => T
 }
 
-export function useRascunho<T>({ chave, dados, aplicar, habilitado = true }: Opcoes<T>) {
+export function useRascunho<T>({ chave, dados, aplicar, habilitado = true, leve }: Opcoes<T>) {
   const [restaurado, setRestaurado] = useState<{ salvoEm: string } | null>(null)
   const [lido, setLido] = useState(false)
 
@@ -60,6 +65,8 @@ export function useRascunho<T>({ chave, dados, aplicar, habilitado = true }: Opc
   chaveRef.current = chave
   const aplicarRef = useRef(aplicar)
   aplicarRef.current = aplicar
+  const leveRef = useRef(leve)
+  leveRef.current = leve
 
   const ultimoSalvo = useRef<string | null>(null)
   const cancelado = useRef(false)
@@ -119,8 +126,9 @@ export function useRascunho<T>({ chave, dados, aplicar, habilitado = true }: Opc
     ultimoSalvo.current = serializado
 
     const salvoEm = new Date().toISOString()
-    salvarRascunho(chaveRef.current, dados, salvoEm)
-    pendente.current = { dados, salvoEm }
+    const dadosLeves = leveRef.current ? leveRef.current(dados) : undefined
+    salvarRascunho(chaveRef.current, dados, salvoEm, dadosLeves)
+    pendente.current = { dados: dadosLeves ?? dados, salvoEm }
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(enviarPendente, ATRASO_REMOTO_MS)
     // eslint-disable-next-line react-hooks/exhaustive-deps

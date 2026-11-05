@@ -90,7 +90,7 @@ export default function RedefinirSenha() {
     <main className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center gap-3 text-center">
-          <img src="/logo.png" alt="" className="w-16 h-16 rounded-full object-cover shadow-sm" />
+          <img src="/logo-pequeno.jpg" alt="" className="w-16 h-16 rounded-full object-cover shadow-sm" />
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Criar senha nova</h1>
         </div>
 

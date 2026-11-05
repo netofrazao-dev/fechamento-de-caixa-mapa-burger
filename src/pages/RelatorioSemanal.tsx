@@ -5,6 +5,8 @@ import AbasResumo from '../components/AbasResumo'
 import GraficoVendasDia, { type DiaGrafico } from '../components/GraficoVendasDia'
 import GraficoSobraFalta from '../components/graficos/GraficoSobraFalta'
 import BarrasHorizontais from '../components/graficos/BarrasHorizontais'
+import RetiradasCaixa from '../components/RetiradasCaixa'
+import { retiradasDoPeriodo } from '../lib/sangrias'
 import BarraResultados from '../components/graficos/BarraResultados'
 import { CaixaErro } from '../components/Avisos'
 import { listarFechamentos } from '../lib/fechamentoService'
@@ -52,6 +54,8 @@ export default function RelatorioSemanal() {
 
   const [dados, setDados] = useState<Dados | null>(null)
   const [erro, setErro] = useState<{ inicio: string; mensagem: string } | null>(null)
+  // Muda quando a pessoa toca em "Tentar de novo" (busca outra vez).
+  const [tentativa, setTentativa] = useState(0)
   const [erroPdf, setErroPdf] = useState<string | null>(null)
 
   useEffect(() => {
@@ -72,10 +76,14 @@ export default function RelatorioSemanal() {
     return () => {
       ativo = false
     }
-  }, [inicio, fim, inicioAnt])
+  }, [inicio, fim, inicioAnt, tentativa])
 
   const atual = dados?.inicio === inicio ? dados : null
   const erroAtual = erro?.inicio === inicio ? erro.mensagem : null
+  const retiradas = useMemo(
+    () => (atual ? retiradasDoPeriodo({ relatorios: atual.relatorios, fechamentos: atual.fechamentos, totalVales: atual.totalVales }) : null),
+    [atual],
+  )
 
   const linhas = useMemo<(LinhaRelatorioMensal & { id: string })[]>(() => {
     const porDia = new Map<string, Fechamento[]>()
@@ -134,6 +142,7 @@ export default function RelatorioSemanal() {
         vendasPorPrato,
         diasSemFechamento: semFechamento,
         totalVales: atual?.totalVales ?? null,
+        retiradas,
         compartilhar,
         grafico: {
           dias: diasGrafico,
@@ -201,7 +210,16 @@ export default function RelatorioSemanal() {
         </button>
       </section>
 
-      {erroAtual && <CaixaErro>{erroAtual}</CaixaErro>}
+      {erroAtual && (
+        <CaixaErro
+          onTentarDeNovo={() => {
+            setErro(null)
+            setTentativa((t) => t + 1)
+          }}
+        >
+          {erroAtual}
+        </CaixaErro>
+      )}
       {erroPdf && <CaixaErro>{erroPdf}</CaixaErro>}
       {!atual && !erroAtual && <p className="text-sm text-gray-400">Carregando...</p>}
 
@@ -290,6 +308,8 @@ export default function RelatorioSemanal() {
                 <h2 className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Como o dinheiro entrou</h2>
                 <BarrasHorizontais itens={formasDePagamento(atual.fechamentos)} porcentagem total descricao="Vendas da semana por forma de pagamento" />
               </section>
+
+              {retiradas && <RetiradasCaixa retiradas={retiradas} periodo="semana" />}
 
               {vendasPorPrato.length > 0 && (
                 <section className={`${caixa} p-4 space-y-3`}>

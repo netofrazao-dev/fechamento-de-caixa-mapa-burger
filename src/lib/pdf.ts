@@ -3,9 +3,9 @@ import autoTable from 'jspdf-autotable'
 import type { ConsumoItem, Fechamento, RelatorioDiario, Sangria, StatusFechamento } from '../types/fechamento'
 import { agregarVendasPorPrato, formatarMoeda, STATUS_LABEL, totalMarmitas } from './calculations'
 import { semAcento } from './texto'
-import { descricaoVale, infoTipoSangria, resumoSangrias, tipoDaSangria, type ValeDaSangria } from './sangrias'
+import { descricaoVale, infoTipoSangria, resumoSangrias, tipoDaSangria, type RetiradasPeriodo, type ValeDaSangria } from './sangrias'
 import { centralizar, COLUNAS_RECIBO, linhaComValor, quebrarTexto, separadorTexto } from './reciboTexto'
-import { LOGO_MAPA_BURGER_PNG } from './brand'
+import { LOGO_MAPA_BURGER_JPEG } from './brand'
 import { compartilharOuBaixar, type ResultadoEntrega } from './arquivos'
 import { formasDePagamento, resumoDoMes, situacaoDoCaixa, type ItemPagamento } from './relatorioResumo'
 
@@ -373,6 +373,8 @@ export async function gerarPdfMensal(params: {
   vendasPorPrato?: [string, number][]
   diasSemFechamento?: string[]
   totalVales?: number | null
+  /** Quanto saiu do caixa no período (compras, pagamentos, vales) e o PIX do patrão à parte. */
+  retiradas?: RetiradasPeriodo | null
   compartilhar?: boolean
   /** Vendas de cada dia (null = sem fechamento) + médias, para o gráfico de colunas. */
   grafico?: {
@@ -385,7 +387,7 @@ export async function gerarPdfMensal(params: {
   /** Comparação com o mês anterior, já formatada: [indicador, este mês, mês anterior, variação]. */
   comparacao?: { titulo: string; frase: string; linhas: [string, string, string, string][] } | null
 }): Promise<ResultadoEntrega> {
-  const { mes, linhas, vendasPorPrato = [], diasSemFechamento = [], totalVales, compartilhar, grafico, comparacao } = params
+  const { mes, linhas, vendasPorPrato = [], diasSemFechamento = [], totalVales, retiradas, compartilhar, grafico, comparacao } = params
   const [ano, m] = mes.split('-')
   const mesLabel = `${m}/${ano}`
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
@@ -498,6 +500,43 @@ export async function gerarPdfMensal(params: {
     y = tituloSecaoPdf(doc, textos.dinheiro, y, margem, larguraUtil)
     y = desenharBarras(doc, pagamentos, margem, y, larguraUtil)
     y += 4
+  }
+
+  // Retiradas do caixa (sangrias) no período
+  if (retiradas && (retiradas.total > 0 || retiradas.pix > 0)) {
+    garantir(40)
+    y = tituloSecaoPdf(doc, 'Retiradas do caixa (sangrias)', y, margem, larguraUtil)
+    const corpo: [string, string][] = (
+      [
+        ['Compras ($)', retiradas.compras],
+        ['Pagamentos', retiradas.pagamentos],
+        ['Vales (adiantamentos)', retiradas.vales],
+      ] as [string, number][]
+    )
+      .filter(([, v]) => v > 0)
+      .map(([r, v]) => [r, formatarMoeda(v)])
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margem, right: margem },
+      head: [['Tipo', { content: 'Valor', styles: { halign: 'right' } }]],
+      body: corpo.length ? corpo : [['(nenhuma retirada do caixa)', '']],
+      foot: [['Total retirado do caixa', { content: formatarMoeda(retiradas.total), styles: { halign: 'right' } }]],
+      styles: { fontSize: 9.5, cellPadding: 1.5 },
+      headStyles: { fillColor: [90, 90, 95] },
+      footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+      columnStyles: { 1: { halign: 'right' } },
+    })
+    y = finalY(doc) + 3
+    if (retiradas.pix > 0) {
+      garantir(10)
+      doc.setFont('helvetica', 'italic')
+      doc.setFontSize(8.5)
+      doc.setTextColor(90)
+      doc.text(`Compras no PIX do patrão (não saíram do caixa, fora do total): ${formatarMoeda(retiradas.pix)}.`, margem, y + 2)
+      doc.setTextColor(0)
+      y += 6
+    }
+    y += 3
   }
 
   // Dia a dia
@@ -654,7 +693,7 @@ async function entregarPdf(doc: jsPDF, nome: string, compartilhar?: boolean): Pr
 function cabecalhoComLogo(doc: jsPDF, margem: number, titulo: string, subtitulo: string): number {
   let y = 14
   try {
-    doc.addImage(LOGO_MAPA_BURGER_PNG, 'PNG', margem, y, 15, 15)
+    doc.addImage(LOGO_MAPA_BURGER_JPEG, 'JPEG', margem, y, 15, 15)
   } catch {
     // segue sem logo
   }

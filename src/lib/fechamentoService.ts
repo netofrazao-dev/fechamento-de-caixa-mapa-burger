@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { buscarTodasAsPaginas } from './paginacao'
 import { calcularResultado } from './calculations'
 import { arredondarCentavos } from './moeda'
 import { ErroAmigavel } from './erros'
@@ -260,16 +261,17 @@ export async function listarFechamentos(params: {
   dataInicio: string
   dataFim: string
 }): Promise<Fechamento[]> {
-  const { data, error } = await supabase
-    .from('fechamentos')
-    .select(SELECT_COLUMNS)
-    .gte('data', params.dataInicio)
-    .lte('data', params.dataFim)
-    .order('data', { ascending: false })
-    .order('turno', { ascending: true })
-
-  if (error) throw error
-  return (data as unknown as FechamentoRow[]).map(rowToFechamento)
+  const linhas = await buscarTodasAsPaginas<FechamentoRow>((de, ate) =>
+    supabase
+      .from('fechamentos')
+      .select(SELECT_COLUMNS)
+      .gte('data', params.dataInicio)
+      .lte('data', params.dataFim)
+      .order('data', { ascending: false })
+      .order('turno', { ascending: true })
+      .range(de, ate) as unknown as PromiseLike<{ data: FechamentoRow[] | null; error: unknown }>,
+  )
+  return linhas.map(rowToFechamento)
 }
 
 /** Id do fechamento dessa data + turno (ignorando o que está sendo editado), ou null. */

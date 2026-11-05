@@ -19,6 +19,8 @@ import GraficoSobraFalta from '../components/graficos/GraficoSobraFalta'
 import BarrasHorizontais from '../components/graficos/BarrasHorizontais'
 import BarraResultados from '../components/graficos/BarraResultados'
 import AbasResumo from '../components/AbasResumo'
+import RetiradasCaixa from '../components/RetiradasCaixa'
+import { retiradasDoPeriodo } from '../lib/sangrias'
 import { formasDePagamento, statusPorDiferenca } from '../lib/relatorioResumo'
 
 function agruparPorDia(fechamentos: Fechamento[]): (LinhaRelatorioMensal & { fechamentoId: string })[] {
@@ -70,6 +72,8 @@ export default function RelatorioMensal() {
 
   const [dados, setDados] = useState<DadosMes | null>(null)
   const [erro, setErro] = useState<{ mes: string; mensagem: string } | null>(null)
+  // Muda quando a pessoa toca em "Tentar de novo" (busca outra vez).
+  const [tentativa, setTentativa] = useState(0)
   const [erroPdf, setErroPdf] = useState<string | null>(null)
 
   useEffect(() => {
@@ -97,7 +101,7 @@ export default function RelatorioMensal() {
     return () => {
       ativo = false
     }
-  }, [mes])
+  }, [mes, tentativa])
 
   const atual = dados?.mes === mes ? dados : null
   const erroAtual = erro?.mes === mes ? erro.mensagem : null
@@ -105,6 +109,10 @@ export default function RelatorioMensal() {
   const linhas = useMemo(() => agruparPorDia(atual?.fechamentos ?? []), [atual])
   const relatorioPorData = useMemo(() => new Map((atual?.relatorios ?? []).map((r) => [r.data, r])), [atual])
   const vendasPorPrato = useMemo(() => agregarVendasPorPrato(atual?.fechamentos ?? []), [atual])
+  const retiradas = useMemo(
+    () => (atual ? retiradasDoPeriodo({ relatorios: atual.relatorios, fechamentos: atual.fechamentos, totalVales: atual.totalVales }) : null),
+    [atual],
+  )
 
   const resumo = useMemo(() => {
     const { inicio, fim } = limitesDoMes(mes)
@@ -121,6 +129,27 @@ export default function RelatorioMensal() {
       semFechamento: inicio <= ate ? datasEntre(inicio, ate).filter((d) => !comFechamento.has(d)) : [],
     }
   }, [linhas, vendasPorPrato, mes])
+
+  const nomeAnterior = nomeMes(somarMeses(mes, -1)).split(' de ')[0]
+  const hoje = hojeLocal()
+  const comparacao = useMemo(
+    () => (atual ? compararMeses({ mes, fechamentos: atual.fechamentos, fechamentosAnterior: atual.fechamentosAnterior, hoje }) : null),
+    [atual, mes, hoje],
+  )
+  const diasGrafico = useMemo<DiaGrafico[]>(() => {
+    const { inicio, fim } = limitesDoMes(mes)
+    const ate = fim < hoje ? fim : hoje
+    const porData = new Map(linhas.map((l) => [l.data, l]))
+    return datasEntre(inicio, fim).map((d) => {
+      const l = porData.get(d)
+      return {
+        data: d,
+        vendas: l ? l.totalCaixaDia : d <= ate ? null : 0,
+        diferenca: l?.diferencaFinalDia,
+        status: l ? (Math.abs(l.diferencaFinalDia) < 0.005 ? 'fechou' : l.diferencaFinalDia > 0 ? 'sobrou' : 'faltou') : undefined,
+      }
+    })
+  }, [linhas, mes, hoje])
 
   function trocarMes(novo: string) {
     if (mesValido(novo)) setParams({ mes: novo }, { replace: true })
@@ -153,32 +182,13 @@ export default function RelatorioMensal() {
         vendasPorPrato,
         diasSemFechamento: resumo.semFechamento,
         totalVales: atual?.totalVales ?? null,
+        retiradas,
       })
     } catch (e) {
       setErroPdf(mensagemErro(e, 'Não consegui gerar o PDF.'))
     }
   }
 
-  const nomeAnterior = nomeMes(somarMeses(mes, -1)).split(' de ')[0]
-  const hoje = hojeLocal()
-  const comparacao = useMemo(
-    () => (atual ? compararMeses({ mes, fechamentos: atual.fechamentos, fechamentosAnterior: atual.fechamentosAnterior, hoje }) : null),
-    [atual, mes, hoje],
-  )
-  const diasGrafico = useMemo<DiaGrafico[]>(() => {
-    const { inicio, fim } = limitesDoMes(mes)
-    const ate = fim < hoje ? fim : hoje
-    const porData = new Map(linhas.map((l) => [l.data, l]))
-    return datasEntre(inicio, fim).map((d) => {
-      const l = porData.get(d)
-      return {
-        data: d,
-        vendas: l ? l.totalCaixaDia : d <= ate ? null : 0,
-        diferenca: l?.diferencaFinalDia,
-        status: l ? (Math.abs(l.diferencaFinalDia) < 0.005 ? 'fechou' : l.diferencaFinalDia > 0 ? 'sobrou' : 'faltou') : undefined,
-      }
-    })
-  }, [linhas, mes, hoje])
   const podeCompartilhar = podeCompartilharArquivos()
   const nome = nomeMes(mes)
 
@@ -238,7 +248,16 @@ export default function RelatorioMensal() {
         </button>
       </section>
 
-      {erroAtual && <CaixaErro>{erroAtual}</CaixaErro>}
+      {erroAtual && (
+        <CaixaErro
+          onTentarDeNovo={() => {
+            setErro(null)
+            setTentativa((t) => t + 1)
+          }}
+        >
+          {erroAtual}
+        </CaixaErro>
+      )}
       {erroPdf && <CaixaErro>{erroPdf}</CaixaErro>}
       {!atual && !erroAtual && <p className="text-sm text-gray-400 dark:text-gray-500">Carregando...</p>}
 
@@ -332,6 +351,8 @@ export default function RelatorioMensal() {
               <BarrasHorizontais itens={formasDePagamento(atual.fechamentos)} porcentagem total descricao="Vendas do mês por forma de pagamento" />
             </section>
           )}
+
+          {retiradas && <RetiradasCaixa retiradas={retiradas} periodo="mês" />}
 
           {resumo.semFechamento.length > 0 && (
             <section className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 space-y-2">

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, Plus, Trash2 } from 'lucide-react'
 import type { Vale } from '../types/fechamento'
@@ -34,6 +34,8 @@ export default function ValesNaSangria({ data, vales, erroCarregar, onMudou }: P
   const [ok, setOk] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
   const [excluindo, setExcluindo] = useState<{ id: string; motivo: string } | null>(null)
+  // Trava contra toque duplo (o estado do React só atualiza no próximo render).
+  const travado = useRef(false)
 
   const lista = vales ?? []
   const total = somarValores(lista.map((v) => v.valor))
@@ -47,7 +49,7 @@ export default function ValesNaSangria({ data, vales, erroCarregar, onMudou }: P
   }
 
   async function lancar(confirmado = false) {
-    if (ocupado) return
+    if (ocupado || travado.current) return
     setErro(null)
     setOk(null)
     const input = { funcionario: funcionario[0] ?? '', data, valor, observacao }
@@ -58,6 +60,7 @@ export default function ValesNaSangria({ data, vales, erroCarregar, onMudou }: P
         return
       }
     }
+    travado.current = true
     setOcupado(true)
     try {
       const v = await criarVale(input)
@@ -69,14 +72,16 @@ export default function ValesNaSangria({ data, vales, erroCarregar, onMudou }: P
       setErro(mensagemDeErro(e, 'Não consegui lançar o vale.'))
       setAvisos(null)
     } finally {
+      travado.current = false
       setOcupado(false)
     }
   }
 
   async function confirmarExclusao() {
-    if (!excluindo || ocupado) return
+    if (!excluindo || ocupado || travado.current) return
     setErro(null)
     setOk(null)
+    travado.current = true
     setOcupado(true)
     try {
       const v = await excluirVale(excluindo.id, excluindo.motivo)
@@ -86,6 +91,7 @@ export default function ValesNaSangria({ data, vales, erroCarregar, onMudou }: P
     } catch (e) {
       setErro(mensagemDeErro(e, 'Não consegui excluir o vale.'))
     } finally {
+      travado.current = false
       setOcupado(false)
     }
   }

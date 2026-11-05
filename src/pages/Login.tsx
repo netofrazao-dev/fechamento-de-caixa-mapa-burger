@@ -53,7 +53,7 @@ export default function Login() {
     <main className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center gap-3 text-center">
-          <img src="/logo.png" alt="" className="w-20 h-20 rounded-full object-cover shadow-sm" />
+          <img src="/logo-pequeno.jpg" alt="" className="w-20 h-20 rounded-full object-cover shadow-sm" />
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Mapa Burger</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">Fechamento de caixa</p>

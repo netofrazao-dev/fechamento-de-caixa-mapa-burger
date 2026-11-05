@@ -48,6 +48,8 @@ export default function Historico() {
 
   const [dados, setDados] = useState<{ chave: string; fechamentos: Fechamento[]; relatorios: RelatorioDiario[] } | null>(null)
   const [erro, setErro] = useState<{ chave: string; mensagem: string } | null>(null)
+  // Muda quando a pessoa toca em "Tentar de novo" (busca outra vez).
+  const [tentativa, setTentativa] = useState(0)
   const chave = `${dataInicio}|${dataFim}`
 
   function mudarPeriodo(de: string, ate: string) {
@@ -67,7 +69,7 @@ export default function Historico() {
     return () => {
       ativo = false
     }
-  }, [dataInicio, dataFim, periodoInvalido])
+  }, [dataInicio, dataFim, periodoInvalido, tentativa])
 
   const atual = dados?.chave === chave ? dados : null
   const erroAtual = erro?.chave === chave ? erro.mensagem : null
@@ -168,7 +170,16 @@ export default function Historico() {
       </section>
 
       {periodoInvalido && <CaixaErro>A data "De" está depois da data "Até". Ajuste o período.</CaixaErro>}
-      {erroAtual && <CaixaErro>{erroAtual}</CaixaErro>}
+      {erroAtual && (
+        <CaixaErro
+          onTentarDeNovo={() => {
+            setErro(null)
+            setTentativa((t) => t + 1)
+          }}
+        >
+          {erroAtual}
+        </CaixaErro>
+      )}
       {carregando && <p className="text-sm text-gray-400 dark:text-gray-500">Carregando...</p>}
 
       {atual && resumo && (

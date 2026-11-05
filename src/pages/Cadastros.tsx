@@ -263,6 +263,7 @@ const NOMES_TABELAS: Record<string, string> = {
   vales: 'vales',
   vales_meses_fechados: 'meses de vales fechados',
   vales_historico: 'histórico dos vales',
+  acertos_mes: 'acertos do mês',
   funcionarios: 'funcionários',
   pratos: 'pratos',
   produtos_estoque: 'produtos do estoque',

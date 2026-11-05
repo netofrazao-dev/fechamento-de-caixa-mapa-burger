@@ -16,6 +16,8 @@ export default function Relatorios() {
 
   const [dados, setDados] = useState<{ mes: string; lista: RelatorioDiario[] } | null>(null)
   const [erro, setErro] = useState<{ mes: string; mensagem: string } | null>(null)
+  // Muda quando a pessoa toca em "Tentar de novo" (busca outra vez).
+  const [tentativa, setTentativa] = useState(0)
 
   useEffect(() => {
     const { inicio, fim } = limitesDoMes(mes)
@@ -26,7 +28,7 @@ export default function Relatorios() {
     return () => {
       ativo = false
     }
-  }, [mes])
+  }, [mes, tentativa])
 
   const relatorios = dados?.mes === mes ? dados.lista : null
   const erroAtual = erro?.mes === mes ? erro.mensagem : null
@@ -70,7 +72,16 @@ export default function Relatorios() {
         </button>
       </section>
 
-      {erroAtual && <CaixaErro>{erroAtual}</CaixaErro>}
+      {erroAtual && (
+        <CaixaErro
+          onTentarDeNovo={() => {
+            setErro(null)
+            setTentativa((t) => t + 1)
+          }}
+        >
+          {erroAtual}
+        </CaixaErro>
+      )}
       {!relatorios && !erroAtual && <p className="text-sm text-gray-400 dark:text-gray-500">Carregando...</p>}
       {relatorios?.length === 0 && (
         <div className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-8 text-center space-y-2">

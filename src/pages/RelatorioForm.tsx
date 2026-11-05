@@ -55,9 +55,14 @@ export default function RelatorioForm() {
   const location = useLocation()
   const editando = Boolean(id)
 
-  const chaveRascunho = `mapa-burger-rascunho-relatorio-${id ?? 'novo'}`
-
   const dataUrl = searchParams.get('data')
+  // Relatório novo aberto pelo link de outro dia: rascunho próprio daquele dia (não mistura com o de hoje).
+  const dataDoLink = !id && dataUrl && dataValida(dataUrl) && dataUrl !== hoje() ? dataUrl : null
+  const chaveRascunho = id
+    ? `mapa-burger-rascunho-relatorio-${id}`
+    : dataDoLink
+      ? `mapa-burger-rascunho-relatorio-novo-${dataDoLink}`
+      : 'mapa-burger-rascunho-relatorio-novo'
   const [data, setData] = useState(dataUrl && dataValida(dataUrl) ? dataUrl : hoje())
   const [aberturaCaixa, setAberturaCaixa] = useState(0)
   const [fechamentoCaixa, setFechamentoCaixa] = useState(0)
@@ -125,6 +130,22 @@ export default function RelatorioForm() {
 
   // Marmitas vendidas também vêm do fechamento (o contador de pratos de lá).
   const marmitasDoDia = fDia ? totalMarmitas(fDia.marmitas) : quantidadeVendida
+
+  // Relatório novo: já existe um nesta data? Avisa logo, antes de preencher tudo.
+  const [existenteNaData, setExistenteNaData] = useState<{ data: string; id: string | null } | null>(null)
+  useEffect(() => {
+    if (editando || !dataValida(data)) return
+    let ativo = true
+    buscarIdRelatorioPorData(data)
+      .then((idExistente) => ativo && setExistenteNaData({ data, id: idExistente }))
+      .catch(() => {
+        // sem internet: a conferência acontece de novo na hora de salvar
+      })
+    return () => {
+      ativo = false
+    }
+  }, [data, editando])
+  const jaExisteId = existenteNaData?.data === data ? existenteNaData.id : null
 
   // Vales do dia: são sangrias (saem do caixa) e ficam na tabela de vales (acerto do mês).
   const [valesDoDia, setValesDoDia] = useState<{ data: string; vales: Vale[] | null; erro?: string } | undefined>(undefined)
@@ -211,6 +232,8 @@ export default function RelatorioForm() {
       imagem2,
     },
     habilitado: !carregando && !erroCarregar,
+    // As fotos ficam só no aparelho: não são reenviadas pela internet a cada letra digitada.
+    leve: ({ imagem1: _imagem1, imagem2: _imagem2, ...resto }) => resto as RascunhoRelatorio,
     aplicar: (d) => {
       setData(d.data)
       setAberturaCaixa(d.aberturaCaixa)
@@ -223,8 +246,9 @@ export default function RelatorioForm() {
       setCortesiaClientes(d.cortesiaClientes)
       setSangrias(d.sangrias)
       setEstoqueQuente(d.estoqueQuente)
-      setImagem1(d.imagem1)
-      setImagem2(d.imagem2)
+      // Rascunho vindo de outro aparelho não traz as fotos (não vão pela internet): mantém as daqui.
+      if (d.imagem1 !== undefined) setImagem1(d.imagem1)
+      if (d.imagem2 !== undefined) setImagem2(d.imagem2)
     },
   })
 
@@ -364,7 +388,7 @@ export default function RelatorioForm() {
         <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-300">
           <span className="flex items-center gap-1.5">
             <History size={14} className="shrink-0" />
-            Rascunho restaurado (salvo às {formatarHoraRascunho(rascunho.restaurado.salvoEm)}) — continue de onde parou.
+            Rascunho restaurado (salvo {formatarHoraRascunho(rascunho.restaurado.salvoEm)}) — continue de onde parou.
           </span>
           <button type="button" onClick={rascunho.descartar} className="shrink-0 font-semibold underline">
             Descartar
@@ -379,6 +403,7 @@ export default function RelatorioForm() {
             <input
               type="date"
               required
+              max={hoje()}
               className="rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-gray-500"
               value={data}
               onChange={(e) => setData(e.target.value)}
@@ -386,6 +411,15 @@ export default function RelatorioForm() {
             {semana && <span className="text-sm text-gray-400 dark:text-gray-500">{semana}</span>}
           </div>
         </label>
+        {jaExisteId && (
+          <p role="alert" className="rounded-xl bg-amber-50 dark:bg-amber-950/40 px-3.5 py-2.5 text-sm text-amber-900 dark:text-amber-200">
+            Já existe um relatório de {formatarDataBr(data)}.{' '}
+            <Link to={`/relatorios/${jaExisteId}`} className="font-semibold underline">
+              Abrir o relatório
+            </Link>{' '}
+            ou troque a data acima.
+          </p>
+        )}
         <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 px-3.5 py-3 space-y-2" aria-label="Dados do fechamento do dia">
           <p className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Do fechamento do caixa</p>
           {!fechamentoAtual ? (
@@ -492,7 +526,7 @@ export default function RelatorioForm() {
           value={sangrias}
           onChange={setSangrias}
           data={data}
-          vales={valesAtuais ? valesAtuais.vales : null}
+          vales={valesAtuais ? valesAtuais.vales : dataValida(data) ? null : []}
           erroVales={valesAtuais?.erro}
           onValesMudou={() => setVersaoVales((v) => v + 1)}
         />
@@ -607,6 +641,9 @@ function comprimirImagem(dataUrl: string, larguraMaxima = 1400, qualidade = 0.82
         resolve(dataUrl)
         return
       }
+      // JPEG não tem transparência: sem fundo branco, partes transparentes do print ficariam pretas.
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
       resolve(canvas.toDataURL('image/jpeg', qualidade))
     }

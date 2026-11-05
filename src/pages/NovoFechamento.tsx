@@ -65,7 +65,14 @@ export default function NovoFechamento() {
   const editando = Boolean(id)
   const [searchParams] = useSearchParams()
   const dataInicial = searchParams.get('data')
-  const chaveRascunho = id ? `mapa-burger-rascunho-fechamento-${id}` : 'mapa-burger-rascunho-fechamento'
+  // Aberto pelo link de outro dia (ex.: "ontem ficou sem fechamento"): rascunho próprio daquele dia,
+  // pra não misturar com o rascunho do fechamento de hoje.
+  const dataDoLink = !id && dataInicial && dataValida(dataInicial) && dataInicial !== hoje() ? dataInicial : null
+  const chaveRascunho = id
+    ? `mapa-burger-rascunho-fechamento-${id}`
+    : dataDoLink
+      ? `mapa-burger-rascunho-fechamento-dia-${dataDoLink}`
+      : 'mapa-burger-rascunho-fechamento'
 
   const [turno, setTurno] = useState<Turno>(TURNO_PADRAO)
   const [data, setData] = useState(() => (dataInicial && dataValida(dataInicial) ? dataInicial : hoje()))
@@ -110,6 +117,22 @@ export default function NovoFechamento() {
       ativo = false
     }
   }, [id])
+
+  // Fechamento novo: já existe um salvo nesta data? Avisa logo, antes de preencher tudo.
+  const [existenteNaData, setExistenteNaData] = useState<{ data: string; id: string | null } | null>(null)
+  useEffect(() => {
+    if (editando || !dataValida(data)) return
+    let ativo = true
+    buscarIdFechamento(data, turno)
+      .then((idExistente) => ativo && setExistenteNaData({ data, id: idExistente }))
+      .catch(() => {
+        // sem internet: a conferência acontece de novo na hora de salvar
+      })
+    return () => {
+      ativo = false
+    }
+  }, [data, turno, editando])
+  const jaExisteId = existenteNaData?.data === data ? existenteNaData.id : null
 
   const resultado = useMemo(
     () => calcularResultado({ lc, brendi, totalLCSistema, ajuste }),
@@ -183,13 +206,15 @@ export default function NovoFechamento() {
       } else {
         const fechamento = await criarFechamento(input)
         rascunho.limpar()
+        let pdfBaixado = false
         try {
           const pdf = await carregarPdf()
           pdf.gerarPdfFechamento(fechamento)
+          pdfBaixado = true
         } catch {
           // Salvo mesmo sem PDF; dá pra gerar depois na tela do fechamento.
         }
-        navigate(`/fechamento/${fechamento.id}`, { state: { salvo: 'Fechamento salvo.' } })
+        navigate(`/fechamento/${fechamento.id}`, { state: { salvo: 'Fechamento salvo.', pdfBaixado } })
       }
     } catch (e) {
       setErro(mensagemErro(e, 'Erro ao salvar o fechamento.'))
@@ -241,7 +266,7 @@ export default function NovoFechamento() {
         <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-300">
           <span className="flex items-center gap-1.5">
             <History size={14} className="shrink-0" />
-            Rascunho restaurado (salvo às {formatarHoraRascunho(rascunho.restaurado.salvoEm)}) — continue de onde parou.
+            Rascunho restaurado (salvo {formatarHoraRascunho(rascunho.restaurado.salvoEm)}) — continue de onde parou.
           </span>
           <button type="button" onClick={rascunho.descartar} className="shrink-0 font-semibold underline">
             Descartar
@@ -264,6 +289,15 @@ export default function NovoFechamento() {
             {semana && <span className="text-sm text-gray-400 dark:text-gray-500">{semana}</span>}
           </div>
         </label>
+        {jaExisteId && (
+          <p role="alert" className="mt-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 px-3.5 py-2.5 text-sm text-amber-900 dark:text-amber-200">
+            Já existe um fechamento salvo em {formatarDataBr(data)}.{' '}
+            <Link to={`/fechamento/${jaExisteId}`} className="font-semibold underline">
+              Abrir o fechamento
+            </Link>{' '}
+            ou troque a data acima.
+          </p>
+        )}
       </section>
 
       <Secao
@@ -326,7 +360,7 @@ export default function NovoFechamento() {
 
       <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] left-0 right-0 z-10 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-100 dark:border-gray-800 p-3">
         <div className="max-w-2xl mx-auto space-y-2">
-          <div className="flex items-center justify-between text-xs px-1" aria-live="polite">
+          <div className="flex items-center justify-between text-xs px-1">
             <span className="text-gray-500 dark:text-gray-400">
               Caixa {formatarMoeda(resultado.totalCaixa)} · Sistema {formatarMoeda(resultado.totalSistema)}
             </span>
