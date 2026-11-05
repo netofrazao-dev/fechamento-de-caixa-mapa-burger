@@ -60,7 +60,7 @@ describe('recibo térmico', () => {
       ], estoqueQuente: { itens: [{ produto: 'Coca 2L', quantidade: 4 }] },
       imagem1: null, imagem2: null,
     } as unknown as RelatorioDiario
-    const doc = montarReciboDiaCompleto({ relatorio: rel, fechamentos: [fechamentoDaFoto()] })
+    const doc = montarReciboDiaCompleto({ relatorio: rel, fechamentos: [fechamentoDaFoto()], vales: [{ funcionario: 'Neto', valor: 100, observacao: '' }] })
     expect(doc.getNumberOfPages()).toBe(1)
     const linhas = textoDoPdf(doc.output())
     expect(linhas.find((l) => l.includes('pagamento do gas'))).toMatch(/^ {2}pagamento do gas +R\$ 30,00$/)
@@ -69,7 +69,10 @@ describe('recibo térmico', () => {
     const j = linhas.indexOf('PIX (nao sai do caixa)')
     expect(i).toBeGreaterThan(-1)
     expect(j).toBeGreaterThan(i)
-    expect(linhas.slice(i, j).find((l) => l.startsWith('Total de sangrias'))).toMatch(/R\$ 42,50$/)
+    // Vale é sangria: entra no grupo Vales e no total (12,50 + 30 + 100 = 142,50).
+    expect(linhas.slice(i, j)).toContain('Vales')
+    expect(linhas.slice(i, j).find((l) => l.includes('Neto'))).toMatch(/^ {2}Neto +R\$ 100,00$/)
+    expect(linhas.slice(i, j).find((l) => l.startsWith('Total de sangrias'))).toMatch(/R\$ 142,50$/)
     expect(linhas.slice(i, j).some((l) => l.includes('carne'))).toBe(false)
     expect(linhas.slice(j).find((l) => l.includes('carne no acougue'))).toMatch(/R\$ 80,00$/)
     expect(linhas.slice(j).find((l) => l.startsWith('Total no PIX'))).toMatch(/R\$ 80,00$/)

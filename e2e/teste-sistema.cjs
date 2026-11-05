@@ -167,9 +167,26 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   await page.getByRole('button', { name: 'Adicionar compra no PIX' }).click()
   await preencher(campo('Valor do PIX 1'), '80', '80,00')
   await campo('Motivo do PIX 1').fill('carne no açougue')
+  // Vale tirado do caixa: lançado pelas sangrias, já vai para os vales da pessoa.
+  const lancarVale = async (nome, valor, formatado) => {
+    await page.getByRole('button', { name: 'Lançar vale', exact: true }).click()
+    await page.getByRole('button', { name: nome, exact: true }).click()
+    await preencher(page.getByRole('textbox', { name: 'Valor do vale' }), valor, formatado)
+    await page.getByRole('button', { name: 'Lançar vale', exact: true }).click()
+    await esperarTexto(`Vale de ${nome} (R$ ${formatado}) lançado`)
+  }
+  await lancarVale('Neto', '100', '100,00')
+  ok(db.vales.some((v) => v.funcionario === 'Neto' && v.valor === 100 && v.data === f.data && !v.excluido_em), 'vale lançado nas sangrias foi para os vales do Neto (mesmo dia)')
+  await lancarVale('Pâmela', '20', '20,00')
+  await page.getByRole('button', { name: 'Excluir vale de Pâmela' }).click()
+  await page.getByLabel('Motivo para excluir o vale de Pâmela').fill('lançado errado')
+  await page.getByRole('button', { name: 'Excluir', exact: true }).click()
+  await esperarTexto('Vale de Pâmela excluído')
+  ok(db.vales.find((v) => v.funcionario === 'Pâmela' && v.valor === 20)?.motivo_exclusao === 'lançado errado' && !(await page.getByLabel('Vales do dia').innerText()).includes('Pâmela'),
+    'excluir vale pelas sangrias pede motivo e tira da lista (fica no histórico)')
   const totais = (await page.getByLabel('Totais das sangrias').innerText()).replace(/\u00a0/g, ' ')
-  ok(/Total de sangrias \(saiu do caixa\)\s*R\$ 42,50/.test(totais) && /Pago no PIX \(não entra no total\)\s*R\$ 80,00/.test(totais),
-    'tela: total de sangrias R$ 42,50 (compra + pagamento); PIX R$ 80,00 à parte')
+  ok(/Total de sangrias \(saiu do caixa\)\s*R\$ 142,50/.test(totais) && /Pago no PIX \(não entra no total\)\s*R\$ 80,00/.test(totais),
+    'tela: total de sangrias R$ 142,50 (compra + pagamento + vale); PIX R$ 80,00 à parte')
   await shot('15a-sangrias')
   await page.getByRole('button', { name: 'Salvar', exact: true }).click()
   await page.getByText('Relatório salvo.').waitFor()
@@ -180,9 +197,10 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   const [pdfDia] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'PDF WhatsApp', exact: true }).click()])
   await pdfDia.saveAs(`${SHOTS}/dia.pdf`)
   const textoDia = require('child_process').execSync(`pdftotext -layout ${SHOTS}/dia.pdf -`).toString().replace(/\u00a0/g, ' ')
-  ok(/RETIRADAS \(SANGRIAS\)/.test(textoDia) && textoDia.includes('R$ 42,50'), 'PDF do dia: card de retiradas R$ 42,50 (sem o PIX)')
-  ok(textoDia.includes('pagamento do gás') && textoDia.includes('Pagamentos') && textoDia.includes('Compras ($)') && /Total retirado do caixa\s+R\$ 42,50/.test(textoDia),
-    'PDF do dia: sangrias por tipo (compras e pagamentos) com total')
+  ok(/RETIRADAS \(SANGRIAS\)/.test(textoDia) && textoDia.includes('R$ 142,50'), 'PDF do dia: card de retiradas R$ 142,50 (com o vale, sem o PIX)')
+  ok(textoDia.includes('pagamento do gás') && textoDia.includes('Pagamentos') && textoDia.includes('Compras ($)') && /Vale\s+Neto\s+R\$ 100,00/.test(textoDia) &&
+    /Total retirado do caixa\s+R\$ 142,50/.test(textoDia) && !/Vale\s+Pâmela/.test(textoDia),
+    'PDF do dia: sangrias por tipo (compras, pagamentos e vale) com total; vale excluído não aparece')
   ok(/COMPRAS NO PIX DO PATRÃO/i.test(textoDia) && textoDia.includes('carne no açougue') && /Total no PIX \(fora do total de sangrias\)\s+R\$ 80,00/.test(textoDia),
     'PDF do dia: compras no PIX separadas, fora do total')
   ok(textoDia.includes('Caixa LC') && textoDia.includes('150,50'), 'PDF do dia: fechamento completo junto')

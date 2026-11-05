@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable'
 import type { ConsumoItem, Fechamento, RelatorioDiario, Sangria, StatusFechamento } from '../types/fechamento'
 import { agregarVendasPorPrato, formatarMoeda, STATUS_LABEL, totalMarmitas } from './calculations'
 import { semAcento } from './texto'
-import { infoTipoSangria, resumoSangrias, tipoDaSangria } from './sangrias'
+import { descricaoVale, infoTipoSangria, resumoSangrias, tipoDaSangria, type ValeDaSangria } from './sangrias'
 import { centralizar, COLUNAS_RECIBO, linhaComValor, quebrarTexto, separadorTexto } from './reciboTexto'
 import { LOGO_MAPA_BURGER_PNG } from './brand'
 import { compartilharOuBaixar, type ResultadoEntrega } from './arquivos'
@@ -176,7 +176,7 @@ function escreverFechamento(r: ReciboTermico, f: Fechamento) {
  * Abertura/fechamento do dinheiro e marmitas vendidas já saem no bloco do fechamento do caixa;
  * aqui só aparecem se o dia não tiver fechamento salvo (relatórios antigos).
  */
-function escreverRelatorio(r: ReciboTermico, rel: RelatorioDiario, temFechamento: boolean) {
+function escreverRelatorio(r: ReciboTermico, rel: RelatorioDiario, temFechamento: boolean, vales: ValeDaSangria[] = []) {
   r.linha('RELATORIO DIARIO', { negrito: true, centro: true })
   r.separador()
 
@@ -209,12 +209,13 @@ function escreverRelatorio(r: ReciboTermico, rel: RelatorioDiario, temFechamento
   listaConsumo('CONSUMO LOJA MOTOBOYS', rel.consumoLojaMotoboys)
   listaConsumo('CORTESIA CLIENTES', rel.cortesiaClientes)
 
-  const rs = resumoSangrias(rel.sangrias)
-  if (rs.compras.length + rs.pagamentos.length > 0) {
+  const rs = resumoSangrias(rel.sangrias, vales)
+  if (rs.compras.length + rs.pagamentos.length + rs.vales.length > 0) {
     r.linha('SANGRIAS (saem do caixa)', { negrito: true })
     const grupos: [string, Sangria[]][] = [
       [infoTipoSangria('compra').rotuloRecibo, rs.compras],
       [infoTipoSangria('pagamento').rotuloRecibo, rs.pagamentos],
+      ['Vales', rs.vales.map((v) => ({ valor: v.valor, motivo: v.funcionario + (v.observacao ? ` (${v.observacao})` : '') }))],
     ]
     for (const [rotulo, lista] of grupos) {
       if (lista.length === 0) continue
@@ -263,8 +264,15 @@ export function gerarPdfFechamento(f: Fechamento): void {
  * (manhã/noite, o que existir) + relatório diário completo,
  * tudo num único recibo, sem acentos.
  */
-export function montarReciboDiaCompleto(params: { relatorio: RelatorioDiario; fechamentos: Fechamento[] }): jsPDF {
-  const { relatorio, fechamentos } = params
+export interface ParamsDiaCompleto {
+  relatorio: RelatorioDiario
+  fechamentos: Fechamento[]
+  /** Vales do dia (são sangrias: saíram do caixa). */
+  vales?: ValeDaSangria[]
+}
+
+export function montarReciboDiaCompleto(params: ParamsDiaCompleto): jsPDF {
+  const { relatorio, fechamentos, vales = [] } = params
   const r = new ReciboTermico()
 
   r.linha('MAPA BURGER', { negrito: true, tamanho: 12, centro: true })
@@ -290,11 +298,11 @@ export function montarReciboDiaCompleto(params: { relatorio: RelatorioDiario; fe
     r.separador()
   }
 
-  escreverRelatorio(r, relatorio, fechamentos.length > 0)
+  escreverRelatorio(r, relatorio, fechamentos.length > 0, vales)
   return r.montar()
 }
 
-export function imprimirDiaCompleto(params: { relatorio: RelatorioDiario; fechamentos: Fechamento[] }): void {
+export function imprimirDiaCompleto(params: ParamsDiaCompleto): void {
   montarReciboDiaCompleto(params).save(`relatorio_dia_completo_${params.relatorio.data}.pdf`)
 }
 
@@ -990,10 +998,12 @@ function mesmasSangrias(a: Sangria[], b: Sangria[]): boolean {
 export async function gerarPdfWhatsApp(params: {
   relatorio: RelatorioDiario
   fechamentos: Fechamento[]
+  /** Vales do dia (são sangrias: saíram do caixa). */
+  vales?: ValeDaSangria[]
   imagens?: (string | null | undefined)[]
   compartilhar?: boolean
 }): Promise<ResultadoEntrega> {
-  const { relatorio: rel, fechamentos, imagens = [], compartilhar } = params
+  const { relatorio: rel, fechamentos, vales = [], imagens = [], compartilhar } = params
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const margem = 16
   const larguraUtil = 210 - margem * 2
@@ -1011,12 +1021,12 @@ export async function gerarPdfWhatsApp(params: {
   const diferenca = somaCentavos(fechamentos.map((f) => f.resultado.diferencaFinal))
   const ajuste = somaCentavos(fechamentos.map((f) => f.resultado.ajusteAplicado))
   // As sangrias agora são lançadas no relatório; fechamentos antigos podem ter as suas.
-  // Só compras e pagamentos saíram do caixa; o PIX do patrão fica fora do total.
+  // Compras, pagamentos e vales saíram do caixa; o PIX do patrão fica fora do total.
   const sangriasDoFechamento = fechamentos.flatMap((f) => f.sangrias)
-  const resumoRel = resumoSangrias(rel.sangrias)
+  const resumoRel = resumoSangrias(rel.sangrias, vales)
   const sangriasCaixaRel = [...resumoRel.compras, ...resumoRel.pagamentos]
   const sangrias = sangriasCaixaRel.length > 0 ? sangriasCaixaRel : sangriasDoFechamento
-  const totalSangrias = somaCentavos(sangrias.map((s) => s.valor))
+  const totalSangrias = somaCentavos([...sangrias.map((s) => s.valor), resumoRel.totalVales])
   const marmitas = fechamentos.reduce((acc, f) => acc + totalMarmitas(f.marmitas), 0)
 
   if (fechamentos.length === 0) {
@@ -1065,11 +1075,12 @@ export async function gerarPdfWhatsApp(params: {
   // Destaques do dia
   const destaques: string[] = []
   const listaSangrias = (l: Sangria[]) => l.map((s) => `${s.motivo || 'sem motivo'} (${formatarMoeda(s.valor)})`).join('; ')
-  if (sangrias.length > 0) {
+  if (sangrias.length > 0 || vales.length > 0) {
     const g = resumoSangrias(sangrias)
     const partes = [
       g.compras.length ? `compras: ${listaSangrias(g.compras)}` : '',
       g.pagamentos.length ? `pagamentos: ${listaSangrias(g.pagamentos)}` : '',
+      vales.length ? `vales: ${vales.map((v) => `${v.funcionario} (${formatarMoeda(v.valor)})`).join('; ')}` : '',
     ].filter(Boolean)
     destaques.push(`Retiradas do caixa (sangrias): ${formatarMoeda(totalSangrias)} — ${partes.join(' · ')}.`)
   }
@@ -1259,15 +1270,22 @@ export async function gerarPdfWhatsApp(params: {
     y = finalY(doc) + 6
   }
 
-  if (sangriasCaixaRel.length > 0 && !mesmasSangrias(sangriasCaixaRel, sangriasDoFechamento)) {
+  // Tabela das sangrias do relatório (as do fechamento antigo já saíram na parte do caixa) + vales do dia.
+  const linhasSangria: [string, string, number][] = [
+    ...(sangriasCaixaRel.length > 0 && !mesmasSangrias(sangriasCaixaRel, sangriasDoFechamento)
+      ? sangriasCaixaRel.map((s): [string, string, number] => [infoTipoSangria(tipoDaSangria(s)).rotulo, s.motivo || '—', s.valor])
+      : []),
+    ...vales.map((v): [string, string, number] => ['Vale', descricaoVale(v).replace(/^Vale — /, ''), v.valor]),
+  ]
+  if (linhasSangria.length > 0) {
     garantir(25)
     y = tituloSecaoPdf(doc, 'Retiradas do caixa (sangrias)', y, margem, larguraUtil)
     autoTable(doc, {
       startY: y,
       margin: { left: margem, right: margem },
       head: [['Tipo', 'Motivo', { content: 'Valor', styles: { halign: 'right' } }]],
-      body: sangriasCaixaRel.map((s) => [infoTipoSangria(tipoDaSangria(s)).rotulo, s.motivo || '—', formatarMoeda(s.valor)]),
-      foot: [[{ content: 'Total retirado do caixa', colSpan: 2 }, { content: formatarMoeda(resumoRel.totalSangrias), styles: { halign: 'right' } }]],
+      body: linhasSangria.map(([tipo, motivo, valor]) => [tipo, motivo, formatarMoeda(valor)]),
+      foot: [[{ content: 'Total retirado do caixa', colSpan: 2 }, { content: formatarMoeda(somaCentavos(linhasSangria.map((l) => l[2]))), styles: { halign: 'right' } }]],
       styles: { fontSize: 9, cellPadding: 1.4 },
       headStyles: { fillColor: [90, 90, 95] },
       footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },

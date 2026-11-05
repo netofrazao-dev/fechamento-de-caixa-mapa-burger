@@ -69,30 +69,51 @@ function somar(lista: Sangria[]): number {
   return Math.round(lista.reduce((acc, s) => acc + Math.round((Number(s.valor) || 0) * 100), 0)) / 100
 }
 
+/**
+ * Vale de funcionário dado com dinheiro do caixa. É uma sangria do dia, mas fica
+ * guardado na tabela de vales (para o acerto do mês de cada pessoa).
+ */
+export interface ValeDaSangria {
+  funcionario: string
+  valor: number
+  observacao?: string
+}
+
 export interface ResumoSangrias {
   compras: Sangria[]
   pagamentos: Sangria[]
   pix: Sangria[]
+  vales: ValeDaSangria[]
   totalCompras: number
   totalPagamentos: number
   totalPix: number
-  /** Compras + pagamentos: o que saiu do dinheiro do caixa. PIX fica de fora. */
+  totalVales: number
+  /** Compras + pagamentos + vales: o que saiu do dinheiro do caixa. PIX fica de fora. */
   totalSangrias: number
 }
 
-export function resumoSangrias(lista: Sangria[]): ResumoSangrias {
+export function resumoSangrias(lista: Sangria[], vales: ValeDaSangria[] = []): ResumoSangrias {
   const compras = lista.filter((s) => tipoDaSangria(s) === 'compra')
   const pagamentos = lista.filter((s) => tipoDaSangria(s) === 'pagamento')
   const pix = lista.filter((s) => tipoDaSangria(s) === 'pix')
   const totalCompras = somar(compras)
   const totalPagamentos = somar(pagamentos)
+  const totalVales = somar(vales.map((v) => ({ valor: v.valor, motivo: '' })))
   return {
     compras,
     pagamentos,
     pix,
+    vales,
     totalCompras,
     totalPagamentos,
     totalPix: somar(pix),
-    totalSangrias: Math.round((totalCompras + totalPagamentos) * 100) / 100,
+    totalVales,
+    totalSangrias: Math.round((totalCompras + totalPagamentos + totalVales) * 100) / 100,
   }
+}
+
+/** Texto de um vale nas listas e PDFs: "Vale — Neto (adiantamento)". */
+export function descricaoVale(v: ValeDaSangria): string {
+  const obs = (v.observacao ?? '').trim()
+  return `Vale — ${v.funcionario}${obs ? ` (${obs})` : ''}`
 }
