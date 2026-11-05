@@ -1,36 +1,77 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, FileText, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FileText, PencilLine, Plus } from 'lucide-react'
 import { listarRelatorios } from '../lib/relatorioService'
 import { mensagemErro } from '../lib/erros'
 import { mesValido, nomeMes, rotuloMes, somarMeses, somarValores } from '../lib/vales'
 import { formatarMoeda } from '../lib/calculations'
 import { diaDaSemana, formatarDataBr, limitesDoMes, mesLocal } from '../lib/datas'
 import { CaixaErro } from '../components/Avisos'
-import type { RelatorioDiario } from '../types/fechamento'
+import type { RelatorioDiario, Vale } from '../types/fechamento'
+import { listarValesDoMes } from '../lib/valeService'
+import { resumoSangrias } from '../lib/sangrias'
+import { formatarHoraRascunho } from '../lib/draft'
+import {
+  descartarRascunho,
+  listarRascunhosAbertos,
+  rascunhosDoAparelho,
+  type RascunhoAberto,
+} from '../lib/rascunhosAbertos'
 
 export default function Relatorios() {
   const [params, setParams] = useSearchParams()
   const mesUrl = params.get('mes')
   const mes = mesUrl && mesValido(mesUrl) ? mesUrl : mesLocal()
 
-  const [dados, setDados] = useState<{ mes: string; lista: RelatorioDiario[] } | null>(null)
+  const [dados, setDados] = useState<{ mes: string; lista: RelatorioDiario[]; vales: Vale[] } | null>(null)
   const [erro, setErro] = useState<{ mes: string; mensagem: string } | null>(null)
   // Muda quando a pessoa toca em "Tentar de novo" (busca outra vez).
   const [tentativa, setTentativa] = useState(0)
+  // Relatórios começados e ainda não salvos (deste aparelho e de outros).
+  const [rascunhos, setRascunhos] = useState<RascunhoAberto[]>(() => rascunhosDoAparelho())
+  const [descartando, setDescartando] = useState<string | null>(null)
 
   useEffect(() => {
     const { inicio, fim } = limitesDoMes(mes)
     let ativo = true
-    listarRelatorios({ dataInicio: inicio, dataFim: fim })
-      .then((lista) => ativo && setDados({ mes, lista }))
+    Promise.all([
+      listarRelatorios({ dataInicio: inicio, dataFim: fim }),
+      // Vales do mês (para mostrar os de cada dia); se falhar, a lista continua.
+      listarValesDoMes(mes).catch(() => [] as Vale[]),
+    ])
+      .then(([lista, vales]) => ativo && setDados({ mes, lista, vales }))
       .catch((e) => ativo && setErro({ mes, mensagem: mensagemErro(e, 'Erro ao carregar os relatórios.') }))
     return () => {
       ativo = false
     }
   }, [mes, tentativa])
 
+  useEffect(() => {
+    let ativo = true
+    listarRascunhosAbertos().then((l) => ativo && setRascunhos(l))
+    return () => {
+      ativo = false
+    }
+  }, [tentativa])
+
   const relatorios = dados?.mes === mes ? dados.lista : null
+  const valesPorDia = useMemo(() => {
+    const m = new Map<string, Vale[]>()
+    for (const v of dados?.mes === mes ? dados.vales : []) {
+      if (!v.excluidoEm) m.set(v.data, [...(m.get(v.data) ?? []), v])
+    }
+    return m
+  }, [dados, mes])
+  const datasSalvas = new Set((relatorios ?? []).map((r) => r.data))
+  // Relatórios novos em andamento (some quando o dia já tem relatório salvo).
+  const emAndamento = rascunhos.filter((r) => r.tipo === 'relatorio' && !r.edicao && !datasSalvas.has(r.data))
+  const comAlteracoes = new Set(rascunhos.filter((r) => r.tipo === 'relatorio' && r.edicao).map((r) => r.registroId))
+
+  async function descartar(r: RascunhoAberto) {
+    await descartarRascunho(r.chave)
+    setDescartando(null)
+    setRascunhos((l) => l.filter((x) => x.chave !== r.chave))
+  }
   const erroAtual = erro?.mes === mes ? erro.mensagem : null
   const nome = nomeMes(mes)
 
@@ -72,6 +113,43 @@ export default function Relatorios() {
         </button>
       </section>
 
+      {emAndamento.map((r) => (
+        <section
+          key={r.chave}
+          className="rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-4 space-y-2"
+          aria-label={`Relatório de ${formatarDataBr(r.data)} em andamento`}
+        >
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-900 dark:text-amber-200">
+            <PencilLine size={15} /> Relatório de {formatarDataBr(r.data)} em andamento
+          </p>
+          <p className="text-xs text-amber-800 dark:text-amber-300">
+            Começado e ainda não salvo (rascunho salvo {formatarHoraRascunho(r.salvoEm)}).
+          </p>
+          <div className="flex gap-2">
+            <Link to={r.link} className="rounded-lg bg-gray-900 dark:bg-gray-700 px-3.5 py-2 text-sm font-semibold text-white">
+              Continuar
+            </Link>
+            {descartando === r.chave ? (
+              <button
+                type="button"
+                onClick={() => descartar(r)}
+                className="rounded-lg bg-red-600 px-3.5 py-2 text-sm font-semibold text-white"
+              >
+                Sim, descartar
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setDescartando(r.chave)}
+                className="rounded-lg bg-white/80 dark:bg-gray-900/60 px-3.5 py-2 text-sm font-semibold text-amber-900 dark:text-amber-200"
+              >
+                Descartar
+              </button>
+            )}
+          </div>
+        </section>
+      ))}
+
       {erroAtual && (
         <CaixaErro
           onTentarDeNovo={() => {
@@ -95,6 +173,12 @@ export default function Relatorios() {
           const consumo = somarValores(
             [...r.consumoLojaMensal, ...r.consumoLojaMotoboys, ...r.cortesiaClientes].map((c) => c.valor),
           )
+          const sg = resumoSangrias(r.sangrias, valesPorDia.get(r.data) ?? [])
+          const retiradas = [
+            sg.totalCompras + sg.totalPagamentos > 0 ? `sangrias ${formatarMoeda(somarValores([sg.totalCompras, sg.totalPagamentos]))}` : '',
+            sg.totalVales > 0 ? `vales ${formatarMoeda(sg.totalVales)}` : '',
+            sg.totalPix > 0 ? `PIX ${formatarMoeda(sg.totalPix)}` : '',
+          ].filter(Boolean)
           return (
             <Link
               key={r.id}
@@ -109,6 +193,14 @@ export default function Relatorios() {
                 {consumo > 0 && ` · consumo/cortesia ${formatarMoeda(consumo)}`}
                 {r.estragou.length > 0 && ` · ${r.estragou.length} item(ns) estragado(s)`}
               </p>
+              {retiradas.length > 0 && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Retiradas: {retiradas.join(' · ')}</p>
+              )}
+              {comAlteracoes.has(r.id) && (
+                <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 text-[11px] font-medium text-amber-900 dark:text-amber-200">
+                  <PencilLine size={12} /> Alterações não salvas
+                </p>
+              )}
             </Link>
           )
         })}

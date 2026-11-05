@@ -125,6 +125,30 @@ select public.t_deve_falhar('delete from produtos_estoque where nome = ''Monster
 reset role;
 select public.t_confere((select count(*) >= 2 from auditoria where tabela = 'produtos_estoque'), 'auditoria registra produtos');
 
+-- ---------------- Loja fechada (v9) ----------------
+set role anon;
+select public.t_deve_falhar('select count(*) from dias_loja_fechada', 'permission denied', 'sem login não lê os dias de loja fechada');
+reset role;
+select public.t_como('intruso@teste.com');
+set role authenticated;
+select public.t_deve_falhar('insert into dias_loja_fechada (data) values (''2026-10-20'')', 'row-level security', 'não autorizado não marca loja fechada');
+reset role;
+select public.t_como('dono@teste.com');
+set role authenticated;
+insert into dias_loja_fechada (data, motivo) values ('2026-10-20', '  Feriado  ');
+select public.t_confere((select motivo = 'Feriado' and usuario = 'dono@teste.com' from dias_loja_fechada where data = '2026-10-20'), 'marca loja fechada (motivo limpo e quem marcou)');
+select public.t_deve_falhar('insert into dias_loja_fechada (data) values (''2026-10-20'')', 'duplicate', 'não marca o mesmo dia duas vezes');
+select public.t_deve_falhar('insert into dias_loja_fechada (data) values (''2026-10-01'')', 'já tem fechamento', 'não marca loja fechada num dia que já tem fechamento');
+insert into fechamentos (data, turno, total_lc, total_brendi, total_caixa, total_sistema, diferenca_original, diferenca_final, status)
+  values ('2026-10-20', 'manha', 0, 0, 0, 0, 0, 0, 'fechou');
+select public.t_confere(not exists (select 1 from dias_loja_fechada where data = '2026-10-20'), 'fechamento salvo num dia marcado tira a marca de loja fechada');
+insert into dias_loja_fechada (data) values ('2026-10-21');
+delete from dias_loja_fechada where data = '2026-10-21';
+select public.t_confere(not exists (select 1 from dias_loja_fechada where data = '2026-10-21'), 'desmarcar apaga a marca');
+insert into dias_loja_fechada (data, motivo) values ('2026-10-27', 'folga');
+reset role;
+select public.t_confere((select count(*) >= 4 from auditoria where tabela = 'dias_loja_fechada'), 'auditoria registra marcar e desmarcar');
+
 -- ---------------- Cópias de segurança (v6) ----------------
 select public.t_confere((select count(*) >= 1 from copias_seguranca), 'migração já deixa uma cópia pronta');
 set role anon;
@@ -136,6 +160,7 @@ set role anon; select manter_ativo(); reset role;
 select public.t_confere((select count(*) = 2 from copias_seguranca), 'cópia nova depois de 2 dias');
 select public.t_confere((select (quantidades ? 'acertos_mes') from copias_seguranca order by id desc limit 1), 'cópia inclui os acertos');
 select public.t_confere((select (quantidades ->> 'produtos_estoque')::int = 16 from copias_seguranca order by id desc limit 1), 'cópia inclui os produtos do estoque');
+select public.t_confere((select (quantidades ->> 'dias_loja_fechada')::int = 1 from copias_seguranca order by id desc limit 1), 'cópia inclui os dias de loja fechada');
 set role anon;
 select public.t_deve_falhar('select count(*) from copias_seguranca', 'permission denied', 'sem login não lê cópias');
 reset role;

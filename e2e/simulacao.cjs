@@ -29,7 +29,7 @@ function jwt(email) {
 
 function criarDb2() {
   const db = base.criarDb()
-  db.fechamentos = []; db.sangrias = []; db.relatorios = []; db.pratos = []; db.rascunhos = []
+  db.fechamentos = []; db.sangrias = []; db.relatorios = []; db.pratos = []; db.rascunhos = []; db.dias_loja_fechada = []
   for (const nome of ['Estrogonofe', 'Frango Grelhado', 'Bife Acebolado']) db.pratos.push({ id: uid(), nome, ativo: true })
   db.produtos_estoque = ['Coca KS', 'Sprite 350ml', 'Monster Azul', 'Água S/G 330ml'].map((nome, i) => ({ id: uid(), nome, ativo: true, ordem: i + 1 }))
   db.funcionarios.forEach((f) => (f.ativo = true))
@@ -123,12 +123,24 @@ function handle2(db, method, path, params, body, wantsObject, hooks) {
     }
     if (method === 'PATCH') { const alvo = filtrar(tabela, params); alvo.forEach((r) => Object.assign(r, body)); return responder(alvo) }
   }
+  if (t === 'dias_loja_fechada' && db.dias_loja_fechada) {
+    if (method === 'GET') return responder(filtrar(db.dias_loja_fechada, params).sort((a, b) => a.data.localeCompare(b.data)))
+    if (method === 'POST') {
+      if (db.fechamentos.some((f) => f.data === body.data)) return { status: 400, body: { code: 'P0001', message: `O dia ${body.data.split('-').reverse().join('/')} já tem fechamento de caixa salvo; não dá para marcar como loja fechada.` } }
+      if (db.dias_loja_fechada.some((d) => d.data === body.data)) return { status: 409, body: { code: '23505', message: 'duplicate key value violates unique constraint' } }
+      const d = { id: uid(), data: body.data, motivo: body.motivo ?? null, marcado_em: new Date().toISOString(), usuario: db.sessaoEmail }
+      db.dias_loja_fechada.push(d); return { status: 201, body: null }
+    }
+    if (method === 'DELETE') { db.dias_loja_fechada = db.dias_loja_fechada.filter((d) => !filtrar([d], params).length); return { status: 204, body: null } }
+  }
   if (t === 'fechamentos') {
     const comSangrias = (f) => ({ ...f, sangrias: db.sangrias.filter((s) => s.fechamento_id === f.id) })
     if (method === 'GET' || method === 'HEAD') return responder(filtrar(db.fechamentos, params).sort((a, b) => b.data.localeCompare(a.data)).map(comSangrias))
     if (method === 'POST') {
       if (db.fechamentos.some((f) => f.data === body.data && f.turno === body.turno)) return { status: 409, body: { code: '23505', message: 'duplicate key value violates unique constraint' } }
-      const f = { id: uid(), created_at: new Date().toISOString(), ...body }; db.fechamentos.push(f); return responder([f], 201)
+      const f = { id: uid(), created_at: new Date().toISOString(), ...body }; db.fechamentos.push(f)
+      if (db.dias_loja_fechada) db.dias_loja_fechada = db.dias_loja_fechada.filter((d) => d.data !== f.data) // gatilho da v9
+      return responder([f], 201)
     }
     if (method === 'PATCH') { const alvo = filtrar(db.fechamentos, params); alvo.forEach((r) => Object.assign(r, body)); return responder(alvo) }
     if (method === 'DELETE') { const alvo = filtrar(db.fechamentos, params); db.fechamentos = db.fechamentos.filter((f) => !alvo.includes(f)); db.sangrias = db.sangrias.filter((s) => !alvo.some((f) => f.id === s.fechamento_id)); return responder(alvo) }

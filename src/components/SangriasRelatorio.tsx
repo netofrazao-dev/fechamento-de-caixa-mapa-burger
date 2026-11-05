@@ -12,7 +12,7 @@ interface Props {
   /** Vales do dia (vêm da tabela de vales; null = carregando). */
   vales: Vale[] | null
   erroVales?: string | null
-  onValesMudou: () => void
+  onValesMudou: (mudanca: { lancado?: Vale; excluidoId?: string }) => void
 }
 
 /**

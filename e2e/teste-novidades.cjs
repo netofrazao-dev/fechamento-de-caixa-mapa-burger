@@ -126,6 +126,51 @@ const vale = (f, data, valor) => ({ id: uid(), funcionario: f.nome, funcionario_
   ok(mpdf.texto.includes('COMPARADO COM OUTUBRO') && mpdf.texto.includes('VENDAS POR DIA') && mpdf.texto.includes('Média do mês'), 'PDF mensal com comparação e gráfico')
   execSync(`pdftoppm -r 60 -png -f 1 -l 1 ${SHOTS}/mensal.pdf ${SHOTS}/mensal-pdf`)
 
+  console.log('4b. Valor estranho no fechamento e "em andamento" na tela Hoje')
+  {
+    const campoN = (nome) => page.getByRole('textbox', { name: nome, exact: true })
+    await page.goto(`${BASE}/novo`)
+    await page.getByRole('heading', { name: 'Fechamento do caixa' }).waitFor()
+    await campoN('Dinheiro no fechamento').fill('400000')
+    await campoN('Dinheiro no fechamento').press('Tab')
+    await campoN('Total LC Sistema').fill('400000')
+    await campoN('Total LC Sistema').press('Tab')
+    await page.waitForTimeout(300) // histórico dos últimos dias carregado
+    await page.getByRole('button', { name: 'Salvar e gerar PDF' }).click()
+    await page.getByText('Confira antes de salvar').waitFor()
+    ok((await texto()).includes('Dinheiro no fechamento: R$ 400.000,00 é bem mais que o normal'), 'valor fora do normal (400.000 no dinheiro) pede confirmação antes de salvar')
+    ok(db.fechamentos.every((f) => f.data !== '2026-11-03'), 'nada salvo sem confirmar')
+    await page.getByRole('button', { name: 'Corrigir' }).click()
+
+    // relatório começado e não salvo
+    await page.goto(`${BASE}/relatorios/novo`)
+    await page.getByRole('heading', { name: 'Novo relatório do dia' }).waitFor()
+    await page.getByRole('button', { name: /^Estragou/ }).click()
+    await page.getByRole('button', { name: /Adicionar/ }).first().click()
+    await page.getByPlaceholder('Ex: 400g de arroz').fill('2 pães')
+    await page.waitForTimeout(300)
+
+    await page.goto(`${BASE}/hoje`)
+    await esperar('Fechamento em andamento')
+    const t = await texto()
+    ok(t.includes('Fechamento em andamento') && t.includes('R$ 400.000,00') && t.includes('Toque para continuar'),
+      'Hoje: fechamento começado aparece como "em andamento" com o caixa até agora')
+    ok(t.includes('Relatório em andamento'), 'Hoje: relatório começado aparece como "em andamento"')
+    await shot('25-hoje-em-andamento')
+    await page.getByText('Relatório em andamento').click()
+    await page.waitForURL(/\/relatorios\/novo/)
+    await esperar('Rascunho restaurado')
+    ok(true, 'tocar em "em andamento" continua o relatório de onde parou')
+
+    await page.goto(`${BASE}/relatorios?mes=2026-11`)
+    await esperar('Relatório de 03/11/2026 em andamento')
+    ok(await page.getByRole('link', { name: 'Continuar' }).getAttribute('href') === '/relatorios/novo', 'Relatórios: rascunho visível com "Continuar"')
+    await page.getByRole('button', { name: 'Descartar' }).click()
+    await page.getByRole('button', { name: 'Sim, descartar' }).click()
+    await page.waitForFunction(() => !document.body.innerText.includes('em andamento'))
+    ok(await page.evaluate(() => localStorage.getItem('mapa-burger-rascunho-relatorio-novo')) === null, 'descartar apaga o rascunho do relatório')
+  }
+
   console.log('5. App instalável')
   const manifesto = await page.evaluate(() => fetch('/manifest.webmanifest').then((r) => r.json()))
   ok(manifesto.short_name === 'Mapa Burger' && manifesto.start_url === '/hoje' && manifesto.icons.length === 3, 'manifesto do app')

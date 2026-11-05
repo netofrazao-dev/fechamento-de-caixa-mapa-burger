@@ -154,6 +154,24 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   await esperarTexto('está depois da data')
   ok(true, 'período invertido: explica o erro')
 
+  console.log('4b. Loja fechada (folga/feriado)')
+  await page.goto(`${BASE}/hoje`)
+  await esperarTexto('Ontem (02/11) ficou sem fechamento')
+  await page.getByRole('button', { name: 'Loja fechada', exact: true }).click()
+  await page.waitForFunction(() => !document.body.innerText.includes('Ontem (02/11) ficou sem fechamento'))
+  ok(db.dias_loja_fechada.some((d) => d.data === '2026-11-02'), 'Hoje: "ontem ficou sem fechamento" → "Loja fechada" marca o dia e o aviso some')
+  await page.goto(`${BASE}/historico?de=2026-11-01&ate=2026-11-03`)
+  await esperarTexto('Loja fechada em 1 dia(s)')
+  ok((await texto()).includes('1 dia(s) sem fechamento no período'), 'Histórico: dia de loja fechada não conta como "sem fechamento"')
+  await page.getByRole('button', { name: '01/11', exact: true }).click()
+  await page.getByRole('button', { name: 'A loja não abriu em 01/11' }).click()
+  await esperarTexto('Loja fechada em 2 dia(s)')
+  ok(!(await texto()).includes('sem fechamento no período'), 'marca loja fechada pelo Histórico também')
+  await page.getByRole('button', { name: 'Desfazer loja fechada em 01/11' }).click()
+  await esperarTexto('1 dia(s) sem fechamento no período')
+  ok(!db.dias_loja_fechada.some((d) => d.data === '2026-11-01'), 'desfazer volta o dia para "sem fechamento"')
+  await shot('13b-loja-fechada')
+
   console.log('5. Mensal + PDF')
   await page.goto(`${BASE}/mensal?mes=${f.data.slice(0, 7)}`)
   await esperarTexto('Pratos mais vendidos').catch(() => {})
@@ -248,6 +266,31 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
     const txt = require('child_process').execSync(`pdftotext -layout ${SHOTS}/mensal-retiradas.pdf -`).toString().replace(/\u00a0/g, ' ')
     ok(/RETIRADAS DO CAIXA \(SANGRIAS\)/.test(txt) && new RegExp('Total retirado do caixa\\s+' + reais(esperado).replace(/[$.]/g, '\\$&')).test(txt) && txt.includes('PIX do patrão'),
       'PDF do mês também traz as retiradas do caixa')
+  }
+
+  console.log('6c. Totais na lista de relatórios, detalhe do fechamento e busca no Histórico')
+  {
+    const norm = (t) => t.replace(/\u00a0/g, ' ')
+    await page.goto(`${BASE}/relatorios?mes=${f.data.slice(0, 7)}`)
+    await esperarTexto('Retiradas:')
+    ok(norm(await texto()).includes('Retiradas: sangrias R$ 42,50 · vales R$ 100,00 · PIX R$ 80,00'), 'lista de relatórios mostra sangrias, vales e PIX do dia')
+    await page.goto(`${BASE}/fechamento/${f.id}`)
+    await page.getByLabel('Sangrias e vales do dia').waitFor()
+    const doDia = norm(await page.getByLabel('Sangrias e vales do dia').innerText())
+    ok(doDia.includes('pagamento do gás') && doDia.includes('Neto') && /Total retirado do caixa\s*R\$ 142,50/.test(doDia) && doDia.includes('carne no açougue'),
+      'detalhe do fechamento mostra as sangrias e vales do relatório do dia (total R$ 142,50, PIX à parte)')
+    await page.goto(`${BASE}/historico?de=2026-11-01&ate=2026-11-03`)
+    await page.getByLabel('Buscar no período').fill('gas')
+    await esperarTexto('1 dia(s) com “gas” no período')
+    ok(norm(await texto()).includes('pagamento do gás'), 'busca no Histórico acha "gás" sem acento (sangria do relatório)')
+    await page.getByLabel('Buscar no período').fill('vale neto')
+    await esperarTexto('Neto')
+    await page.waitForFunction(() => !document.body.innerText.includes('procurando também nos vales'))
+    ok(norm(await page.getByLabel('Resultado da busca').innerText()).includes('R$ 100,00'), 'busca acha o vale do Neto')
+    await page.getByLabel('Buscar no período').fill('xyzw')
+    await esperarTexto('Nada com “xyzw” neste período')
+    ok(true, 'busca sem resultado explica e sugere aumentar o período')
+    await shot('13c-busca')
   }
 
   console.log('7. Cadastros')

@@ -13,6 +13,7 @@ import {
   buscarFechamentoPorId,
   buscarIdFechamento,
   criarFechamento,
+  listarFechamentos,
   normalizarFechamento,
 } from '../lib/fechamentoService'
 import { carregarPdf } from '../lib/pdfSobDemanda'
@@ -21,8 +22,8 @@ import { useRascunho } from '../lib/useRascunho'
 import { avisosFechamento, errosFechamento } from '../lib/conferencia'
 import { dataValida, somarValores } from '../lib/vales'
 import { mensagemErro } from '../lib/erros'
-import type { Ajuste, DadosBrendi, DadosLC, MarmitaItem, NovoFechamentoInput, Sangria, Turno } from '../types/fechamento'
-import { diaDaSemana, formatarDataBr, hojeLocal as hoje } from '../lib/datas'
+import type { Ajuste, DadosBrendi, DadosLC, Fechamento, MarmitaItem, NovoFechamentoInput, Sangria, Turno } from '../types/fechamento'
+import { diaDaSemana, formatarDataBr, hojeLocal as hoje, somarDias } from '../lib/datas'
 
 const LC_VAZIO: DadosLC = {
   dinheiroAbertura: 0,
@@ -134,6 +135,21 @@ export default function NovoFechamento() {
   }, [data, turno, editando])
   const jaExisteId = existenteNaData?.data === data ? existenteNaData.id : null
 
+  // Últimos 45 dias antes da data: para perceber valor digitado fora do normal (ex.: 15050 em vez de 150,50).
+  const [historico, setHistorico] = useState<{ data: string; dias: Fechamento[] } | null>(null)
+  useEffect(() => {
+    if (!dataValida(data)) return
+    let ativo = true
+    listarFechamentos({ dataInicio: somarDias(data, -45), dataFim: somarDias(data, -1) })
+      .then((dias) => ativo && setHistorico({ data, dias }))
+      .catch(() => {
+        // sem histórico (sem internet): só não compara
+      })
+    return () => {
+      ativo = false
+    }
+  }, [data])
+
   const resultado = useMemo(
     () => calcularResultado({ lc, brendi, totalLCSistema, ajuste }),
     [lc, brendi, totalLCSistema, ajuste],
@@ -179,7 +195,8 @@ export default function NovoFechamento() {
 
     const chave = JSON.stringify(input)
     if (!confirmado) {
-      const avisos = avisosFechamento(input, calcularResultado(input), hoje())
+      const recentes = historico?.data === input.data ? historico.dias.filter((f) => f.id !== id) : []
+      const avisos = avisosFechamento(input, calcularResultado(input), hoje(), recentes)
       if (avisos.length > 0) {
         setPendencia({ avisos, chave })
         mostrarAlertas()

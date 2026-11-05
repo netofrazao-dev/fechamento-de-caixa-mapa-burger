@@ -528,7 +528,18 @@ export default function RelatorioForm() {
           data={data}
           vales={valesAtuais ? valesAtuais.vales : dataValida(data) ? null : []}
           erroVales={valesAtuais?.erro}
-          onValesMudou={() => setVersaoVales((v) => v + 1)}
+          onValesMudou={({ lancado, excluidoId }) => {
+            // Atualiza na hora (lista e total) e depois confere de novo com o banco.
+            setValesDoDia((atual) =>
+              atual && atual.vales
+                ? {
+                    ...atual,
+                    vales: [...atual.vales.filter((v) => v.id !== excluidoId && v.id !== lancado?.id), ...(lancado ? [lancado] : [])],
+                  }
+                : atual,
+            )
+            setVersaoVales((v) => v + 1)
+          }}
         />
       </Secao>
 

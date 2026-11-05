@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { CheckCircle2, ChevronDown, FileDown, FileText, History, Pencil } from 'lucide-react'
 import { buscarFechamentoPorId, excluirFechamento } from '../lib/fechamentoService'
-import { buscarIdRelatorioPorData } from '../lib/relatorioService'
+import { buscarRelatorioDoDia } from '../lib/relatorioService'
+import { listarValesDoDia } from '../lib/valeService'
+import { resumoSangrias } from '../lib/sangrias'
 import { listarAuditoria } from '../lib/auditoriaService'
 import { mudancasFechamento, ROTULO_OPERACAO_AUDITORIA } from '../lib/auditoria'
 import { formatarMoeda, STATUS_COLOR, STATUS_LABEL, totalMarmitas } from '../lib/calculations'
@@ -13,7 +15,7 @@ import { somarValores } from '../lib/vales'
 import { BotaoExcluir, CaixaErro } from '../components/Avisos'
 import BarrasHorizontais from '../components/graficos/BarrasHorizontais'
 import { formasDePagamento } from '../lib/relatorioResumo'
-import type { Fechamento, RegistroAuditoria } from '../types/fechamento'
+import type { Fechamento, RegistroAuditoria, Sangria, Vale } from '../types/fechamento'
 
 export default function FechamentoDetalhe() {
   const { id } = useParams<{ id: string }>()
@@ -28,6 +30,8 @@ export default function FechamentoDetalhe() {
   // Fechamento novo já baixa o recibo ao salvar: mostra a dica do papel junto.
   const [dica, setDica] = useState<string | null>(() => (estado?.pdfBaixado ? DICA_PAPEL_80MM : null))
   const [relatorioId, setRelatorioId] = useState<string | null | undefined>(undefined)
+  // Sangrias e vales do dia (ficam no relatório do dia e na tabela de vales).
+  const [doDia, setDoDia] = useState<{ sangrias: Sangria[]; vales: Vale[] } | null>(null)
   const [auditoria, setAuditoria] = useState<RegistroAuditoria[] | null>(null)
   const [verAuditoria, setVerAuditoria] = useState(false)
 
@@ -38,9 +42,14 @@ export default function FechamentoDetalhe() {
       .then((fech) => {
         if (!ativo) return
         setF(fech)
-        buscarIdRelatorioPorData(fech.data)
-          .then((r) => ativo && setRelatorioId(r))
-          .catch(() => ativo && setRelatorioId(null))
+        Promise.all([
+          buscarRelatorioDoDia(fech.data).catch(() => null),
+          listarValesDoDia(fech.data).catch(() => [] as Vale[]),
+        ]).then(([rel, vales]) => {
+          if (!ativo) return
+          setRelatorioId(rel?.id ?? null)
+          setDoDia({ sangrias: rel?.sangrias ?? [], vales })
+        })
       })
       .catch((e) => ativo && setErro(mensagemErro(e, 'Erro ao carregar o fechamento.')))
     return () => {
@@ -171,8 +180,12 @@ export default function FechamentoDetalhe() {
         <Linha label="Total LC" valor={f.resultado.totalLC} destaque />
       </Bloco>
 
+      {doDia && (doDia.sangrias.length > 0 || doDia.vales.length > 0) && (
+        <SangriasDoDia sangrias={doDia.sangrias} vales={doDia.vales} relatorioId={relatorioId ?? null} />
+      )}
+
       {f.sangrias.length > 0 && (
-        <Bloco titulo={`Sangrias · ${formatarMoeda(totalSangrias)}`}>
+        <Bloco titulo={`Sangrias lançadas no fechamento (antigas) · ${formatarMoeda(totalSangrias)}`}>
           {f.sangrias.map((s, i) => (
             <div key={s.id ?? i} className="flex justify-between gap-3 text-sm py-1">
               <span className="text-gray-600 dark:text-gray-300">{s.motivo || '—'}</span>
@@ -277,6 +290,56 @@ export default function FechamentoDetalhe() {
         />
       </div>
     </div>
+  )
+}
+
+/** Sangrias do relatório do dia por tipo, vales do dia e o PIX do patrão à parte. */
+function SangriasDoDia({ sangrias, vales, relatorioId }: { sangrias: Sangria[]; vales: Vale[]; relatorioId: string | null }) {
+  const r = resumoSangrias(sangrias, vales)
+  const grupos: { titulo: string; itens: { texto: string; valor: number }[] }[] = [
+    { titulo: 'Compras ($)', itens: r.compras.map((s) => ({ texto: s.motivo || '—', valor: s.valor })) },
+    { titulo: 'Pagamentos', itens: r.pagamentos.map((s) => ({ texto: s.motivo || '—', valor: s.valor })) },
+    { titulo: 'Vales', itens: vales.map((v) => ({ texto: v.funcionario + (v.observacao ? ` (${v.observacao})` : ''), valor: v.valor })) },
+  ].filter((g) => g.itens.length > 0)
+  return (
+    <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-2" aria-label="Sangrias e vales do dia">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Sangrias e vales do dia</h2>
+        {relatorioId && (
+          <Link to={`/relatorios/${relatorioId}`} className="text-xs font-medium text-gray-500 dark:text-gray-400 hover:underline">
+            ver no relatório
+          </Link>
+        )}
+      </div>
+      {grupos.map((g) => (
+        <div key={g.titulo}>
+          <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 pt-1">{g.titulo}</p>
+          {g.itens.map((i, idx) => (
+            <div key={idx} className="flex justify-between gap-3 text-sm py-0.5">
+              <span className="text-gray-600 dark:text-gray-300">{i.texto}</span>
+              <span className="tabular-nums text-gray-900 dark:text-gray-100">{formatarMoeda(i.valor)}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+      {grupos.length > 0 && (
+        <div className="flex justify-between gap-3 text-sm pt-2 border-t border-gray-100 dark:border-gray-800">
+          <span className="font-semibold text-gray-700 dark:text-gray-300">Total retirado do caixa</span>
+          <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatarMoeda(r.totalSangrias)}</span>
+        </div>
+      )}
+      {r.pix.length > 0 && (
+        <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-sm text-blue-900 dark:text-blue-200 space-y-0.5">
+          <p className="text-[11px] font-semibold">Compras no PIX do patrão (fora do total)</p>
+          {r.pix.map((s, idx) => (
+            <div key={idx} className="flex justify-between gap-3">
+              <span>{s.motivo || '—'}</span>
+              <span className="tabular-nums">{formatarMoeda(s.valor)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 

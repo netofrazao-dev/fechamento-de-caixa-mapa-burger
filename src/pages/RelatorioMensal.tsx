@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { AlertCircle, ChevronLeft, ChevronRight, FileDown, FileText, Share2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FileDown, FileText, Share2 } from 'lucide-react'
 import { listarFechamentos } from '../lib/fechamentoService'
 import { listarRelatorios } from '../lib/relatorioService'
 import { listarValesDoMes } from '../lib/valeService'
@@ -20,6 +20,8 @@ import BarrasHorizontais from '../components/graficos/BarrasHorizontais'
 import BarraResultados from '../components/graficos/BarraResultados'
 import AbasResumo from '../components/AbasResumo'
 import RetiradasCaixa from '../components/RetiradasCaixa'
+import PainelDiasSemFechamento from '../components/PainelDiasSemFechamento'
+import { listarDiasLojaFechada, semDiasFechados, type DiaLojaFechada } from '../lib/lojaFechadaService'
 import { retiradasDoPeriodo } from '../lib/sangrias'
 import { formasDePagamento, statusPorDiferenca } from '../lib/relatorioResumo'
 
@@ -50,6 +52,7 @@ interface DadosMes {
   relatorios: RelatorioDiario[]
   totalVales: number | null
   fechamentosAnterior: Fechamento[]
+  fechados: DiaLojaFechada[]
 }
 
 /** Selo de variação: verde quando é bom, vermelho quando é ruim, cinza sem base. */
@@ -91,9 +94,11 @@ export default function RelatorioMensal() {
         const ant = limitesDoMes(somarMeses(mes, -1))
         return listarFechamentos({ dataInicio: ant.inicio, dataFim: ant.fim }).catch(() => [] as Fechamento[])
       })(),
+      // Dias de loja fechada (folga, feriado): não contam como "sem fechamento".
+      listarDiasLojaFechada(inicio, fim).catch(() => [] as DiaLojaFechada[]),
     ])
-      .then(([fechamentos, relatorios, totalVales, fechamentosAnterior]) => {
-        if (ativo) setDados({ mes, fechamentos, relatorios, totalVales, fechamentosAnterior })
+      .then(([fechamentos, relatorios, totalVales, fechamentosAnterior, fechados]) => {
+        if (ativo) setDados({ mes, fechamentos, relatorios, totalVales, fechamentosAnterior, fechados })
       })
       .catch((e) => {
         if (ativo) setErro({ mes, mensagem: mensagemErro(e, 'Erro ao carregar o relatório do mês.') })
@@ -126,9 +131,12 @@ export default function RelatorioMensal() {
       faltou: linhas.filter((l) => l.diferencaFinalDia < -0.005),
       sobrou: linhas.filter((l) => l.diferencaFinalDia > 0.005).length,
       marmitas: vendasPorPrato.reduce((acc, [, q]) => acc + q, 0),
-      semFechamento: inicio <= ate ? datasEntre(inicio, ate).filter((d) => !comFechamento.has(d)) : [],
+      semFechamento: semDiasFechados(
+        inicio <= ate ? datasEntre(inicio, ate).filter((d) => !comFechamento.has(d)) : [],
+        atual?.fechados ?? [],
+      ),
     }
-  }, [linhas, vendasPorPrato, mes])
+  }, [linhas, vendasPorPrato, mes, atual])
 
   const nomeAnterior = nomeMes(somarMeses(mes, -1)).split(' de ')[0]
   const hoje = hojeLocal()
@@ -181,6 +189,7 @@ export default function RelatorioMensal() {
         linhas,
         vendasPorPrato,
         diasSemFechamento: resumo.semFechamento,
+        diasLojaFechada: (atual?.fechados ?? []).map((f) => f.data),
         totalVales: atual?.totalVales ?? null,
         retiradas,
       })
@@ -354,24 +363,12 @@ export default function RelatorioMensal() {
 
           {retiradas && <RetiradasCaixa retiradas={retiradas} periodo="mês" />}
 
-          {resumo.semFechamento.length > 0 && (
-            <section className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 space-y-2">
-              <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-900 dark:text-amber-200">
-                <AlertCircle size={15} /> {resumo.semFechamento.length} dia(s) sem fechamento em {rotuloMes(mes)}
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {resumo.semFechamento.map((d) => (
-                  <Link
-                    key={d}
-                    to={`/novo?data=${d}`}
-                    className="rounded-full bg-white/80 dark:bg-gray-900/60 px-2.5 py-1 text-xs font-medium text-amber-900 dark:text-amber-200"
-                  >
-                    {formatarDiaMes(d)}
-                  </Link>
-                ))}
-              </div>
-            </section>
-          )}
+          <PainelDiasSemFechamento
+            semFechamento={resumo.semFechamento}
+            fechados={atual.fechados}
+            contexto={`em ${rotuloMes(mes)}`}
+            onMudou={() => setTentativa((t) => t + 1)}
+          />
 
           {linhas.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500">Nenhum fechamento em {rotuloMes(mes)}.</p>}
 
