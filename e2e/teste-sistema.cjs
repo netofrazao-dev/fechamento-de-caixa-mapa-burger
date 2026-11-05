@@ -145,9 +145,11 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
 
   console.log('6. Relatório do dia: puxar do fechamento, salvar, duplicado')
   await page.goto(`${BASE}/relatorios/novo?data=${f.data}`)
-  await page.getByRole('button', { name: /Puxar abertura/ }).click()
-  await esperarTexto('Puxado do fechamento')
-  ok(await campo('Fechamento do caixa').inputValue() === '150,50', 'fechamento do caixa preenchido com 150,50')
+  // Abertura e fechamento do dinheiro vêm sozinhos do fechamento do dia (não se digita de novo).
+  await esperarTexto('Vem do fechamento do caixa deste dia')
+  const dinheiroDia = (await page.getByLabel('Dinheiro do caixa do dia').innerText()).replace(/\u00a0/g, ' ')
+  ok(/Fechamento\s*R\$ 150,50/.test(dinheiroDia) && /Abertura\s*R\$ 0,00/.test(dinheiroDia), 'relatório mostra abertura e fechamento do fechamento do dia')
+  ok(await page.getByRole('textbox', { name: 'Fechamento do caixa', exact: true }).count() === 0, 'relatório não pede de novo abertura/fechamento')
   await page.getByRole('button', { name: /^Sangrias/ }).click()
   // Pagamento sem motivo: não salva.
   await page.getByRole('button', { name: 'Adicionar pagamento' }).click()
@@ -216,6 +218,8 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   await secaoProdutos.getByRole('button', { name: /Ver desativados \(1\)/ }).waitFor()
   ok(db.produtos_estoque.find((p) => p.nome === 'Monster Azul').ativo === false, 'Monster Azul desativado')
   await page.goto(`${BASE}/relatorios/novo?data=2026-11-02`)
+  await esperarTexto('Ainda não há fechamento do caixa em 02/11/2026')
+  ok(await page.getByRole('link', { name: 'Fazer o fechamento do caixa' }).getAttribute('href') === '/novo?data=2026-11-02', 'dia sem fechamento: avisa e leva para fazer o fechamento')
   await page.getByRole('button', { name: /Estoque quente/ }).click()
   await page.getByLabel('Quantidade de Pepsi Lata').waitFor()
   ok(await page.getByLabel('Quantidade de Monster Azul').count() === 0, 'relatório novo: desativado não aparece, novo aparece')

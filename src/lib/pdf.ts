@@ -171,13 +171,19 @@ function escreverFechamento(r: ReciboTermico, f: Fechamento) {
   }
 }
 
-/** Escreve o bloco completo do relatório diário escrito no recibo. */
-function escreverRelatorio(r: ReciboTermico, rel: RelatorioDiario) {
+/**
+ * Escreve o bloco completo do relatório diário escrito no recibo.
+ * Abertura e fechamento do dinheiro já saem no bloco do fechamento do caixa;
+ * aqui só aparecem se o dia não tiver fechamento salvo (relatórios antigos).
+ */
+function escreverRelatorio(r: ReciboTermico, rel: RelatorioDiario, temFechamento: boolean) {
   r.linha('RELATORIO DIARIO', { negrito: true, centro: true })
   r.separador()
 
-  r.linhaValor('Abertura do caixa', rel.aberturaCaixa)
-  r.linhaValor('Fechamento do caixa', rel.fechamentoCaixa)
+  if (!temFechamento && (rel.aberturaCaixa || rel.fechamentoCaixa)) {
+    r.linhaValor('Abertura do caixa', rel.aberturaCaixa)
+    r.linhaValor('Fechamento do caixa', rel.fechamentoCaixa)
+  }
   r.linhaTexto('Vendidas', String(rel.quantidadeVendida))
   r.separador()
 
@@ -284,7 +290,7 @@ export function montarReciboDiaCompleto(params: { relatorio: RelatorioDiario; fe
     r.separador()
   }
 
-  escreverRelatorio(r, relatorio)
+  escreverRelatorio(r, relatorio, fechamentos.length > 0)
   return r.montar()
 }
 
@@ -1288,8 +1294,9 @@ export async function gerarPdfWhatsApp(params: {
   }
 
   const contagem: string[] = []
-  if (rel.aberturaCaixa || rel.fechamentoCaixa) {
-    contagem.push(`Dinheiro contado no relatório: abertura ${formatarMoeda(rel.aberturaCaixa)} · fechamento ${formatarMoeda(rel.fechamentoCaixa)}.`)
+  // Com fechamento do caixa no dia, abertura e fechamento já aparecem na conferência acima.
+  if (fechamentos.length === 0 && (rel.aberturaCaixa || rel.fechamentoCaixa)) {
+    contagem.push(`Dinheiro anotado no relatório: abertura ${formatarMoeda(rel.aberturaCaixa)} · fechamento ${formatarMoeda(rel.fechamentoCaixa)}.`)
   }
   if (rel.quantidadeVendida) contagem.push(`Quantidade vendida anotada no relatório: ${rel.quantidadeVendida}.`)
   if (contagem.length) {
