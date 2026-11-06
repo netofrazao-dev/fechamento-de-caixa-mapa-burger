@@ -161,8 +161,8 @@ function escreverFechamento(r: ReciboTermico, f: Fechamento) {
   r.espaco(1)
   r.linha(STATUS_LABEL[f.resultado.status], { negrito: true, centro: true, tamanho: 11 })
   r.separador()
+  // Impressão enxuta: só o total de marmitas (o detalhe por prato fica na tela e no PDF do WhatsApp).
   r.linhaTexto('Marmitas vendidas', String(totalMarmitas(f.marmitas)), { negrito: true })
-  f.marmitas.forEach((m) => r.linhaTexto(`  ${m.prato}`, String(m.quantidade)))
 
   if (f.observacoes) {
     r.separador()
@@ -172,31 +172,31 @@ function escreverFechamento(r: ReciboTermico, f: Fechamento) {
 }
 
 /**
- * Escreve o bloco completo do relatório diário escrito no recibo.
- * Abertura/fechamento do dinheiro e marmitas vendidas já saem no bloco do fechamento do caixa;
+ * Escreve o bloco do relatório diário no recibo, enxuto para a impressora:
+ * quem comeu na loja, consumo/cortesias e o TOTAL das sangrias (compras +
+ * pagamentos + vales). Não imprime o detalhe de cada sangria, o que estragou,
+ * o estoque nem as compras no PIX do patrão — isso fica na tela e no PDF do WhatsApp.
+ * Abertura/fechamento do dinheiro e marmitas já saem no bloco do fechamento do caixa;
  * aqui só aparecem se o dia não tiver fechamento salvo (relatórios antigos).
  */
 function escreverRelatorio(r: ReciboTermico, rel: RelatorioDiario, temFechamento: boolean, vales: ValeDaSangria[] = []) {
   r.linha('RELATORIO DIARIO', { negrito: true, centro: true })
   r.separador()
+  let escreveuAlgo = false
 
   if (!temFechamento && (rel.aberturaCaixa || rel.fechamentoCaixa || rel.quantidadeVendida)) {
     r.linhaValor('Abertura do caixa', rel.aberturaCaixa)
     r.linhaValor('Fechamento do caixa', rel.fechamentoCaixa)
     r.linhaTexto('Vendidas', String(rel.quantidadeVendida))
     r.separador()
-  }
-
-  if (rel.estragou.length > 0) {
-    r.linha('ESTRAGOU', { negrito: true })
-    rel.estragou.forEach((item) => r.paragrafo(`- ${item}`))
-    r.separador()
+    escreveuAlgo = true
   }
 
   if (rel.funcionariosQueComeram.length > 0) {
     r.linha('FUNCIONARIOS QUE COMERAM', { negrito: true })
     r.paragrafo(rel.funcionariosQueComeram.join(', '))
     r.separador()
+    escreveuAlgo = true
   }
 
   const listaConsumo = (titulo: string, itens: ConsumoItem[]) => {
@@ -204,40 +204,21 @@ function escreverRelatorio(r: ReciboTermico, rel: RelatorioDiario, temFechamento
     r.linha(titulo, { negrito: true })
     itens.forEach((it) => r.linhaTexto(`${it.pessoa} (${it.item})`, formatarMoeda(it.valor)))
     r.separador()
+    escreveuAlgo = true
   }
   listaConsumo('CONSUMO LOJA MENSAL', rel.consumoLojaMensal)
   listaConsumo('CONSUMO LOJA MOTOBOYS', rel.consumoLojaMotoboys)
   listaConsumo('CORTESIA CLIENTES', rel.cortesiaClientes)
 
+  // Sangrias: só o total que saiu do caixa (compras + pagamentos + vales).
   const rs = resumoSangrias(rel.sangrias, vales)
-  if (rs.compras.length + rs.pagamentos.length + rs.vales.length > 0) {
-    r.linha('SANGRIAS (saem do caixa)', { negrito: true })
-    const grupos: [string, Sangria[]][] = [
-      [infoTipoSangria('compra').rotuloRecibo, rs.compras],
-      [infoTipoSangria('pagamento').rotuloRecibo, rs.pagamentos],
-      ['Vales', rs.vales.map((v) => ({ valor: v.valor, motivo: v.funcionario + (v.observacao ? ` (${v.observacao})` : '') }))],
-    ]
-    for (const [rotulo, lista] of grupos) {
-      if (lista.length === 0) continue
-      r.linha(rotulo)
-      lista.forEach((s) => r.linhaTexto(`  ${s.motivo}`, formatarMoeda(s.valor)))
-    }
-    r.linhaTexto('Total de sangrias', formatarMoeda(rs.totalSangrias), { negrito: true })
+  if (rs.totalSangrias > 0) {
+    r.linhaTexto('SANGRIAS (total)', formatarMoeda(rs.totalSangrias), { negrito: true })
     r.separador()
-  }
-  if (rs.pix.length > 0) {
-    r.linha('PIX (nao sai do caixa)', { negrito: true })
-    rs.pix.forEach((s) => r.linhaTexto(`  ${s.motivo}`, formatarMoeda(s.valor)))
-    r.linhaValor('Total no PIX', rs.totalPix)
-    r.paragrafo('(fora do total de sangrias)')
-    r.separador()
+    escreveuAlgo = true
   }
 
-  const itensEstoque = rel.estoqueQuente.itens.filter((i) => i.quantidade > 0)
-  if (itensEstoque.length > 0) {
-    r.linha('ESTOQUE QUENTE', { negrito: true })
-    itensEstoque.forEach((i) => r.linhaTexto(i.produto, String(i.quantidade)))
-  }
+  if (!escreveuAlgo) r.paragrafo('(nada fora do normal)')
 }
 
 /**
@@ -261,8 +242,8 @@ export function gerarPdfFechamento(f: Fechamento): void {
 
 /**
  * Impressão combinada (80mm): fechamento(s) de caixa do dia
- * (manhã/noite, o que existir) + relatório diário completo,
- * tudo num único recibo, sem acentos.
+ * (manhã/noite, o que existir) + o essencial do relatório diário,
+ * tudo num único recibo curto, sem acentos.
  */
 export interface ParamsDiaCompleto {
   relatorio: RelatorioDiario
@@ -290,13 +271,6 @@ export function montarReciboDiaCompleto(params: ParamsDiaCompleto): jsPDF {
     escreverFechamento(r, f)
     r.espaco(2)
   })
-
-  const vendasPorPratoDia = agregarVendasPorPrato(fechamentos)
-  if (vendasPorPratoDia.length > 0) {
-    r.linha('VENDAS POR PRATO', { negrito: true })
-    vendasPorPratoDia.forEach(([prato, qtd]) => r.linhaTexto(prato, String(qtd)))
-    r.separador()
-  }
 
   escreverRelatorio(r, relatorio, fechamentos.length > 0, vales)
   return r.montar()
