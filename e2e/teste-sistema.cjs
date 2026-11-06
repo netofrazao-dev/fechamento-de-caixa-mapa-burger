@@ -227,6 +227,13 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   ok(/Total de sangrias \(saiu do caixa\)\s*R\$ 142,50/.test(totais) && /Pago no PIX \(não entra no total\)\s*R\$ 80,00/.test(totais),
     'tela: total de sangrias R$ 142,50 (compra + pagamento + vale); PIX R$ 80,00 à parte')
   await shot('15a-sangrias')
+  // Anexos: "Tirar foto" abre a câmera do celular; "Da galeria" escolhe uma imagem do aparelho.
+  await page.getByRole('button', { name: /^Anexos/ }).click()
+  ok(await page.getByLabel('Tirar foto para o Print 1').getAttribute('capture') === 'environment', 'anexo: botão "Tirar foto" abre a câmera de trás do celular')
+  const pngTransparente = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
+  await page.getByLabel('Escolher Print 1 da galeria').setInputFiles({ name: 'print.png', mimeType: 'image/png', buffer: pngTransparente })
+  await page.getByRole('button', { name: 'Remover Print 1' }).waitFor()
+  ok((await page.getByRole('img', { name: 'Print 1' }).getAttribute('src')).startsWith('data:image/jpeg'), 'anexo da galeria aparece na hora (comprimido em JPEG)')
   await page.getByRole('button', { name: 'Salvar', exact: true }).click()
   await page.getByText('Relatório salvo.').waitFor()
   ok(db.relatorios.length === 1 && db.relatorios[0].fechamento_caixa === 150.5, 'relatório gravado')
@@ -236,6 +243,8 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   const [pdfDia] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'PDF WhatsApp', exact: true }).click()])
   await pdfDia.saveAs(`${SHOTS}/dia.pdf`)
   const textoDia = require('child_process').execSync(`pdftotext -layout ${SHOTS}/dia.pdf -`).toString().replace(/\u00a0/g, ' ')
+  ok(db.relatorios[0].imagem1?.startsWith('data:image/jpeg') && /Pages:\s+3\b/.test(require('child_process').execSync(`pdfinfo ${SHOTS}/dia.pdf`).toString()),
+    'foto anexada salva no relatório e vira página extra no PDF do WhatsApp')
   ok(/RETIRADAS \(SANGRIAS\)/.test(textoDia) && textoDia.includes('R$ 142,50'), 'PDF do dia: card de retiradas R$ 142,50 (com o vale, sem o PIX)')
   ok(textoDia.includes('pagamento do gás') && textoDia.includes('Pagamentos') && textoDia.includes('Compras ($)') && /Vale\s+Neto\s+R\$ 100,00/.test(textoDia) &&
     /Total retirado do caixa\s+R\$ 142,50/.test(textoDia) && !/Vale\s+Pâmela/.test(textoDia),

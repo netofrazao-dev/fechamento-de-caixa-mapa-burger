@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { CheckCircle2, History, ImagePlus, Printer, X } from 'lucide-react'
+import { Camera, CheckCircle2, History, ImagePlus, Images, Printer, X } from 'lucide-react'
 import {
   atualizarRelatorio,
   buscarIdRelatorioPorData,
@@ -549,8 +549,8 @@ export default function RelatorioForm() {
 
       <Secao titulo="Anexos (PDF WhatsApp)" resumo={`${[imagem1, imagem2].filter(Boolean).length}/2 imagem(ns)`}>
         <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">
-          Os 2 prints que você manda por fora todo dia — entram como páginas extras só no PDF para WhatsApp. Ficam
-          salvos junto com o relatório, não precisa anexar de novo depois.
+          Os 2 prints ou fotos que você manda por fora todo dia: tire a foto na hora ou escolha da galeria. Entram como
+          páginas extras só no PDF para WhatsApp e ficam salvos junto com o relatório.
         </p>
         <div className="grid grid-cols-2 gap-3">
           <AnexoImagem valor={imagem1} onChange={setImagem1} label="Print 1" onErro={setErro} />
@@ -643,7 +643,9 @@ function comprimirImagem(dataUrl: string, larguraMaxima = 1400, qualidade = 0.82
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
-      const escala = Math.min(larguraMaxima / img.naturalWidth, 1)
+      // Limita a largura e também a altura (foto de celular em pé é bem alta).
+      const alturaMaxima = Math.round(larguraMaxima * 1.45)
+      const escala = Math.min(larguraMaxima / img.naturalWidth, alturaMaxima / img.naturalHeight, 1)
       const canvas = document.createElement('canvas')
       canvas.width = Math.round(img.naturalWidth * escala)
       canvas.height = Math.round(img.naturalHeight * escala)
@@ -717,21 +719,43 @@ function AnexoImagem({
     )
   }
 
+  const aoEscolher = (e: ChangeEvent<HTMLInputElement>) => {
+    selecionar(e.target.files?.[0])
+    e.target.value = '' // permite escolher a mesma foto de novo
+  }
+  const botao =
+    'flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-xs font-semibold cursor-pointer select-none has-[:disabled]:opacity-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-gray-400'
+
   return (
-    <label className="flex flex-col items-center justify-center gap-1 aspect-square rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-pointer">
-      <ImagePlus size={20} />
-      <span className="text-xs">{carregando ? 'Carregando...' : label}</span>
-      <input
-        type="file"
-        accept="image/*"
-        className="sr-only"
-        disabled={carregando}
-        onChange={(e) => {
-          selecionar(e.target.files?.[0])
-          e.target.value = ''
-        }}
-      />
-    </label>
+    <div className="flex flex-col justify-center gap-2 aspect-square rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-2.5">
+      <p className="flex items-center justify-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+        <ImagePlus size={14} /> {carregando ? 'Preparando a foto...' : label}
+      </p>
+      {/* No celular, "capture" abre a câmera direto (câmera de trás). */}
+      <label className={`${botao} bg-gray-900 dark:bg-gray-700 text-white`}>
+        <Camera size={15} /> Tirar foto
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="sr-only"
+          disabled={carregando}
+          aria-label={`Tirar foto para o ${label}`}
+          onChange={aoEscolher}
+        />
+      </label>
+      <label className={`${botao} bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300`}>
+        <Images size={15} /> Da galeria
+        <input
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          disabled={carregando}
+          aria-label={`Escolher ${label} da galeria`}
+          onChange={aoEscolher}
+        />
+      </label>
+    </div>
   )
 }
 
