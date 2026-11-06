@@ -40,8 +40,9 @@ describe('recibo térmico', () => {
     const linhas = textoDoPdf(doc.output())
     linhas.forEach((l) => expect(l.length).toBeLessThanOrEqual(COLUNAS_RECIBO))
     expect(linhas).toContain('PIX' + ' '.repeat(COLUNAS_RECIBO - 3 - 'R$ 392,00'.length) + 'R$ 392,00')
-    expect(linhas.find((l) => l.includes('iscas de peixe'))).toMatch(/^ {2}iscas de peixe +8$/)
+    // Impressão enxuta: só o total de marmitas, sem a lista de pratos.
     expect(linhas.find((l) => l.startsWith('Marmitas vendidas'))).toMatch(/^Marmitas vendidas +41$/)
+    expect(linhas.some((l) => l.includes('iscas de peixe') || l.includes('parmegiana'))).toBe(false)
     expect(linhas.find((l) => l.startsWith('DIFERENCA FINAL'))).toMatch(/^DIFERENCA FINAL +R\$ 1,00$/)
     expect(linhas.find((l) => l.trim() === 'MAPA BURGER')?.startsWith(' ')).toBe(true) // centralizado com espaços
     expect(linhas).toContain('-'.repeat(COLUNAS_RECIBO)) // separador aparece como texto
@@ -63,21 +64,15 @@ describe('recibo térmico', () => {
     const doc = montarReciboDiaCompleto({ relatorio: rel, fechamentos: [fechamentoDaFoto()], vales: [{ funcionario: 'Neto', valor: 100, observacao: '' }] })
     expect(doc.getNumberOfPages()).toBe(1)
     const linhas = textoDoPdf(doc.output())
-    expect(linhas.find((l) => l.includes('pagamento do gas'))).toMatch(/^ {2}pagamento do gas +R\$ 30,00$/)
-    // Compras e pagamentos somam no total; o PIX fica separado, fora do total.
-    const i = linhas.indexOf('SANGRIAS (saem do caixa)')
-    const j = linhas.indexOf('PIX (nao sai do caixa)')
-    expect(i).toBeGreaterThan(-1)
-    expect(j).toBeGreaterThan(i)
-    // Vale é sangria: entra no grupo Vales e no total (12,50 + 30 + 100 = 142,50).
-    expect(linhas.slice(i, j)).toContain('Vales')
-    expect(linhas.slice(i, j).find((l) => l.includes('Neto'))).toMatch(/^ {2}Neto +R\$ 100,00$/)
-    expect(linhas.slice(i, j).find((l) => l.startsWith('Total de sangrias'))).toMatch(/R\$ 142,50$/)
-    expect(linhas.slice(i, j).some((l) => l.includes('carne'))).toBe(false)
-    expect(linhas.slice(j).find((l) => l.includes('carne no acougue'))).toMatch(/R\$ 80,00$/)
-    expect(linhas.slice(j).find((l) => l.startsWith('Total no PIX'))).toMatch(/R\$ 80,00$/)
+    const tudo = linhas.join('\n')
+    // Sangrias: só o total que saiu do caixa (compras 12,50 + pagamentos 30 + vale 100), sem o detalhe.
+    expect(linhas.find((l) => l.startsWith('SANGRIAS (total)'))).toMatch(/^SANGRIAS \(total\) +R\$ 142,50$/)
+    expect(tudo).not.toMatch(/pagamento do gas|Neto +R\$ 100,00/)
+    // Não imprime: o que estragou, o estoque, as compras no PIX do patrão nem a lista de pratos.
+    expect(tudo).not.toMatch(/ESTRAGOU|2 paes|ESTOQUE|Coca 2L|PIX \(nao sai|carne no acougue|VENDAS POR PRATO|iscas de peixe/)
+    // Continua: quem comeu e o consumo.
+    expect(tudo).toContain('FUNCIONARIOS QUE COMERAM')
     expect(linhas.find((l) => l.startsWith('Pamela (Coca lata)'))).toMatch(/ +R\$ 6,00$/)
-    expect(linhas.find((l) => l.startsWith('Coca 2L'))).toMatch(/^Coca 2L +4$/)
     // Abertura e fechamento do dinheiro saem uma vez só (no bloco do fechamento), sem repetir no relatório.
     expect(linhas.filter((l) => l.startsWith('Dinheiro abertura'))).toHaveLength(1)
     expect(linhas.some((l) => l.startsWith('Abertura do caixa') || l.startsWith('Fechamento do caixa') || l.startsWith('Vendidas'))).toBe(false)
@@ -87,5 +82,31 @@ describe('recibo térmico', () => {
     const semFechamento = textoDoPdf(montarReciboDiaCompleto({ relatorio: rel, fechamentos: [] }).output())
     expect(semFechamento.find((l) => l.startsWith('Abertura do caixa'))).toMatch(/R\$ 522,00$/)
     expect(semFechamento.find((l) => l.startsWith('Vendidas'))).toMatch(/ 41$/)
+  })
+
+  it('dia completo fica curto: menos da metade da altura de antes com os mesmos dados', () => {
+    const rel = {
+      id: 'r', data: '2026-11-03', createdAt: '', updatedAt: '', aberturaCaixa: 0, fechamentoCaixa: 0, quantidadeVendida: 0,
+      estragou: ['2 pães', '400g de arroz', '1 alface'], funcionariosQueComeram: [],
+      consumoLojaMensal: [], consumoLojaMotoboys: [], cortesiaClientes: [],
+      sangrias: Array.from({ length: 6 }, (_, i) => ({ valor: 10 + i, motivo: `compra ${i}`, tipo: i % 3 === 2 ? 'pix' : 'compra' })),
+      estoqueQuente: { itens: Array.from({ length: 12 }, (_, i) => ({ produto: `Bebida ${i}`, quantidade: i + 1 })) },
+      imagem1: null, imagem2: null,
+    } as unknown as RelatorioDiario
+    const doc = montarReciboDiaCompleto({ relatorio: rel, fechamentos: [fechamentoDaFoto()] })
+    // fechamento (com observação) + total de sangrias; antes passava de 300 mm com pratos, sangrias, estoque...
+    expect(doc.internal.pageSize.getHeight()).toBeLessThan(220)
+    const linhas = textoDoPdf(doc.output())
+    expect(linhas.find((l) => l.startsWith('SANGRIAS (total)'))).toMatch(/R\$ 48,00$/) // 10+11+13+14 (sem os PIX: 12 e 15)
+  })
+
+  it('relatório sem nada fora do normal avisa em vez de sair vazio', () => {
+    const rel = {
+      id: 'r', data: '2026-11-03', createdAt: '', updatedAt: '', aberturaCaixa: 0, fechamentoCaixa: 0, quantidadeVendida: 0,
+      estragou: [], funcionariosQueComeram: [], consumoLojaMensal: [], consumoLojaMotoboys: [], cortesiaClientes: [],
+      sangrias: [], estoqueQuente: { itens: [] }, imagem1: null, imagem2: null,
+    } as unknown as RelatorioDiario
+    const linhas = textoDoPdf(montarReciboDiaCompleto({ relatorio: rel, fechamentos: [fechamentoDaFoto()] }).output())
+    expect(linhas).toContain('(nada fora do normal)')
   })
 })
