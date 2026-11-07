@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { CheckCircle2, ChevronDown, FileDown, FileText, History, Pencil } from 'lucide-react'
 import { buscarFechamentoPorId, excluirFechamento } from '../lib/fechamentoService'
@@ -10,6 +10,7 @@ import { mudancasFechamento, ROTULO_OPERACAO_AUDITORIA } from '../lib/auditoria'
 import { formatarMoeda, STATUS_COLOR, STATUS_LABEL, totalMarmitas } from '../lib/calculations'
 import { carregarPdf, DICA_PAPEL_80MM } from '../lib/pdfSobDemanda'
 import { mensagemErro } from '../lib/erros'
+import { useAtualizacaoAutomatica, veioDaAtualizacao } from '../lib/useAtualizarAoVoltar'
 import { diaDaSemana, formatarDataBr, formatarDataHora } from '../lib/datas'
 import { somarValores } from '../lib/vales'
 import { BotaoExcluir, CaixaErro } from '../components/Avisos'
@@ -34,28 +35,35 @@ export default function FechamentoDetalhe() {
   const [doDia, setDoDia] = useState<{ sangrias: Sangria[]; vales: Vale[] } | null>(null)
   const [auditoria, setAuditoria] = useState<RegistroAuditoria[] | null>(null)
   const [verAuditoria, setVerAuditoria] = useState(false)
+  // Atualiza sozinho ao voltar para a tela (pode ter sido alterado no outro aparelho).
+  const versaoAuto = useAtualizacaoAutomatica()
+  const vistaAuto = useRef(versaoAuto)
 
   useEffect(() => {
     if (!id) return
     let ativo = true
+    // Atualização automática que falhar não mexe na tela.
+    const automatica = veioDaAtualizacao(vistaAuto, versaoAuto)
     buscarFechamentoPorId(id)
       .then((fech) => {
         if (!ativo) return
         setF(fech)
         Promise.all([
-          buscarRelatorioDoDia(fech.data).catch(() => null),
-          listarValesDoDia(fech.data).catch(() => [] as Vale[]),
-        ]).then(([rel, vales]) => {
-          if (!ativo) return
-          setRelatorioId(rel?.id ?? null)
-          setDoDia({ sangrias: rel?.sangrias ?? [], vales })
-        })
+          automatica ? buscarRelatorioDoDia(fech.data) : buscarRelatorioDoDia(fech.data).catch(() => null),
+          automatica ? listarValesDoDia(fech.data) : listarValesDoDia(fech.data).catch(() => [] as Vale[]),
+        ])
+          .then(([rel, vales]) => {
+            if (!ativo) return
+            setRelatorioId(rel?.id ?? null)
+            setDoDia({ sangrias: rel?.sangrias ?? [], vales })
+          })
+          .catch(() => undefined)
       })
-      .catch((e) => ativo && setErro(mensagemErro(e, 'Erro ao carregar o fechamento.')))
+      .catch((e) => ativo && !automatica && setErro(mensagemErro(e, 'Erro ao carregar o fechamento.')))
     return () => {
       ativo = false
     }
-  }, [id])
+  }, [id, versaoAuto])
 
   useEffect(() => {
     if (!verAuditoria || !id || auditoria) return

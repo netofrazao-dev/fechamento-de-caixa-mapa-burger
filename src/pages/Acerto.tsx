@@ -22,6 +22,7 @@ import { atribuirConsumo, buscarAcerto, fecharAcerto, reabrirAcerto } from '../l
 import { calcularAcerto, divergenciasAcerto, gerarCsvAcerto, type ConsumoDoMes, type LinhaAcerto } from '../lib/acerto'
 import { formatarMoeda } from '../lib/calculations'
 import { mensagemErro } from '../lib/erros'
+import { useAtualizarAoVoltar } from '../lib/useAtualizarAoVoltar'
 import { carregarPdf } from '../lib/pdfSobDemanda'
 import { baixarArquivo, podeCompartilharArquivos } from '../lib/arquivos'
 import { mesValido, nomeMes, rotuloMes, somarMeses } from '../lib/vales'
@@ -130,7 +131,8 @@ export default function Acerto() {
   const [ocupado, setOcupado] = useState(false)
   const ultima = useRef(0)
 
-  const carregar = useCallback(async (alvo: string) => {
+  /** automatica = atualização ao voltar para a tela: se falhar, a tela fica como estava. */
+  const carregar = useCallback(async (alvo: string, automatica = false) => {
     const minha = ++ultima.current
     const { inicio, fim } = limitesDoMes(alvo)
     try {
@@ -145,13 +147,16 @@ export default function Acerto() {
         setErro(null)
       }
     } catch (e) {
-      if (minha === ultima.current) setErro({ mes: alvo, mensagem: mensagemErro(e, 'Erro ao carregar o acerto.') })
+      if (minha === ultima.current && !automatica) setErro({ mes: alvo, mensagem: mensagemErro(e, 'Erro ao carregar o acerto.') })
     }
   }, [])
 
   useEffect(() => {
     carregar(mes)
   }, [mes, carregar])
+
+  // Vales e consumo lançados no outro aparelho aparecem ao voltar para a tela.
+  useAtualizarAoVoltar(() => carregar(mes, true), 300_000)
 
   const atual = dados?.mes === mes ? dados : null
   const erroAtual = erro?.mes === mes ? erro.mensagem : null

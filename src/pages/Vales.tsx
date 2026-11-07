@@ -28,6 +28,7 @@ import {
 import { formatarMoeda } from '../lib/calculations'
 import type { GrupoValesPdf } from '../lib/pdf'
 import { carregarPdf } from '../lib/pdfSobDemanda'
+import { useAtualizarAoVoltar } from '../lib/useAtualizarAoVoltar'
 import { baixarArquivo } from '../lib/arquivos'
 import AbasPessoal from '../components/AbasPessoal'
 import BarrasHorizontais from '../components/graficos/BarrasHorizontais'
@@ -105,16 +106,19 @@ export default function Vales() {
   // quando a pessoa troca de mês rápido ou uma resposta chega atrasada).
   const ultimaBusca = useRef(0)
 
-  const carregar = useCallback(async (mesAlvo: string) => {
+  /** automatica = atualização ao voltar para a tela: se falhar, a tela fica como estava. */
+  const carregar = useCallback(async (mesAlvo: string, automatica = false) => {
     const minhaBusca = ++ultimaBusca.current
-    setCarregando(true)
-    setErro(null)
+    if (!automatica) {
+      setCarregando(true)
+      setErro(null)
+    }
     try {
       const [vales, fechamento] = await Promise.all([listarValesDoMes(mesAlvo), buscarFechamentoDoMes(mesAlvo)])
       if (minhaBusca !== ultimaBusca.current) return
       setDados({ mes: mesAlvo, vales, fechamento })
     } catch (e) {
-      if (minhaBusca !== ultimaBusca.current) return
+      if (minhaBusca !== ultimaBusca.current || automatica) return
       setDados(null) // nunca deixa na tela dados de outro mês
       setErro(mensagemDeErro(e, 'Erro ao carregar vales.'))
     } finally {
@@ -135,6 +139,9 @@ export default function Vales() {
   useEffect(() => {
     carregar(mes)
   }, [mes, carregar])
+
+  // Vale lançado no outro aparelho (ex.: pelo relatório no PC) aparece ao voltar para a tela.
+  useAtualizarAoVoltar(() => carregar(mes, true), 300_000)
 
   useEffect(() => {
     if (mostrarHistorico) carregarHistorico(mes)

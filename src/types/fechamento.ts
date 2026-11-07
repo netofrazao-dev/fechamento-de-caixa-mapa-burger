@@ -81,6 +81,8 @@ export interface Fechamento {
   data: string // YYYY-MM-DD
   turno: Turno
   createdAt: string
+  /** Muda a cada gravação (serve para saber se outro aparelho salvou no meio). */
+  updatedAt?: string
 
   lc: DadosLC
   brendi: DadosBrendi

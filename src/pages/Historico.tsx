@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { FileText, Plus, Search } from 'lucide-react'
 import { listarFechamentos } from '../lib/fechamentoService'
 import { listarRelatorios } from '../lib/relatorioService'
 import { formatarMoeda, STATUS_COLOR, STATUS_LABEL } from '../lib/calculations'
 import { mensagemErro } from '../lib/erros'
+import { useAtualizacaoAutomatica, veioDaAtualizacao } from '../lib/useAtualizarAoVoltar'
 import { somarValores, dataValida } from '../lib/vales'
 import { CaixaErro } from '../components/Avisos'
 import GraficoVendasDia from '../components/GraficoVendasDia'
@@ -58,6 +59,9 @@ export default function Historico() {
   const [erro, setErro] = useState<{ chave: string; mensagem: string } | null>(null)
   // Muda quando a pessoa toca em "Tentar de novo" (busca outra vez).
   const [tentativa, setTentativa] = useState(0)
+  // Atualiza sozinho ao voltar para a tela (o que foi feito no outro aparelho aparece).
+  const versaoAuto = useAtualizacaoAutomatica()
+  const vistaAuto = useRef(versaoAuto)
   const chave = `${dataInicio}|${dataFim}`
 
   // Busca por palavra (fica no endereço, então volta junto ao navegar).
@@ -85,27 +89,29 @@ export default function Historico() {
     return () => {
       ativo = false
     }
-  }, [buscaAtiva, dataInicio, dataFim, tentativa])
+  }, [buscaAtiva, dataInicio, dataFim, tentativa, versaoAuto])
 
   useEffect(() => {
     if (periodoInvalido) return
     let ativo = true
+    // Atualização automática que falhar não mexe na tela.
+    const automatica = veioDaAtualizacao(vistaAuto, versaoAuto)
     Promise.all([
       listarFechamentos({ dataInicio, dataFim }),
       listarRelatorios({ dataInicio, dataFim }),
       // Dias de loja fechada são um extra: se falhar, a tela continua.
-      listarDiasLojaFechada(dataInicio, dataFim).catch(() => [] as DiaLojaFechada[]),
+      automatica ? listarDiasLojaFechada(dataInicio, dataFim) : listarDiasLojaFechada(dataInicio, dataFim).catch(() => [] as DiaLojaFechada[]),
     ])
       .then(([fechamentos, relatorios, fechados]) => {
         if (ativo) setDados({ chave: `${dataInicio}|${dataFim}`, fechamentos, relatorios, fechados })
       })
       .catch((e) => {
-        if (ativo) setErro({ chave: `${dataInicio}|${dataFim}`, mensagem: mensagemErro(e, 'Erro ao carregar o histórico.') })
+        if (ativo && !automatica) setErro({ chave: `${dataInicio}|${dataFim}`, mensagem: mensagemErro(e, 'Erro ao carregar o histórico.') })
       })
     return () => {
       ativo = false
     }
-  }, [dataInicio, dataFim, periodoInvalido, tentativa])
+  }, [dataInicio, dataFim, periodoInvalido, tentativa, versaoAuto])
 
   const atual = dados?.chave === chave ? dados : null
   const erroAtual = erro?.chave === chave ? erro.mensagem : null

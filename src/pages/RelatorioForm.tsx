@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Camera, CheckCircle2, History, ImagePlus, Images, Printer, X } from 'lucide-react'
+import { Camera, CheckCircle2, ImagePlus, Images, Info, Loader2, Printer, X } from 'lucide-react'
 import {
-  atualizarRelatorio,
+  adaptadorRelatorio,
   buscarIdRelatorioPorData,
-  buscarRelatorioPorId,
-  criarRelatorio,
+  buscarRegistroRelatorio,
   excluirRelatorio,
 } from '../lib/relatorioService'
 import { listarFechamentos } from '../lib/fechamentoService'
@@ -18,8 +17,14 @@ import { listarFuncionarios } from '../lib/funcionarioService'
 import { buscarAcerto } from '../lib/acertoService'
 import { listarValesDoDia } from '../lib/valeService'
 import type { Funcionario } from '../types/fechamento'
-import { formatarHoraRascunho } from '../lib/draft'
-import { useRascunho } from '../lib/useRascunho'
+import { useSincronia } from '../lib/useSincronia'
+import { useAtualizarAoVoltar } from '../lib/useAtualizarAoVoltar'
+import { levarParaOutroDia, type RegistroBanco } from '../lib/sincronia'
+import { localNavegador } from '../lib/sincroniaSupabase'
+import { chaveRelatorioDoDia, DOC_RELATORIO } from '../lib/documentos'
+import { legadoRelatorio } from '../lib/rascunhosLegados'
+import { ehReferenciaFoto, type ConteudoRelatorio } from '../lib/mesclagem'
+import { AvisosSincronia, LinhaSincronia } from '../components/StatusSincronia'
 import Secao from '../components/Secao'
 import SeletorFuncionarios from '../components/SeletorFuncionarios'
 import ListaLivre from '../components/ListaLivre'
@@ -32,21 +37,8 @@ import { diaDaSemana, formatarDataBr, hojeLocal as hoje } from '../lib/datas'
 
 const ESTOQUE_VAZIO: EstoqueSnapshot = { itens: [] }
 
-interface RascunhoRelatorio {
-  data: string
-  aberturaCaixa: number
-  fechamentoCaixa: number
-  quantidadeVendida: number
-  estragou: string[]
-  funcionariosQueComeram: string[]
-  consumoLojaMensal: ConsumoItem[]
-  consumoLojaMotoboys: ConsumoItem[]
-  cortesiaClientes: ConsumoItem[]
-  sangrias: Sangria[]
-  estoqueQuente: EstoqueSnapshot
-  imagem1: string | null
-  imagem2: string | null
-}
+/** Foto pronta para o PDF (a que ainda está chegando do outro aparelho fica de fora). */
+const fotoParaPdf = (v: string | null) => (v && !ehReferenciaFoto(v) ? v : null)
 
 export default function RelatorioForm() {
   const { id } = useParams<{ id: string }>()
@@ -55,15 +47,11 @@ export default function RelatorioForm() {
   const location = useLocation()
   const editando = Boolean(id)
 
+  // Relatório novo: o dia vem do link (ou é hoje). Cada dia tem um rascunho só, o mesmo no PC e no celular.
   const dataUrl = searchParams.get('data')
-  // Relatório novo aberto pelo link de outro dia: rascunho próprio daquele dia (não mistura com o de hoje).
-  const dataDoLink = !id && dataUrl && dataValida(dataUrl) && dataUrl !== hoje() ? dataUrl : null
-  const chaveRascunho = id
-    ? `mapa-burger-rascunho-relatorio-${id}`
-    : dataDoLink
-      ? `mapa-burger-rascunho-relatorio-novo-${dataDoLink}`
-      : 'mapa-burger-rascunho-relatorio-novo'
-  const [data, setData] = useState(dataUrl && dataValida(dataUrl) ? dataUrl : hoje())
+  const diaDoLink = dataUrl && dataValida(dataUrl) ? dataUrl : hoje()
+
+  const [data, setData] = useState(diaDoLink)
   const [aberturaCaixa, setAberturaCaixa] = useState(0)
   const [fechamentoCaixa, setFechamentoCaixa] = useState(0)
   const [quantidadeVendida, setQuantidadeVendida] = useState(0)
@@ -77,17 +65,30 @@ export default function RelatorioForm() {
   const [imagem1, setImagem1] = useState<string | null>(null)
   const [imagem2, setImagem2] = useState<string | null>(null)
 
+  // Edição: busca o relatório salvo primeiro (para saber de que dia ele é).
+  const [registro, setRegistro] = useState<RegistroBanco<ConteudoRelatorio> | null>(null)
   const [carregando, setCarregando] = useState(editando)
   const [erroCarregar, setErroCarregar] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [processando, setProcessando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-  const [duplicadoId, setDuplicadoId] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const salvandoRef = useRef(false)
   const alertasRef = useRef<HTMLDivElement>(null)
   const [funcionarios, setFuncionarios] = useState<Funcionario[] | undefined>(undefined)
   const [acertoFechado, setAcertoFechado] = useState<{ mes: string; fechado: boolean } | null>(null)
+
+  useEffect(() => {
+    if (!id) return
+    let ativo = true
+    buscarRegistroRelatorio(id)
+      .then((r) => ativo && setRegistro(r))
+      .catch((e) => ativo && setErroCarregar(mensagemErro(e, 'Erro ao carregar o relatório.')))
+      .finally(() => ativo && setCarregando(false))
+    return () => {
+      ativo = false
+    }
+  }, [id])
 
   useEffect(() => {
     listarFuncionarios({ incluirInativos: true })
@@ -108,20 +109,69 @@ export default function RelatorioForm() {
   }, [mesDoRelatorio])
   const consumoTravado = acertoFechado?.mes === mesDoRelatorio && acertoFechado?.fechado === true
 
+  // Sincronia com o outro aparelho (rascunho do dia na nuvem + relatório salvo).
+  const dataDocumento = editando ? (registro?.data ?? null) : diaDoLink
+  const conteudo: ConteudoRelatorio = {
+    data,
+    aberturaCaixa,
+    fechamentoCaixa,
+    quantidadeVendida,
+    estragou,
+    funcionariosQueComeram,
+    consumoLojaMensal,
+    consumoLojaMotoboys,
+    cortesiaClientes,
+    sangrias,
+    estoqueQuente,
+    imagem1,
+    imagem2,
+  }
+  const aplicar = useCallback((c: ConteudoRelatorio) => {
+    setData(c.data)
+    setAberturaCaixa(c.aberturaCaixa)
+    setFechamentoCaixa(c.fechamentoCaixa)
+    setQuantidadeVendida(c.quantidadeVendida)
+    setEstragou(c.estragou)
+    setFuncionariosQueComeram(c.funcionariosQueComeram)
+    setConsumoLojaMensal(c.consumoLojaMensal)
+    setConsumoLojaMotoboys(c.consumoLojaMotoboys)
+    setCortesiaClientes(c.cortesiaClientes)
+    setSangrias(c.sangrias)
+    setEstoqueQuente(c.estoqueQuente)
+    setImagem1(c.imagem1)
+    setImagem2(c.imagem2)
+  }, [])
+  const sinc = useSincronia<ConteudoRelatorio>({
+    chave: dataDocumento && !erroCarregar ? chaveRelatorioDoDia(dataDocumento) : null,
+    dataDocumento: dataDocumento ?? diaDoLink,
+    tipo: DOC_RELATORIO,
+    // Acerto do mês fechado: o consumo de funcionários não é regravado.
+    banco: adaptadorRelatorio({ manterConsumoFuncionarios: consumoTravado }),
+    conteudo,
+    aplicar,
+    registro: editando ? registro : undefined,
+    legado: () => legadoRelatorio(id, dataDocumento ?? diaDoLink),
+  })
+  const idRegistro = id ?? sinc.estado.banco?.id ?? null
+  const jaSalvo = Boolean(sinc.estado.banco)
+
   // Abertura e fechamento do dinheiro e marmitas vendidas vêm do fechamento do caixa do mesmo dia
   // (não se digita de novo aqui).
   // undefined = buscando; null = não há fechamento salvo nesse dia.
   const [fechamentoDoDia, setFechamentoDoDia] = useState<{ data: string; f: Fechamento | null; erro?: boolean } | undefined>(undefined)
+  // Muda para buscar de novo (ao voltar para a tela e de tempos em tempos: o fechamento pode ser feito no outro aparelho).
+  const [versaoDia, setVersaoDia] = useState(0)
+  useAtualizarAoVoltar(() => setVersaoDia((v) => v + 1), 20_000)
   useEffect(() => {
     if (!dataValida(data)) return
     let ativo = true
     listarFechamentos({ dataInicio: data, dataFim: data })
       .then((lista) => ativo && setFechamentoDoDia({ data, f: lista.find((x) => x.turno === 'manha') ?? lista[0] ?? null }))
-      .catch(() => ativo && setFechamentoDoDia({ data, f: null, erro: true }))
+      .catch(() => ativo && setFechamentoDoDia((atual) => (atual?.data === data && atual.f ? atual : { data, f: null, erro: true })))
     return () => {
       ativo = false
     }
-  }, [data])
+  }, [data, versaoDia])
   const fechamentoAtual = fechamentoDoDia?.data === data ? fechamentoDoDia : undefined
   const fDia = fechamentoAtual?.f ?? null
   // Com fechamento no dia, vale o dele. Sem fechamento, fica o que já estava salvo no relatório (relatórios antigos).
@@ -131,21 +181,20 @@ export default function RelatorioForm() {
   // Marmitas vendidas também vêm do fechamento (o contador de pratos de lá).
   const marmitasDoDia = fDia ? totalMarmitas(fDia.marmitas) : quantidadeVendida
 
-  // Relatório novo: já existe um nesta data? Avisa logo, antes de preencher tudo.
-  const [existenteNaData, setExistenteNaData] = useState<{ data: string; id: string | null } | null>(null)
+  // Edição com a data trocada: já existe outro relatório nesse dia? Avisa antes de salvar.
+  const [outroNaData, setOutroNaData] = useState<{ data: string; id: string | null } | null>(null)
+  const dataMudou = editando && Boolean(registro) && data !== registro?.data
   useEffect(() => {
-    if (editando || !dataValida(data)) return
+    if (!dataMudou || !dataValida(data)) return
     let ativo = true
-    buscarIdRelatorioPorData(data)
-      .then((idExistente) => ativo && setExistenteNaData({ data, id: idExistente }))
-      .catch(() => {
-        // sem internet: a conferência acontece de novo na hora de salvar
-      })
+    buscarIdRelatorioPorData(data, id)
+      .then((outro) => ativo && setOutroNaData({ data, id: outro }))
+      .catch(() => undefined)
     return () => {
       ativo = false
     }
-  }, [data, editando])
-  const jaExisteId = existenteNaData?.data === data ? existenteNaData.id : null
+  }, [data, dataMudou, id])
+  const outroId = dataMudou && outroNaData?.data === data ? outroNaData.id : null
 
   // Vales do dia: são sangrias (saem do caixa) e ficam na tabela de vales (acerto do mês).
   const [valesDoDia, setValesDoDia] = useState<{ data: string; vales: Vale[] | null; erro?: string } | undefined>(undefined)
@@ -155,111 +204,63 @@ export default function RelatorioForm() {
     let ativo = true
     listarValesDoDia(data)
       .then((vales) => ativo && setValesDoDia({ data, vales }))
-      .catch((e) => ativo && setValesDoDia({ data, vales: [], erro: mensagemErro(e, 'Não consegui carregar os vales do dia.') }))
+      .catch((e) =>
+        ativo &&
+        setValesDoDia((atual) =>
+          atual?.data === data && atual.vales?.length ? atual : { data, vales: [], erro: mensagemErro(e, 'Não consegui carregar os vales do dia.') },
+        ),
+      )
     return () => {
       ativo = false
     }
-  }, [data, versaoVales])
+  }, [data, versaoVales, versaoDia])
   const valesAtuais = valesDoDia?.data === data ? valesDoDia : undefined
 
   /** Vales do dia na hora de gerar PDF/impressão (busca de novo para não perder nenhum). */
-  async function valesParaPdf(): Promise<Vale[]> {
+  async function valesParaPdf(dia: string): Promise<Vale[]> {
     try {
-      return await listarValesDoDia(data)
+      return await listarValesDoDia(dia)
     } catch {
       return valesAtuais?.vales ?? []
     }
   }
 
-  function aplicarRelatorio(r: Awaited<ReturnType<typeof buscarRelatorioPorId>>) {
-    setData(r.data)
-    setAberturaCaixa(r.aberturaCaixa)
-    setFechamentoCaixa(r.fechamentoCaixa)
-    setQuantidadeVendida(r.quantidadeVendida)
-    setEstragou(r.estragou)
-    setFuncionariosQueComeram(r.funcionariosQueComeram)
-    setConsumoLojaMensal(r.consumoLojaMensal)
-    setConsumoLojaMotoboys(r.consumoLojaMotoboys)
-    setCortesiaClientes(r.cortesiaClientes)
-    setSangrias(r.sangrias)
-    setEstoqueQuente(r.estoqueQuente)
-    setImagem1(r.imagem1 ?? null)
-    setImagem2(r.imagem2 ?? null)
-  }
-
-  useEffect(() => {
-    if (!id) return
-    buscarRelatorioPorId(id)
-      .then(aplicarRelatorio)
-      .catch((e) => setErroCarregar(mensagemErro(e, 'Erro ao carregar o relatório.')))
-      .finally(() => setCarregando(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
-
-  function payload() {
+  /** Valores que vêm do fechamento do dia (abertura, fechamento do dinheiro, marmitas). */
+  function comValoresDoFechamento(c: ConteudoRelatorio): ConteudoRelatorio {
     return {
-      data,
-      aberturaCaixa: aberturaDoDia,
-      fechamentoCaixa: fechamentoDoDiaValor,
-      quantidadeVendida: marmitasDoDia,
-      estragou: estragou.filter((s) => s.trim()),
-      funcionariosQueComeram,
-      consumoLojaMensal: consumoLojaMensal.filter((c) => c.pessoa.trim() || c.item.trim() || c.valor),
-      consumoLojaMotoboys: consumoLojaMotoboys.filter((c) => c.pessoa.trim() || c.item.trim() || c.valor),
-      cortesiaClientes: cortesiaClientes.filter((c) => c.pessoa.trim() || c.item.trim() || c.valor),
-      sangrias: sangrias.filter((s) => s.valor > 0 || s.motivo.trim()),
-      estoqueQuente,
-      imagem1,
-      imagem2,
+      ...c,
+      aberturaCaixa: fDia ? fDia.lc.dinheiroAbertura : c.aberturaCaixa,
+      fechamentoCaixa: fDia ? fDia.lc.dinheiroFechamento : c.fechamentoCaixa,
+      quantidadeVendida: fDia ? totalMarmitas(fDia.marmitas) : c.quantidadeVendida,
     }
   }
-
-  const rascunho = useRascunho<RascunhoRelatorio>({
-    chave: chaveRascunho,
-    dados: {
-      data,
-      aberturaCaixa,
-      fechamentoCaixa,
-      quantidadeVendida,
-      estragou,
-      funcionariosQueComeram,
-      consumoLojaMensal,
-      consumoLojaMotoboys,
-      cortesiaClientes,
-      sangrias,
-      estoqueQuente,
-      imagem1,
-      imagem2,
-    },
-    habilitado: !carregando && !erroCarregar,
-    // As fotos ficam só no aparelho: não são reenviadas pela internet a cada letra digitada.
-    leve: ({ imagem1: _imagem1, imagem2: _imagem2, ...resto }) => resto as RascunhoRelatorio,
-    aplicar: (d) => {
-      setData(d.data)
-      setAberturaCaixa(d.aberturaCaixa)
-      setFechamentoCaixa(d.fechamentoCaixa)
-      setQuantidadeVendida(d.quantidadeVendida)
-      setEstragou(d.estragou)
-      setFuncionariosQueComeram(d.funcionariosQueComeram)
-      setConsumoLojaMensal(d.consumoLojaMensal)
-      setConsumoLojaMotoboys(d.consumoLojaMotoboys)
-      setCortesiaClientes(d.cortesiaClientes)
-      setSangrias(d.sangrias)
-      setEstoqueQuente(d.estoqueQuente)
-      // Rascunho vindo de outro aparelho não traz as fotos (não vão pela internet): mantém as daqui.
-      if (d.imagem1 !== undefined) setImagem1(d.imagem1)
-      if (d.imagem2 !== undefined) setImagem2(d.imagem2)
-    },
-  })
 
   function mostrarAlertas() {
     requestAnimationFrame(() => alertasRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
   }
 
+  /** Relatório novo: trocar a data abre o relatório daquele dia (levando junto o que foi preenchido aqui). */
+  async function trocarDia(dia: string) {
+    if (!dataValida(dia) || dia > hoje() || dia === dataDocumento) return
+    let levar = !jaSalvo && sinc.estado.pendente
+    if (levar) {
+      try {
+        // Se o outro dia já tem relatório salvo, abre ele e deixa o que foi preenchido guardado neste dia.
+        levar = !(await buscarIdRelatorioPorData(dia))
+      } catch {
+        levar = false
+      }
+    }
+    if (levar) {
+      levarParaOutroDia(localNavegador, DOC_RELATORIO, chaveRelatorioDoDia(dia), dia, conteudo)
+      await sinc.descartar()
+    }
+    navigate(`/relatorios/novo?data=${dia}`, { replace: true })
+  }
+
   async function salvar() {
     if (salvandoRef.current) return
     setErro(null)
-    setDuplicadoId(null)
     setInfo(null)
     if (!dataValida(data)) {
       setErro('Informe uma data válida.')
@@ -271,26 +272,22 @@ export default function RelatorioForm() {
       mostrarAlertas()
       return
     }
+    if (outroId) {
+      setErro(`Já existe um relatório de ${formatarDataBr(data)}. Troque a data ou abra o relatório desse dia.`)
+      mostrarAlertas()
+      return
+    }
     salvandoRef.current = true
     setSalvando(true)
     try {
-      const outro = await buscarIdRelatorioPorData(data, id)
-      if (outro) {
-        setDuplicadoId(outro)
-        setErro(`Já existe um relatório de ${formatarDataBr(data)}. Edite o existente em vez de criar outro.`)
-        mostrarAlertas()
-        return
-      }
-      const salvo = id
-        ? await atualizarRelatorio(id, payload(), { manterConsumoFuncionarios: consumoTravado })
-        : await criarRelatorio(payload())
-      rascunho.limpar()
-      if (id) {
-        aplicarRelatorio(salvo)
-        setInfo('Relatório salvo.')
-        mostrarAlertas()
+      // Junta com o que o outro aparelho fez e grava só se ninguém gravou no meio.
+      const r = await sinc.salvar(comValoresDoFechamento)
+      const aviso = textoJuntou(r.juntou, r.conflitos)
+      if (!editando) {
+        navigate(`/relatorios/${r.registro.id}`, { replace: true, state: { salvo: true, aviso } })
       } else {
-        navigate(`/relatorios/${salvo.id}`, { replace: true, state: { salvo: true } })
+        setInfo(`Relatório salvo.${aviso ? ` ${aviso}` : ''}`)
+        mostrarAlertas()
       }
     } catch (e) {
       setErro(mensagemErro(e, 'Erro ao salvar o relatório.'))
@@ -301,20 +298,23 @@ export default function RelatorioForm() {
     }
   }
 
-  async function buscarFechamentosDoDia(): Promise<Fechamento[]> {
-    return listarFechamentos({ dataInicio: data, dataFim: data })
+  async function buscarFechamentosDoDia(dia: string): Promise<Fechamento[]> {
+    return listarFechamentos({ dataInicio: dia, dataFim: dia })
+  }
+
+  /** Relatório do jeito que está agora (já com o que chegou do outro aparelho), para PDF e impressão. */
+  async function relatorioAtual() {
+    const c = comValoresDoFechamento(await sinc.conteudoAtualizado())
+    return { c, relatorio: { id: idRegistro ?? '', ...c, imagem1: fotoParaPdf(c.imagem1), imagem2: fotoParaPdf(c.imagem2), createdAt: '', updatedAt: '' } }
   }
 
   async function imprimir() {
     setErro(null)
     setProcessando(true)
     try {
-      const [fechamentos, pdf, vales] = await Promise.all([buscarFechamentosDoDia(), carregarPdf(), valesParaPdf()])
-      pdf.imprimirDiaCompleto({
-        relatorio: { id: id ?? '', ...payload(), createdAt: '', updatedAt: '' },
-        fechamentos,
-        vales,
-      })
+      const { c, relatorio } = await relatorioAtual()
+      const [fechamentos, pdf, vales] = await Promise.all([buscarFechamentosDoDia(c.data), carregarPdf(), valesParaPdf(c.data)])
+      pdf.imprimirDiaCompleto({ relatorio, fechamentos, vales })
       // Com papel "Carta"/A4 a impressora térmica solta uma folha inteira de papel em branco.
       setInfo(DICA_PAPEL_80MM)
     } catch (e) {
@@ -329,13 +329,14 @@ export default function RelatorioForm() {
     setErro(null)
     setProcessando(true)
     try {
-      const [fechamentos, pdf] = await Promise.all([buscarFechamentosDoDia(), carregarPdf()])
-      const vales = await valesParaPdf()
+      const { c, relatorio } = await relatorioAtual()
+      const [fechamentos, pdf] = await Promise.all([buscarFechamentosDoDia(c.data), carregarPdf()])
+      const vales = await valesParaPdf(c.data)
       const resultado = await pdf.gerarPdfWhatsApp({
-        relatorio: { id: id ?? '', ...payload(), createdAt: '', updatedAt: '' },
+        relatorio,
         fechamentos,
         vales,
-        imagens: [imagem1, imagem2],
+        imagens: [relatorio.imagem1, relatorio.imagem2],
         compartilhar: true,
       })
       if (resultado === 'baixado') setInfo('PDF baixado. Agora é só anexar no WhatsApp.')
@@ -347,7 +348,12 @@ export default function RelatorioForm() {
     }
   }
 
-  if (carregando) {
+  const descartarAlteracoes = useCallback(async () => {
+    await sinc.descartar()
+    window.location.reload()
+  }, [sinc])
+
+  if (carregando || (!erroCarregar && !sinc.estado.pronto)) {
     return <div className="max-w-2xl mx-auto p-4 text-sm text-gray-400 dark:text-gray-500">Carregando...</div>
   }
   if (erroCarregar) {
@@ -361,40 +367,32 @@ export default function RelatorioForm() {
     )
   }
 
-  const recemCriado = Boolean((location.state as { salvo?: boolean } | null)?.salvo)
+  const estadoNavegacao = location.state as { salvo?: boolean; aviso?: string } | null
+  const recemCriado = Boolean(estadoNavegacao?.salvo)
   const semana = diaDaSemana(data)
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-3 pb-40">
+    <div className="max-w-2xl mx-auto p-4 space-y-3 pb-44">
       <Link to="/relatorios" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
         ← Voltar aos relatórios
       </Link>
       <header>
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-          {editando ? `Relatório de ${formatarDataBr(data)}` : 'Novo relatório do dia'}
+          {editando || jaSalvo ? `Relatório de ${formatarDataBr(data)}` : 'Novo relatório do dia'}
         </h1>
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          Só o que aconteceu de diferente no dia. Seções vazias não aparecem no PDF.
+          Só o que aconteceu de diferente no dia. Seções vazias não aparecem no PDF. Dá para preencher no PC e no celular ao
+          mesmo tempo.
         </p>
       </header>
 
       {recemCriado && !info && (
-        <div role="status" className="flex items-center gap-2 rounded-xl bg-green-50 dark:bg-green-950/40 px-4 py-3 text-sm text-green-700 dark:text-green-400">
-          <CheckCircle2 size={16} className="shrink-0" /> Relatório salvo.
+        <div role="status" className="flex items-start gap-2 rounded-xl bg-green-50 dark:bg-green-950/40 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+          <CheckCircle2 size={16} className="shrink-0 mt-0.5" /> Relatório salvo.{estadoNavegacao?.aviso ? ` ${estadoNavegacao.aviso}` : ''}
         </div>
       )}
 
-      {rascunho.restaurado && (
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-300">
-          <span className="flex items-center gap-1.5">
-            <History size={14} className="shrink-0" />
-            Rascunho restaurado (salvo {formatarHoraRascunho(rascunho.restaurado.salvoEm)}) — continue de onde parou.
-          </span>
-          <button type="button" onClick={rascunho.descartar} className="shrink-0 font-semibold underline">
-            Descartar
-          </button>
-        </div>
-      )}
+      <AvisosSincronia estado={sinc.estado} nome="relatório" onFecharChegou={sinc.limparAviso} onDescartar={descartarAlteracoes} />
 
       <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-3">
         <label className="flex flex-col gap-1">
@@ -406,15 +404,24 @@ export default function RelatorioForm() {
               max={hoje()}
               className="rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-gray-500"
               value={data}
-              onChange={(e) => setData(e.target.value)}
+              onChange={(e) => (editando ? setData(e.target.value) : void trocarDia(e.target.value))}
             />
             {semana && <span className="text-sm text-gray-400 dark:text-gray-500">{semana}</span>}
           </div>
         </label>
-        {jaExisteId && (
+        {!editando && jaSalvo && idRegistro && (
+          <p className="flex gap-2 rounded-xl bg-sky-50 dark:bg-sky-950/40 px-3.5 py-2.5 text-sm text-sky-900 dark:text-sky-200">
+            <Info size={16} className="shrink-0 mt-0.5" />
+            <span>
+              Este dia já tem relatório salvo (antes ou no outro aparelho): você está continuando ele. O que mudar aqui é juntado
+              quando salvar.
+            </span>
+          </p>
+        )}
+        {outroId && (
           <p role="alert" className="rounded-xl bg-amber-50 dark:bg-amber-950/40 px-3.5 py-2.5 text-sm text-amber-900 dark:text-amber-200">
             Já existe um relatório de {formatarDataBr(data)}.{' '}
-            <Link to={`/relatorios/${jaExisteId}`} className="font-semibold underline">
+            <Link to={`/relatorios/${outroId}`} className="font-semibold underline">
               Abrir o relatório
             </Link>{' '}
             ou troque a data acima.
@@ -567,8 +574,8 @@ export default function RelatorioForm() {
         {erro && (
           <CaixaErro>
             {erro}{' '}
-            {duplicadoId && (
-              <Link to={`/relatorios/${duplicadoId}`} className="font-semibold underline">
+            {outroId && (
+              <Link to={`/relatorios/${outroId}`} className="font-semibold underline">
                 Abrir o relatório existente
               </Link>
             )}
@@ -576,18 +583,18 @@ export default function RelatorioForm() {
         )}
       </div>
 
-      {editando && id && (
+      {idRegistro && (
         <div className="pt-2 flex">
           <BotaoExcluir
             rotulo="Excluir relatório"
             descricao={`Excluir o relatório de ${formatarDataBr(data)}? Os prints anexados também são apagados.`}
             onExcluir={async () => {
               try {
-                await excluirRelatorio(id)
+                await excluirRelatorio(idRegistro)
               } catch (e) {
                 throw new Error(mensagemErro(e, 'Não foi possível excluir.'))
               }
-              rascunho.limpar()
+              sinc.esquecer()
               navigate('/relatorios', { replace: true })
             }}
           />
@@ -595,6 +602,9 @@ export default function RelatorioForm() {
       )}
 
       <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] left-0 right-0 z-10 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-100 dark:border-gray-800 p-3">
+        <div className="max-w-2xl mx-auto px-1 pb-1.5 min-h-[1rem]">
+          <LinhaSincronia estado={sinc.estado} />
+        </div>
         <div className="max-w-2xl mx-auto flex gap-2">
           <button
             type="button"
@@ -703,6 +713,23 @@ function AnexoImagem({
     }
   }
 
+  if (valor && ehReferenciaFoto(valor)) {
+    return (
+      <div className="relative flex flex-col items-center justify-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 aspect-square p-2 text-center text-xs text-gray-500 dark:text-gray-400">
+        <Loader2 size={18} className="animate-spin" />
+        Recebendo a foto do outro aparelho...
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="absolute top-1.5 right-1.5 rounded-full bg-black/70 p-1.5 text-white"
+          aria-label={`Remover ${label}`}
+        >
+          <X size={14} />
+        </button>
+      </div>
+    )
+  }
+
   if (valor) {
     return (
       <div className="relative rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 aspect-square">
@@ -769,3 +796,12 @@ function resumoSecaoSangrias(sangrias: Sangria[], vales: Vale[]): string {
   if (sangrias.some((s) => s.valor > 0 && !s.motivo.trim())) partes.push('falta motivo')
   return partes.join(' · ')
 }
+
+/** "Juntei com o que veio do outro aparelho: Estoque, Print 1." */
+function textoJuntou(juntou: string[], conflitos: string[]): string {
+  const partes: string[] = []
+  if (juntou.length > 0) partes.push(`Juntei com o que veio do outro aparelho: ${juntou.join(', ')}.`)
+  if (conflitos.length > 0) partes.push(`Mudado nos dois aparelhos (ficou o deste): ${conflitos.join(', ')}.`)
+  return partes.join(' ')
+}
+

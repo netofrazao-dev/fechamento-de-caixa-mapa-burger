@@ -1,55 +1,19 @@
 import { supabase } from './supabase'
 import { buscarTodasAsPaginas } from './paginacao'
 import { calcularResultado } from './calculations'
-import { arredondarCentavos } from './moeda'
+import { normalizarFechamento } from './normalizacao'
 import { ErroAmigavel } from './erros'
-import type { Fechamento, MarmitaItem, NovoFechamentoInput, ResultadoCalculado } from '../types/fechamento'
+import { formatarDataBr } from './datas'
+import type { AdaptadorBanco, RegistroBanco } from './sincronia'
+import type { ConteudoFechamento } from './mesclagem'
+import type { Fechamento, MarmitaItem, NovoFechamentoInput, ResultadoCalculado, Turno } from '../types/fechamento'
 
 /** Erro com mensagem pronta pra mostrar na tela. */
 export class ErroFechamento extends ErroAmigavel {}
 
+export { normalizarFechamento }
+
 const MSG_DUPLICADO = 'Já existe um fechamento salvo para essa data. Abra-o pelo Histórico para editar.'
-
-function dinheiro(v: number): number {
-  return Math.max(0, arredondarCentavos(Number(v) || 0))
-}
-
-/**
- * Garante que o que vai pro banco está limpo: nada negativo, só centavos,
- * sangrias com motivo, pratos com quantidade inteira. Os totais são
- * calculados a partir DESTES valores (o banco confere as contas de novo).
- */
-export function normalizarFechamento(input: NovoFechamentoInput): NovoFechamentoInput {
-  return {
-    ...input,
-    lc: {
-      dinheiroAbertura: dinheiro(input.lc.dinheiroAbertura),
-      dinheiroFechamento: dinheiro(input.lc.dinheiroFechamento),
-      pix: dinheiro(input.lc.pix),
-      debito: dinheiro(input.lc.debito),
-      credito: dinheiro(input.lc.credito),
-      consumoLoja: dinheiro(input.lc.consumoLoja),
-      aPrazo: dinheiro(input.lc.aPrazo),
-      ticket: dinheiro(input.lc.ticket),
-    },
-    brendi: {
-      pix: dinheiro(input.brendi.pix),
-      debito: dinheiro(input.brendi.debito),
-      credito: dinheiro(input.brendi.credito),
-      creditoOnline: dinheiro(input.brendi.creditoOnline),
-      dinheiro: dinheiro(input.brendi.dinheiro),
-    },
-    sangrias: input.sangrias
-      .map((s) => ({ valor: dinheiro(s.valor), motivo: s.motivo.trim().slice(0, 200) }))
-      .filter((s) => s.valor > 0 || s.motivo),
-    marmitas: input.marmitas
-      .map((m) => ({ prato: m.prato.trim(), quantidade: Math.max(0, Math.floor(Number(m.quantidade) || 0)) }))
-      .filter((m) => m.prato && m.quantidade > 0),
-    totalLCSistema: dinheiro(input.totalLCSistema),
-    ajuste: input.ajuste.tipo ? { tipo: input.ajuste.tipo, valor: dinheiro(input.ajuste.valor) } : { tipo: null, valor: 0 },
-    observacoes: input.observacoes.trim().slice(0, 2000),
-  }
-}
 
 // Formato da tabela no Supabase (snake_case, plano).
 interface FechamentoRow {
@@ -57,6 +21,7 @@ interface FechamentoRow {
   data: string
   turno: 'manha' | 'noite'
   created_at: string
+  updated_at?: string
   dinheiro_abertura: number
   dinheiro_fechamento: number
   pix_lc: number
@@ -92,6 +57,7 @@ function rowToFechamento(row: FechamentoRow): Fechamento {
     data: row.data,
     turno: row.turno,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
     lc: {
       dinheiroAbertura: row.dinheiro_abertura,
       dinheiroFechamento: row.dinheiro_fechamento,
@@ -293,3 +259,118 @@ export async function excluirFechamento(id: string): Promise<void> {
   if (error) throw error
   if (!data || data.length === 0) throw new ErroFechamento('Não foi possível excluir (já foi excluído ou sem permissão).')
 }
+
+// ─── Sincronia entre aparelhos ────────────────────────────────
+
+/** O que o fechamento salvo tem de editável (o que os aparelhos editam juntos). */
+export function conteudoDoFechamento(f: Fechamento): ConteudoFechamento {
+  return {
+    data: f.data,
+    lc: f.lc,
+    brendi: f.brendi,
+    sangrias: f.sangrias.map((s) => ({ valor: s.valor, motivo: s.motivo })),
+    marmitas: f.marmitas,
+    totalLCSistema: f.totalLCSistema,
+    ajuste: f.ajuste.tipo ? { tipo: f.ajuste.tipo, valor: f.ajuste.valor } : { tipo: null, valor: 0 },
+    observacoes: f.observacoes,
+  }
+}
+
+function registroDeFechamento(f: Fechamento): RegistroBanco<ConteudoFechamento> {
+  return { id: f.id, versao: f.updatedAt ?? f.createdAt, data: f.data, conteudo: conteudoDoFechamento(f) }
+}
+
+function comStatus<E extends object>(erro: E, status: number): E & { status: number } {
+  return Object.assign(erro, { status })
+}
+
+/** Fechamento salvo no formato da sincronia (com a versão). */
+export async function buscarRegistroFechamento(id: string): Promise<{ fechamento: Fechamento; registro: RegistroBanco<ConteudoFechamento> }> {
+  const { data, error, status } = await supabase.from('fechamentos').select(SELECT_COLUMNS).eq('id', id).single()
+  if (error) throw comStatus(error, status)
+  const fechamento = rowToFechamento(data as unknown as FechamentoRow)
+  return { fechamento, registro: registroDeFechamento(fechamento) }
+}
+
+/** Troca as sangrias antigas do fechamento (insere as novas antes de apagar as velhas). */
+async function trocarSangrias(id: string, sangrias: NovoFechamentoInput['sangrias']): Promise<void> {
+  const { data: antigas, error: erroAntigas } = await supabase.from('sangrias').select('id, valor, motivo').eq('fechamento_id', id)
+  if (erroAntigas) throw erroAntigas
+  const iguais =
+    (antigas ?? []).length === sangrias.length &&
+    (antigas ?? []).every((a, i) => Number(a.valor) === sangrias[i].valor && a.motivo === sangrias[i].motivo)
+  if (iguais) return
+  if (sangrias.length > 0) {
+    const { error } = await supabase.from('sangrias').insert(sangrias.map((s) => ({ fechamento_id: id, valor: s.valor, motivo: s.motivo })))
+    if (error) throw error
+  }
+  const idsAntigos = (antigas ?? []).map((a) => a.id as string)
+  if (idsAntigos.length > 0) {
+    const { error } = await supabase.from('sangrias').delete().in('id', idsAntigos)
+    if (error) throw error
+  }
+}
+
+/**
+ * Como a sincronia lê e grava o fechamento de um dia: grava só se a versão
+ * (updated_at) ainda for a que o aparelho conhece; se outro aparelho gravou
+ * no meio, devolve 'conflito' para juntar e tentar de novo.
+ */
+export function adaptadorFechamento(turno: Turno): AdaptadorBanco<ConteudoFechamento> {
+  return {
+    async ler(alvo) {
+      const q = supabase.from('fechamentos').select(SELECT_COLUMNS)
+      const { data, error, status } = await (alvo.id ? q.eq('id', alvo.id) : q.eq('data', alvo.data).eq('turno', turno)).limit(1)
+      if (error) throw comStatus(error, status)
+      const row = (data as unknown as FechamentoRow[])[0]
+      return row ? registroDeFechamento(rowToFechamento(row)) : null
+    },
+    async versao(alvo) {
+      const q = supabase.from('fechamentos').select('id, updated_at, created_at')
+      const { data, error, status } = await (alvo.id ? q.eq('id', alvo.id) : q.eq('data', alvo.data).eq('turno', turno)).limit(1).retry(false)
+      if (error) throw comStatus(error, status)
+      const row = (data as { id: string; updated_at?: string; created_at: string }[])[0]
+      return row ? { id: row.id, versao: row.updated_at ?? row.created_at } : null
+    },
+    async gravar(conteudo, esperado) {
+      const input = normalizarFechamento({ ...conteudo, turno })
+      const resultado = calcularResultado({ lc: input.lc, brendi: input.brendi, totalLCSistema: input.totalLCSistema, ajuste: input.ajuste })
+      if (!esperado) {
+        const { data, error, status } = await supabase.from('fechamentos').insert(montarLinha(input, resultado)).select('id').single()
+        if (error) {
+          if (error.code === '23505') return 'conflito' // o outro aparelho salvou o fechamento do dia antes
+          throw comStatus(error, status)
+        }
+        const id = data.id as string
+        if (input.sangrias.length > 0) {
+          const { error: erroSangrias } = await supabase
+            .from('sangrias')
+            .insert(input.sangrias.map((s) => ({ fechamento_id: id, valor: s.valor, motivo: s.motivo })))
+          if (erroSangrias) {
+            await supabase.from('fechamentos').delete().eq('id', id)
+            throw erroSangrias
+          }
+        }
+        return (await buscarRegistroFechamento(id)).registro
+      }
+      const { data, error, status } = await supabase
+        .from('fechamentos')
+        .update(montarLinha(input, resultado))
+        .eq('id', esperado.id)
+        .eq('updated_at', esperado.versao)
+        .select('id')
+      if (error) {
+        if (error.code === '23505') throw new ErroFechamento(`Já existe outro fechamento em ${formatarDataBr(input.data)}.`)
+        throw comStatus(error, status)
+      }
+      if (!data || data.length === 0) {
+        const existe = await supabase.from('fechamentos').select('id').eq('id', esperado.id).maybeSingle()
+        if (existe.error) throw comStatus(existe.error, existe.status)
+        return existe.data ? 'conflito' : 'excluido'
+      }
+      await trocarSangrias(esperado.id, input.sangrias)
+      return (await buscarRegistroFechamento(esperado.id)).registro
+    },
+  }
+}
+

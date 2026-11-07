@@ -116,16 +116,16 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   ok(!(await texto()).includes('lançada(s) antes'), '"Tirar do fechamento" some com o aviso')
   db.sangrias = []
 
-  console.log('3. Fechamento duplicado na mesma data')
+  console.log('3. Dia que já tem fechamento: "Novo" abre o salvo para continuar (não duplica)')
   await page.goto(`${BASE}/novo`)
-  await esperarTexto(`Já existe um fechamento salvo em ${f.data.split('-').reverse().join('/')}`)
-  ok(await page.getByRole('link', { name: 'Abrir o fechamento', exact: true }).getAttribute('href') === `/fechamento/${f.id}`,
-    'avisa logo ao abrir (antes de preencher): já existe fechamento nesta data, com link')
-  await campo('PIX').first().fill('10')
-  await campo('Total LC Sistema').fill('10')
-  await page.getByRole('button', { name: 'Salvar e gerar PDF' }).click()
-  await page.getByText('Abrir o fechamento existente').waitFor()
-  ok(db.fechamentos.length === 1, 'não duplica; oferece link para o existente')
+  await page.getByRole('heading', { name: `Fechamento de ${f.data.split('-').reverse().join('/')}` }).waitFor()
+  ok((await texto()).includes('Este dia já tem fechamento salvo') &&
+    await page.getByRole('link', { name: 'Ver o fechamento salvo' }).getAttribute('href') === `/fechamento/${f.id}`,
+  'abrir "Novo" num dia que já tem fechamento mostra o salvo para continuar (com link), em vez de começar outro')
+  ok((await campo('Dinheiro no fechamento').inputValue()) === '150,50', 'mostra os valores já salvos')
+  await preencher(campo('PIX').first(), '10', '10,00')
+  await esperarTexto('Ainda não salvo')
+  ok(db.fechamentos.length === 1, 'mudança fica como "ainda não salvo" no mesmo fechamento (nada duplicado)')
 
   console.log('3b. Rascunho de outro dia não se mistura com o de hoje')
   await page.goto(`${BASE}/novo?data=2026-11-02`)
@@ -135,7 +135,7 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
     (await page.locator('input[type="date"]').inputValue()) === '2026-11-02',
     'fechamento de 02/11 (pelo link) abre limpo e com a data certa, sem pegar o rascunho de hoje')
   await preencher(campo('PIX').first(), '7', '7,00')
-  ok(await page.evaluate(() => JSON.parse(localStorage.getItem('mapa-burger-rascunho-fechamento') || 'null')?.dados?.lc?.pix) === 10,
+  ok(await page.evaluate((dia) => JSON.parse(localStorage.getItem(`mapa-burger-rascunho-fechamento-do-dia-${dia}`) || 'null')?.conteudo?.lc?.pix, f.data) === 10,
     'rascunho de hoje continua guardado (não foi sobrescrito)')
   await page.goto(`${BASE}/novo`)
   await esperarTexto('Rascunho restaurado')
@@ -253,11 +253,12 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
     'PDF do dia: compras no PIX separadas, fora do total')
   ok(textoDia.includes('Caixa LC') && textoDia.includes('150,50'), 'PDF do dia: fechamento completo junto')
   await page.goto(`${BASE}/relatorios/novo?data=${f.data}`)
-  await esperarTexto(`Já existe um relatório de ${f.data.split('-').reverse().join('/')}`)
-  ok(await page.getByRole('link', { name: 'Abrir o relatório', exact: true }).count() === 1, 'relatório: avisa logo ao abrir que já existe um nesta data')
+  await esperarTexto('Este dia já tem relatório salvo')
+  ok(await page.getByRole('heading', { name: `Relatório de ${f.data.split('-').reverse().join('/')}` }).count() === 1,
+    'relatório: "novo" num dia que já tem relatório abre o salvo para continuar')
   await page.getByRole('button', { name: 'Salvar', exact: true }).click()
-  await page.getByText('Abrir o relatório existente').waitFor()
-  ok(db.relatorios.length === 1, 'segundo relatório na mesma data: bloqueado com link')
+  await page.getByText('Relatório salvo.').waitFor()
+  ok(db.relatorios.length === 1 && page.url().endsWith(`/relatorios/${db.relatorios[0].id}`), 'salvar ali atualiza o mesmo relatório (não cria outro)')
 
   console.log('6b. Resumo do mês: retiradas do caixa (sangrias + vales)')
   {

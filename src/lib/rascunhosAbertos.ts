@@ -20,6 +20,8 @@ export interface DestinoRascunho {
   /** true = alterações não salvas de um fechamento/relatório que já existe. */
   edicao: boolean
   registroId?: string
+  /** Dia do rascunho compartilhado (vem na própria chave). */
+  dia?: string
 }
 
 export interface RascunhoAberto extends DestinoRascunho {
@@ -33,8 +35,20 @@ const FECH = 'mapa-burger-rascunho-fechamento'
 const REL = 'mapa-burger-rascunho-relatorio'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/** Rascunho compartilhado do dia (o mesmo no PC e no celular). */
+function doDia(chave: string, prefixo: string): string | null {
+  if (!chave.startsWith(prefixo)) return null
+  const dia = chave.slice(prefixo.length)
+  return dataValida(dia) ? dia : null
+}
+
 /** Entende a chave do rascunho (mesmas chaves usadas pelos formulários). */
 export function interpretarChave(chave: string): DestinoRascunho | null {
+  const diaRel = doDia(chave, `${REL}-do-dia-`)
+  if (diaRel) return { tipo: 'relatorio', chave, link: `/relatorios/novo?data=${diaRel}`, edicao: false, dia: diaRel }
+  const diaFech = doDia(chave, `${FECH}-do-dia-`)
+  if (diaFech) return { tipo: 'fechamento', chave, link: `/novo?data=${diaFech}`, edicao: false, dia: diaFech }
+  if (chave.startsWith(`${REL}-do-dia-`) || chave.startsWith(`${FECH}-do-dia-`)) return null
   if (chave === FECH) return { tipo: 'fechamento', chave, link: '/novo', edicao: false }
   if (chave.startsWith(`${FECH}-dia-`)) {
     const dia = chave.slice(`${FECH}-dia-`.length)
@@ -74,6 +88,22 @@ function montar(chave: string, dados: unknown, salvoEm: string): RascunhoAberto 
   const destino = interpretarChave(chave)
   if (!destino || !dados || typeof dados !== 'object') return null
   const d = dados as Record<string, unknown>
+  // Rascunho sincronizado (aparelho ou nuvem): diz se tem algo não salvo e em que registro se baseia.
+  if (d.v === 2) {
+    if (!destino.dia || !d.pendente || !d.conteudo || typeof d.conteudo !== 'object') return null
+    const banco = d.banco as { id?: string } | null
+    const destinoFinal: DestinoRascunho = banco?.id
+      ? {
+          ...destino,
+          edicao: true,
+          registroId: banco.id,
+          link: destino.tipo === 'relatorio' ? `/relatorios/${banco.id}` : `/fechamento/${banco.id}/editar`,
+        }
+      : destino
+    const conteudo = d.conteudo as Record<string, unknown>
+    if (!destinoFinal.edicao && !temConteudo(conteudo)) return null
+    return { ...destinoFinal, data: destino.dia, salvoEm: typeof d.salvoEm === 'string' ? d.salvoEm : salvoEm, dados: conteudo }
+  }
   const data = typeof d.data === 'string' ? d.data : ''
   if (!dataValida(data) || !temConteudo(d)) return null
   return { ...destino, data, salvoEm, dados: d }
@@ -86,8 +116,9 @@ export function rascunhosDoAparelho(): RascunhoAberto[] {
     for (let i = 0; i < localStorage.length; i++) {
       const chave = localStorage.key(i)
       if (!chave || !chave.startsWith('mapa-burger-rascunho-')) continue
-      const r = lerRascunho<unknown>(chave)
-      const m = r ? montar(chave, r.dados, r.salvoEm) : null
+      const r = lerRascunho<unknown>(chave) as unknown as Record<string, unknown> | null
+      if (!r) continue
+      const m = r.v === 2 ? montar(chave, r, String(r.salvoEm ?? '')) : montar(chave, r.dados, String(r.salvoEm ?? ''))
       if (m) lista.push(m)
     }
   } catch {

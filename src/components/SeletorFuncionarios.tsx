@@ -86,6 +86,7 @@ export default function SeletorFuncionarios({ value, onChange, unico }: Props) {
         <button
           key={`extra-${nome}`}
           type="button"
+          aria-pressed
           onClick={() => toggle(nome)}
           className="rounded-full px-3 py-1.5 text-sm font-medium bg-gray-900 dark:bg-gray-700 text-white"
         >
@@ -96,6 +97,7 @@ export default function SeletorFuncionarios({ value, onChange, unico }: Props) {
         <button
           key={f.id}
           type="button"
+          aria-pressed={value.includes(f.nome)}
           onClick={() => toggle(f.nome)}
           className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
             value.includes(f.nome)

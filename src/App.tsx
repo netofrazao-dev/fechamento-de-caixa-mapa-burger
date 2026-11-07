@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import {
   BarChart3,
   History,
@@ -47,6 +47,15 @@ function NovoFechamentoDoDia() {
 function NovoRelatorioDoDia() {
   const [sp] = useSearchParams()
   return <RelatorioForm key={`novo-${sp.get('data') ?? ''}`} />
+}
+// Edição: cada registro é uma tela nova (não sobra nada do anterior ao trocar de um para outro).
+function RelatorioDoRegistro() {
+  const { id } = useParams<{ id: string }>()
+  return <RelatorioForm key={`editar-${id}`} />
+}
+function EditarFechamentoDoRegistro() {
+  const { id } = useParams<{ id: string }>()
+  return <NovoFechamento key={`editar-${id}`} />
 }
 
 const abas = [
@@ -212,9 +221,9 @@ function Sistema() {
             <Route path="/semanal" element={<RelatorioSemanal />} />
             <Route path="/relatorios" element={<Relatorios />} />
             <Route path="/relatorios/novo" element={<NovoRelatorioDoDia />} />
-            <Route path="/relatorios/:id" element={<RelatorioForm key="editar" />} />
+            <Route path="/relatorios/:id" element={<RelatorioDoRegistro />} />
             <Route path="/fechamento/:id" element={<FechamentoDetalhe />} />
-            <Route path="/fechamento/:id/editar" element={<NovoFechamento key="editar" />} />
+            <Route path="/fechamento/:id/editar" element={<EditarFechamentoDoRegistro />} />
             <Route path="/vales" element={<Vales />} />
             <Route path="/vales/novo" element={<NovoVale key="novo" />} />
             <Route path="/vales/:id/editar" element={<NovoVale key="editar" />} />
