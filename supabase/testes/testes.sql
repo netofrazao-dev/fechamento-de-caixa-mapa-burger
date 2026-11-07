@@ -149,6 +149,45 @@ insert into dias_loja_fechada (data, motivo) values ('2026-10-27', 'folga');
 reset role;
 select public.t_confere((select count(*) >= 4 from auditoria where tabela = 'dias_loja_fechada'), 'auditoria registra marcar e desmarcar');
 
+-- ---------------- Sincronia entre aparelhos (PC e celular) ----------------
+-- O app grava "só se a versão ainda for a que o aparelho leu" (updated_at no relatório
+-- e no fechamento; dados->>versao no rascunho compartilhado). Se outro aparelho gravou
+-- no meio, nada é sobrescrito: o app junta as duas coisas e grava de novo.
+select public.t_como('dono@teste.com');
+set role authenticated;
+insert into relatorios (data) values ('2026-10-22');
+select updated_at as versao_lida from relatorios where data = '2026-10-22' \gset
+with u as (update relatorios set estragou = '["arroz"]' where data = '2026-10-22' and updated_at = :'versao_lida' returning 1)
+  select public.t_confere((select count(*) from u) = 1, 'relatório: grava quando a versão ainda é a que o aparelho leu');
+with u as (update relatorios set estragou = '["feijão"]' where data = '2026-10-22' and updated_at = :'versao_lida' returning 1)
+  select public.t_confere((select count(*) from u) = 0, 'relatório: não grava por cima quando o outro aparelho já gravou (versão mudou)');
+select public.t_confere((select estragou = '["arroz"]'::jsonb and updated_at <> :'versao_lida'::timestamptz from relatorios where data = '2026-10-22'),
+  'relatório: o que o outro aparelho gravou continua e a versão mudou');
+select public.t_deve_falhar($$insert into relatorios (data) values ('2026-10-22')$$, 'duplicate', 'relatório do dia não é criado duas vezes (o segundo aparelho junta no que existe)');
+insert into fechamentos (data, turno, total_lc, total_brendi, total_caixa, total_sistema, diferenca_original, diferenca_final, status)
+  values ('2026-10-22', 'manha', 0, 0, 0, 0, 0, 0, 'fechou');
+select updated_at as versao_fech from fechamentos where data = '2026-10-22' \gset
+with u as (update fechamentos set observacoes = 'do PC' where data = '2026-10-22' and updated_at = :'versao_fech' returning 1)
+  select public.t_confere((select count(*) from u) = 1, 'fechamento: grava sobre a versão lida');
+with u as (update fechamentos set observacoes = 'do celular' where data = '2026-10-22' and updated_at = :'versao_fech' returning 1)
+  select public.t_confere((select count(*) from u) = 0, 'fechamento: não grava sobre versão velha');
+insert into rascunhos (chave, dados) values ('mapa-burger-rascunho-relatorio-do-dia-2026-10-22', '{"v": 2, "versao": "a1"}');
+with u as (update rascunhos set dados = '{"v": 2, "versao": "b2"}' where chave = 'mapa-burger-rascunho-relatorio-do-dia-2026-10-22' and dados->>'versao' = 'a1' returning 1)
+  select public.t_confere((select count(*) from u) = 1, 'rascunho compartilhado: grava sobre a versão esperada');
+with u as (update rascunhos set dados = '{"v": 2, "versao": "c3"}' where chave = 'mapa-burger-rascunho-relatorio-do-dia-2026-10-22' and dados->>'versao' = 'a1' returning 1)
+  select public.t_confere((select count(*) from u) = 0, 'rascunho compartilhado: não grava sobre versão velha (o outro aparelho mandou antes)');
+select public.t_deve_falhar($$insert into rascunhos (chave, dados) values ('mapa-burger-rascunho-relatorio-do-dia-2026-10-22', '{}')$$, 'duplicate',
+  'rascunho do dia não é criado duas vezes');
+with u as (delete from rascunhos where chave = 'mapa-burger-rascunho-relatorio-do-dia-2026-10-22' and dados->>'versao' = 'a1' returning 1)
+  select public.t_confere((select count(*) from u) = 0, 'limpar o rascunho depois de salvar só apaga se ninguém mandou nada novo');
+delete from rascunhos where chave = 'mapa-burger-rascunho-relatorio-do-dia-2026-10-22';
+delete from fechamentos where data = '2026-10-22';
+delete from relatorios where data = '2026-10-22';
+reset role;
+set role anon;
+select public.t_deve_falhar('select count(*) from rascunhos', 'permission denied', 'sem login não lê os rascunhos compartilhados');
+reset role;
+
 -- ---------------- Cópias de segurança (v6) ----------------
 select public.t_confere((select count(*) >= 1 from copias_seguranca), 'migração já deixa uma cópia pronta');
 set role anon;

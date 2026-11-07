@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileText, PencilLine, Plus } from 'lucide-react'
 import { listarRelatorios } from '../lib/relatorioService'
@@ -11,6 +11,7 @@ import type { RelatorioDiario, Vale } from '../types/fechamento'
 import { listarValesDoMes } from '../lib/valeService'
 import { resumoSangrias } from '../lib/sangrias'
 import { formatarHoraRascunho } from '../lib/draft'
+import { useAtualizacaoAutomatica, veioDaAtualizacao } from '../lib/useAtualizarAoVoltar'
 import {
   descartarRascunho,
   listarRascunhosAbertos,
@@ -30,21 +31,26 @@ export default function Relatorios() {
   // Relatórios começados e ainda não salvos (deste aparelho e de outros).
   const [rascunhos, setRascunhos] = useState<RascunhoAberto[]>(() => rascunhosDoAparelho())
   const [descartando, setDescartando] = useState<string | null>(null)
+  // Atualiza sozinha ao voltar para a tela (o que foi feito no outro aparelho aparece).
+  const versaoAuto = useAtualizacaoAutomatica(30_000)
+  const vistaAuto = useRef(versaoAuto)
 
   useEffect(() => {
     const { inicio, fim } = limitesDoMes(mes)
     let ativo = true
+    // Atualização automática que falhar não mexe na tela.
+    const automatica = veioDaAtualizacao(vistaAuto, versaoAuto)
     Promise.all([
       listarRelatorios({ dataInicio: inicio, dataFim: fim }),
       // Vales do mês (para mostrar os de cada dia); se falhar, a lista continua.
-      listarValesDoMes(mes).catch(() => [] as Vale[]),
+      automatica ? listarValesDoMes(mes) : listarValesDoMes(mes).catch(() => [] as Vale[]),
     ])
       .then(([lista, vales]) => ativo && setDados({ mes, lista, vales }))
-      .catch((e) => ativo && setErro({ mes, mensagem: mensagemErro(e, 'Erro ao carregar os relatórios.') }))
+      .catch((e) => ativo && !automatica && setErro({ mes, mensagem: mensagemErro(e, 'Erro ao carregar os relatórios.') }))
     return () => {
       ativo = false
     }
-  }, [mes, tentativa])
+  }, [mes, tentativa, versaoAuto])
 
   useEffect(() => {
     let ativo = true
@@ -52,7 +58,7 @@ export default function Relatorios() {
     return () => {
       ativo = false
     }
-  }, [tentativa])
+  }, [tentativa, versaoAuto])
 
   const relatorios = dados?.mes === mes ? dados.lista : null
   const valesPorDia = useMemo(() => {

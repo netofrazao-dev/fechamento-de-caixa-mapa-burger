@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertCircle,
@@ -25,6 +25,7 @@ import { listarDiasLojaFechada, marcarLojaFechada, semDiasFechados, type DiaLoja
 import { mensagemErro } from '../lib/erros'
 import { caixaDoRascunho, listarRascunhosAbertos, rascunhosDoAparelho, type RascunhoAberto } from '../lib/rascunhosAbertos'
 import { formatarHoraRascunho } from '../lib/draft'
+import { useAtualizacaoAutomatica, veioDaAtualizacao } from '../lib/useAtualizarAoVoltar'
 import { nomeMes, rotuloMes, somarMeses, somarValores } from '../lib/vales'
 import { datasEntre, diaAnterior, diaDaSemana, formatarDataBr, formatarDiaMes, hojeLocal, limitesDoMes } from '../lib/datas'
 import type { AcertoFechado, Fechamento, RelatorioDiario, Vale } from '../types/fechamento'
@@ -54,6 +55,9 @@ export default function Hoje() {
   const [falhou, setFalhou] = useState(false)
   // Muda quando a pessoa toca em "Tentar de novo" (busca outra vez).
   const [tentativa, setTentativa] = useState(0)
+  // Atualiza sozinha ao voltar para a tela (o que foi feito no outro aparelho aparece).
+  const versaoAuto = useAtualizacaoAutomatica(30_000)
+  const vistaAuto = useRef(versaoAuto)
   const [rascunhos, setRascunhos] = useState<RascunhoAberto[]>(() => rascunhosDoAparelho())
   useEffect(() => {
     let ativo = true
@@ -61,7 +65,7 @@ export default function Hoje() {
     return () => {
       ativo = false
     }
-  }, [tentativa])
+  }, [tentativa, versaoAuto])
   const [marcando, setMarcando] = useState(false)
   const [erroMarcar, setErroMarcar] = useState<string | null>(null)
 
@@ -87,6 +91,7 @@ export default function Hoje() {
 
   useEffect(() => {
     let ativo = true
+    const automatica = veioDaAtualizacao(vistaAuto, versaoAuto)
     const atualLim = limitesDoMes(mes)
     const antLim = limitesDoMes(mesAnterior)
     Promise.allSettled([
@@ -99,6 +104,8 @@ export default function Hoje() {
       listarDiasLojaFechada(antLim.inicio, atualLim.fim),
     ]).then((r) => {
       if (!ativo) return
+      // Atualização automática que falhou (internet instável): a tela fica como estava.
+      if (automatica && r.some((x) => x.status === 'rejected')) return
       const ok = <T,>(i: number, padrao: T): T => (r[i].status === 'fulfilled' ? (r[i] as PromiseFulfilledResult<T>).value : padrao)
       if (r[0].status === 'rejected' || r[2].status === 'rejected') setFalhou(true)
       setDados({
@@ -114,7 +121,7 @@ export default function Hoje() {
     return () => {
       ativo = false
     }
-  }, [mes, mesAnterior, tentativa])
+  }, [mes, mesAnterior, tentativa, versaoAuto])
 
   const todosFechamentos = useMemo(() => (dados ? [...dados.fechamentosAnterior, ...dados.fechamentos] : []), [dados])
   const fechamentoHoje = todosFechamentos.find((f) => f.data === hoje)

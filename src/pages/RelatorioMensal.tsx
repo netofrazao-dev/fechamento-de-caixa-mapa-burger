@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileDown, FileText, Share2 } from 'lucide-react'
 import { listarFechamentos } from '../lib/fechamentoService'
@@ -9,6 +9,7 @@ import type { LinhaRelatorioMensal } from '../lib/pdf'
 import { carregarPdf } from '../lib/pdfSobDemanda'
 import { podeCompartilharArquivos } from '../lib/arquivos'
 import { mensagemErro } from '../lib/erros'
+import { useAtualizacaoAutomatica, veioDaAtualizacao } from '../lib/useAtualizarAoVoltar'
 import { mesValido, nomeMes, rotuloMes, somarMeses, somarValores } from '../lib/vales'
 import { CaixaErro } from '../components/Avisos'
 import type { Fechamento, RelatorioDiario } from '../types/fechamento'
@@ -78,35 +79,42 @@ export default function RelatorioMensal() {
   // Muda quando a pessoa toca em "Tentar de novo" (busca outra vez).
   const [tentativa, setTentativa] = useState(0)
   const [erroPdf, setErroPdf] = useState<string | null>(null)
+  // Atualiza sozinho ao voltar para a tela (o que foi feito no outro aparelho aparece).
+  const versaoAuto = useAtualizacaoAutomatica()
+  const vistaAuto = useRef(versaoAuto)
 
   useEffect(() => {
     const { inicio, fim } = limitesDoMes(mes)
     let ativo = true
+    // Atualização automática que falhar não mexe na tela (nem troca dados por listas vazias).
+    const automatica = veioDaAtualizacao(vistaAuto, versaoAuto)
+    const extra = <T,>(p: Promise<T>, padrao: T): Promise<T> => (automatica ? p : p.catch(() => padrao))
     Promise.all([
       listarFechamentos({ dataInicio: inicio, dataFim: fim }),
       listarRelatorios({ dataInicio: inicio, dataFim: fim }),
       // Vales são um extra: se der erro (ex.: banco antigo), o mensal continua.
-      listarValesDoMes(mes)
-        .then((vs) => somarValores(vs.filter((v) => !v.excluidoEm).map((v) => v.valor)))
-        .catch(() => null),
+      extra<number | null>(
+        listarValesDoMes(mes).then((vs) => somarValores(vs.filter((v) => !v.excluidoEm).map((v) => v.valor))),
+        null,
+      ),
       // Mês anterior, para comparar (se falhar, só não mostra a comparação).
       (() => {
         const ant = limitesDoMes(somarMeses(mes, -1))
-        return listarFechamentos({ dataInicio: ant.inicio, dataFim: ant.fim }).catch(() => [] as Fechamento[])
+        return extra(listarFechamentos({ dataInicio: ant.inicio, dataFim: ant.fim }), [] as Fechamento[])
       })(),
       // Dias de loja fechada (folga, feriado): não contam como "sem fechamento".
-      listarDiasLojaFechada(inicio, fim).catch(() => [] as DiaLojaFechada[]),
+      extra(listarDiasLojaFechada(inicio, fim), [] as DiaLojaFechada[]),
     ])
       .then(([fechamentos, relatorios, totalVales, fechamentosAnterior, fechados]) => {
         if (ativo) setDados({ mes, fechamentos, relatorios, totalVales, fechamentosAnterior, fechados })
       })
       .catch((e) => {
-        if (ativo) setErro({ mes, mensagem: mensagemErro(e, 'Erro ao carregar o relatório do mês.') })
+        if (ativo && !automatica) setErro({ mes, mensagem: mensagemErro(e, 'Erro ao carregar o relatório do mês.') })
       })
     return () => {
       ativo = false
     }
-  }, [mes, tentativa])
+  }, [mes, tentativa, versaoAuto])
 
   const atual = dados?.mes === mes ? dados : null
   const erroAtual = erro?.mes === mes ? erro.mensagem : null

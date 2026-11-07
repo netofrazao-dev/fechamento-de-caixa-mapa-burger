@@ -179,8 +179,14 @@ Para apagar um vale de verdade (só em caso extremo, pelo SQL Editor):
 `alter table vales enable trigger trg_vales_antes_excluir;`
 
 ## Observações
-- Rascunhos: salvos no navegador na hora e no Supabase em segundo plano (tabela `rascunhos`),
-  então dá pra começar no celular e continuar no computador.
+- **PC e celular ao mesmo tempo** (relatório do dia e fechamento do caixa): cada dia tem um rascunho
+  só, compartilhado na tabela `rascunhos`. O que é digitado num aparelho aparece no outro em poucos
+  segundos, mesmo antes de salvar (as fotos vão à parte, uma vez cada). Salvar nunca apaga o que o
+  outro aparelho fez: o app junta as duas versões (mesclagem de três vias em `src/lib/mesclagem.ts`)
+  e grava só se ninguém gravou no meio (versão = `updated_at`); se alguém gravou, junta de novo e
+  tenta outra vez (`src/lib/sincronia.ts`). Sem internet, tudo fica guardado no aparelho e vai depois.
+- As telas de consulta (Hoje, Relatórios, Vales, Histórico, resumos) se atualizam sozinhas ao voltar
+  para elas.
 - Fechamentos e vales podem ser editados (lápis / botão "Editar").
 - Datas usam o fuso local (não UTC), então à noite o "hoje" continua certo.
 - O turno da noite foi desativado na tela (a coluna `turno` continua no banco, caso volte a ser usado).

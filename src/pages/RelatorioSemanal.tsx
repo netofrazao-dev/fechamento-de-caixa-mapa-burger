@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileDown, FileText, Share2 } from 'lucide-react'
 import AbasResumo from '../components/AbasResumo'
@@ -21,6 +21,7 @@ import { compararSemanas, diasDaSemana, fimDaSemana, fraseComparacaoSemana, rotu
 import { carregarPdf } from '../lib/pdfSobDemanda'
 import { podeCompartilharArquivos } from '../lib/arquivos'
 import { mensagemErro } from '../lib/erros'
+import { useAtualizacaoAutomatica, veioDaAtualizacao } from '../lib/useAtualizarAoVoltar'
 import { somarValores } from '../lib/vales'
 import { diaDaSemana, formatarDiaMes, hojeLocal } from '../lib/datas'
 import type { Fechamento, RelatorioDiario } from '../types/fechamento'
@@ -60,28 +61,37 @@ export default function RelatorioSemanal() {
   // Muda quando a pessoa toca em "Tentar de novo" (busca outra vez).
   const [tentativa, setTentativa] = useState(0)
   const [erroPdf, setErroPdf] = useState<string | null>(null)
+  // Atualiza sozinho ao voltar para a tela (o que foi feito no outro aparelho aparece).
+  const versaoAuto = useAtualizacaoAutomatica()
+  const vistaAuto = useRef(versaoAuto)
 
   useEffect(() => {
     let ativo = true
+    // Atualização automática que falhar não mexe na tela (nem troca dados por listas vazias).
+    const automatica = veioDaAtualizacao(vistaAuto, versaoAuto)
+    const extra = <T,>(p: Promise<T>, padrao: T): Promise<T> => (automatica ? p : p.catch(() => padrao))
     const meses = Array.from(new Set([inicio.slice(0, 7), fim.slice(0, 7)]))
     Promise.all([
       listarFechamentos({ dataInicio: inicio, dataFim: fim }),
-      listarFechamentos({ dataInicio: inicioAnt, dataFim: fimDaSemana(inicioAnt) }).catch(() => [] as Fechamento[]),
-      listarRelatorios({ dataInicio: inicio, dataFim: fim }).catch(() => [] as RelatorioDiario[]),
-      Promise.all(meses.map((m) => listarValesDoMes(m)))
-        .then((l) => somarValores(l.flat().filter((v) => !v.excluidoEm && v.data >= inicio && v.data <= fim).map((v) => v.valor)))
-        .catch(() => null),
+      extra(listarFechamentos({ dataInicio: inicioAnt, dataFim: fimDaSemana(inicioAnt) }), [] as Fechamento[]),
+      extra(listarRelatorios({ dataInicio: inicio, dataFim: fim }), [] as RelatorioDiario[]),
+      extra<number | null>(
+        Promise.all(meses.map((m) => listarValesDoMes(m))).then((l) =>
+          somarValores(l.flat().filter((v) => !v.excluidoEm && v.data >= inicio && v.data <= fim).map((v) => v.valor)),
+        ),
+        null,
+      ),
       // Dias de loja fechada (folga, feriado): não contam como "sem fechamento".
-      listarDiasLojaFechada(inicio, fim).catch(() => [] as DiaLojaFechada[]),
+      extra(listarDiasLojaFechada(inicio, fim), [] as DiaLojaFechada[]),
     ])
       .then(([fechamentos, anterior, relatorios, totalVales, fechados]) => {
         if (ativo) setDados({ inicio, fechamentos, anterior, relatorios, totalVales, fechados })
       })
-      .catch((e) => ativo && setErro({ inicio, mensagem: mensagemErro(e, 'Erro ao carregar a semana.') }))
+      .catch((e) => ativo && !automatica && setErro({ inicio, mensagem: mensagemErro(e, 'Erro ao carregar a semana.') }))
     return () => {
       ativo = false
     }
-  }, [inicio, fim, inicioAnt, tentativa])
+  }, [inicio, fim, inicioAnt, tentativa, versaoAuto])
 
   const atual = dados?.inicio === inicio ? dados : null
   const erroAtual = erro?.inicio === inicio ? erro.mensagem : null

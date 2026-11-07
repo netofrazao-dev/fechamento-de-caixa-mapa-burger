@@ -164,11 +164,12 @@ const vale = (f, data, valor) => ({ id: uid(), funcionario: f.nome, funcionario_
 
     await page.goto(`${BASE}/relatorios?mes=2026-11`)
     await esperar('Relatório de 03/11/2026 em andamento')
-    ok(await page.getByRole('link', { name: 'Continuar' }).getAttribute('href') === '/relatorios/novo', 'Relatórios: rascunho visível com "Continuar"')
+    ok(await page.getByRole('link', { name: 'Continuar' }).getAttribute('href') === '/relatorios/novo?data=2026-11-03', 'Relatórios: rascunho visível com "Continuar"')
     await page.getByRole('button', { name: 'Descartar' }).click()
     await page.getByRole('button', { name: 'Sim, descartar' }).click()
     await page.waitForFunction(() => !document.body.innerText.includes('em andamento'))
-    ok(await page.evaluate(() => localStorage.getItem('mapa-burger-rascunho-relatorio-novo')) === null, 'descartar apaga o rascunho do relatório')
+    ok(await page.evaluate(() => localStorage.getItem('mapa-burger-rascunho-relatorio-do-dia-2026-11-03')) === null &&
+      !db.rascunhos.some((r) => r.chave === 'mapa-burger-rascunho-relatorio-do-dia-2026-11-03'), 'descartar apaga o rascunho do relatório (aqui e na nuvem)')
   }
 
   console.log('5. App instalável')

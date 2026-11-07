@@ -3,12 +3,25 @@ const base = require('./simulacao-base.cjs')
 const { uid } = base
 const norm = (t) => (t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().replace(/\s+/g, ' ').toLowerCase()
 
+// Versão (updated_at) única a cada gravação, no formato do Postgres (microssegundos).
+let seqTs = 0
+const ts = () => new Date().toISOString().replace('Z', String(++seqTs % 1000).padStart(3, '0') + '+00:00')
+
+// Campo simples ou dentro de JSON ("dados->>versao").
+const campo = (r, k) => {
+  if (!k.includes('->>')) return r[k]
+  const [col, sub] = k.split('->>')
+  const v = r[col]?.[sub]
+  return v === undefined ? null : v
+}
+
 function filtrar(rows, params) {
   for (const [k, val] of params) {
     if (['select', 'order', 'limit', 'offset', 'on_conflict', 'columns'].includes(k)) continue
     const i = val.indexOf('.'); const op = val.slice(0, i); const arg = val.slice(i + 1)
     rows = rows.filter((r) => {
-      const x = r[k]
+      const x = campo(r, k)
+      if (op === 'like') return new RegExp('^' + arg.split('%').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$').test(String(x))
       if (op === 'eq') return String(x) === arg
       if (op === 'neq') return String(x) !== arg
       if (op === 'gte') return x >= arg
@@ -65,9 +78,26 @@ function handle2(db, method, path, params, body, wantsObject, hooks) {
   const h = hooks?.(method, t, params); if (h) return h
 
   if (t === 'rascunhos') {
-    if (method === 'GET') return responder(filtrar(db.rascunhos, params))
-    if (method === 'POST') { db.rascunhos = db.rascunhos.filter((r) => r.chave !== body.chave); db.rascunhos.push(body); return { status: 201, body: null } }
-    if (method === 'DELETE') { db.rascunhos = db.rascunhos.filter((r) => !filtrar([r], params).length); return { status: 204, body: null } }
+    db.gravacoesRascunho = db.gravacoesRascunho || 0
+    if (method === 'GET') {
+      const sel = Object.fromEntries(params).select || '*'
+      // "versao:dados->>versao" (conferência leve) ou colunas normais
+      const proj = (r) => sel === '*' ? r : Object.fromEntries(sel.split(',').map((c) => c.trim()).map((c) => {
+        const [alias, expr] = c.includes(':') ? c.split(':') : [c.split('->>').pop(), c]
+        return [alias, campo(r, expr)]
+      }))
+      return responder(filtrar(db.rascunhos, params).map(proj))
+    }
+    if (method === 'POST') {
+      const linha = { salvo_em: new Date().toISOString(), ...body }
+      const existe = db.rascunhos.some((r) => r.chave === linha.chave)
+      // Fotos vão com upsert (substitui); o rascunho do dia só é criado se ainda não existe.
+      if (existe && !linha.chave.startsWith('mapa-burger-foto-')) return { status: 409, body: { code: '23505', message: 'duplicate key value violates unique constraint "rascunhos_pkey"' } }
+      db.rascunhos = db.rascunhos.filter((r) => r.chave !== linha.chave); db.rascunhos.push(linha); db.gravacoesRascunho++
+      return { status: 201, body: null }
+    }
+    if (method === 'PATCH') { const alvo = filtrar(db.rascunhos, params); alvo.forEach((r) => Object.assign(r, body)); if (alvo.length) db.gravacoesRascunho++; return responder(alvo.map((r) => ({ chave: r.chave }))) }
+    if (method === 'DELETE') { const alvo = filtrar(db.rascunhos, params); db.rascunhos = db.rascunhos.filter((r) => !alvo.includes(r)); return responder(alvo.map((r) => ({ chave: r.chave }))) }
   }
   if (t === 'auditoria') return responder([])
   if (t === 'acertos_mes') return responder(filtrar(db.acertos || [], params))
@@ -134,15 +164,21 @@ function handle2(db, method, path, params, body, wantsObject, hooks) {
     if (method === 'DELETE') { db.dias_loja_fechada = db.dias_loja_fechada.filter((d) => !filtrar([d], params).length); return { status: 204, body: null } }
   }
   if (t === 'fechamentos') {
+    // No banco, updated_at sempre existe (o gatilho troca a cada gravação).
+    db.fechamentos.forEach((f) => { if (!f.updated_at) f.updated_at = f.created_at || ts() })
     const comSangrias = (f) => ({ ...f, sangrias: db.sangrias.filter((s) => s.fechamento_id === f.id) })
     if (method === 'GET' || method === 'HEAD') return responder(filtrar(db.fechamentos, params).sort((a, b) => b.data.localeCompare(a.data)).map(comSangrias))
     if (method === 'POST') {
       if (db.fechamentos.some((f) => f.data === body.data && f.turno === body.turno)) return { status: 409, body: { code: '23505', message: 'duplicate key value violates unique constraint' } }
-      const f = { id: uid(), created_at: new Date().toISOString(), ...body }; db.fechamentos.push(f)
+      const f = { id: uid(), created_at: new Date().toISOString(), ...body, updated_at: ts() }; db.fechamentos.push(f)
       if (db.dias_loja_fechada) db.dias_loja_fechada = db.dias_loja_fechada.filter((d) => d.data !== f.data) // gatilho da v9
       return responder([f], 201)
     }
-    if (method === 'PATCH') { const alvo = filtrar(db.fechamentos, params); alvo.forEach((r) => Object.assign(r, body)); return responder(alvo) }
+    if (method === 'PATCH') {
+      const alvo = filtrar(db.fechamentos, params)
+      if (body.data && alvo.some((a) => db.fechamentos.some((f) => f !== a && f.data === body.data && f.turno === (body.turno ?? a.turno)))) return { status: 409, body: { code: '23505', message: 'duplicate key value violates unique constraint' } }
+      alvo.forEach((r) => Object.assign(r, body, { updated_at: ts() })); return responder(alvo)
+    }
     if (method === 'DELETE') { const alvo = filtrar(db.fechamentos, params); db.fechamentos = db.fechamentos.filter((f) => !alvo.includes(f)); db.sangrias = db.sangrias.filter((s) => !alvo.some((f) => f.id === s.fechamento_id)); return responder(alvo) }
   }
   if (t === 'sangrias') {
@@ -151,6 +187,7 @@ function handle2(db, method, path, params, body, wantsObject, hooks) {
     if (method === 'DELETE') { const alvo = filtrar(db.sangrias, params); db.sangrias = db.sangrias.filter((s) => !alvo.includes(s)); return { status: 204, body: null } }
   }
   if (t === 'relatorios') {
+    db.relatorios.forEach((r) => { if (!r.updated_at) r.updated_at = r.created_at || ts() })
     if (method === 'GET') {
       const sel = (Object.fromEntries(params).select || '*')
       const cols = sel === '*' ? null : sel.split(',').map((c) => c.trim())
@@ -159,9 +196,13 @@ function handle2(db, method, path, params, body, wantsObject, hooks) {
     }
     if (method === 'POST') {
       if (db.relatorios.some((r) => r.data === body.data)) return { status: 409, body: { code: '23505', message: 'duplicate' } }
-      const r = { id: uid(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...body }; db.relatorios.push(r); return responder([r], 201)
+      const r = { id: uid(), created_at: new Date().toISOString(), ...body, updated_at: ts() }; db.relatorios.push(r); return responder([r], 201)
     }
-    if (method === 'PATCH') { const alvo = filtrar(db.relatorios, params); alvo.forEach((r) => Object.assign(r, body)); return responder(alvo) }
+    if (method === 'PATCH') {
+      const alvo = filtrar(db.relatorios, params)
+      if (body.data && alvo.some((a) => db.relatorios.some((r) => r !== a && r.data === body.data))) return { status: 409, body: { code: '23505', message: 'duplicate key value violates unique constraint "relatorios_data_uk"' } }
+      alvo.forEach((r) => Object.assign(r, body, { updated_at: ts() })); return responder(alvo)
+    }
     if (method === 'DELETE') { const alvo = filtrar(db.relatorios, params); db.relatorios = db.relatorios.filter((r) => !alvo.includes(r)); return responder(alvo) }
   }
   return base.handle(db, method, path, params, body, wantsObject)
