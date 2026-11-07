@@ -141,7 +141,7 @@ export default function Vales() {
   }, [mes, carregar])
 
   // Vale lançado no outro aparelho (ex.: pelo relatório no PC) aparece ao voltar para a tela.
-  useAtualizarAoVoltar(() => carregar(mes, true), 60_000)
+  useAtualizarAoVoltar(() => carregar(mes, true), 300_000)
 
   useEffect(() => {
     if (mostrarHistorico) carregarHistorico(mes)

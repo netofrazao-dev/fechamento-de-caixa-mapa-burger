@@ -156,7 +156,7 @@ export default function Acerto() {
   }, [mes, carregar])
 
   // Vales e consumo lançados no outro aparelho aparecem ao voltar para a tela.
-  useAtualizarAoVoltar(() => carregar(mes, true), 60_000)
+  useAtualizarAoVoltar(() => carregar(mes, true), 300_000)
 
   const atual = dados?.mes === mes ? dados : null
   const erroAtual = erro?.mes === mes ? erro.mensagem : null

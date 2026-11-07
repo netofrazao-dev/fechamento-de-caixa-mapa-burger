@@ -41,7 +41,7 @@ export function useAtualizarAoVoltar(atualizar: () => void, intervaloMs?: number
  * `veioDaAtualizacao` para saber se foi a atualização automática (aí, se a
  * busca falhar, a tela fica como estava — sem erro e sem apagar nada).
  */
-export function useAtualizacaoAutomatica(intervaloMs = 60_000): number {
+export function useAtualizacaoAutomatica(intervaloMs = 300_000): number {
   const [versao, setVersao] = useState(0)
   useAtualizarAoVoltar(() => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return

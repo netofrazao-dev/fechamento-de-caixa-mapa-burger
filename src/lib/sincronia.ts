@@ -234,6 +234,8 @@ export class Sincronizador<C> {
   /** Lido da nuvem e ainda não juntado (a pessoa estava digitando). */
   private guardado: { versaoR: string | null; env: EnvelopeRascunho<C> | null; reg: RegistroBanco<C> | null | undefined } | null = null
   private editadoEm = Number.NEGATIVE_INFINITY
+  /** Última vez que algo mudou (digitado aqui ou chegado do outro aparelho). */
+  private atividadeEm = Number.NEGATIVE_INFINITY
   private fila: Promise<unknown> = Promise.resolve()
   private timerEnvio: ReturnType<typeof setTimeout> | null = null
   private encerrado = false
@@ -293,6 +295,7 @@ export class Sincronizador<C> {
     if (iguais(this.comparavel(c), this.comparavel(this.conteudo))) return
     this.conteudo = c
     this.editadoEm = this.relogio()
+    this.atividadeEm = this.editadoEm
     this.salvarLocal()
     this.atualizarEstado({ pendente: this.calcularPendente() })
     this.agendarEnvio()
@@ -419,6 +422,11 @@ export class Sincronizador<C> {
     })
   }
 
+  /** Alguém mexeu (aqui ou no outro aparelho) nos últimos `ms` milissegundos. */
+  ativo(ms: number): boolean {
+    return this.relogio() - this.atividadeEm < ms
+  }
+
   limparAviso(): void {
     this.atualizarEstado({ chegou: null })
   }
@@ -427,7 +435,13 @@ export class Sincronizador<C> {
 
   private async iniciarInterno(registro: RegistroBanco<C> | null | undefined): Promise<void> {
     const { tipo, dataDocumento } = this.cfg
-    const local = this.lerLocal()
+    let local: RascunhoLocal<C> | null = null
+    try {
+      local = this.lerLocal()
+    } catch {
+      // Rascunho do aparelho estragado: segue sem ele (não trava a tela em "Carregando...").
+      this.cfg.local.apagar(this.cfg.chave)
+    }
     let legado: RascunhoLegado<C> | null = null
     if (!local && this.cfg.legado) {
       try {
@@ -556,6 +570,7 @@ export class Sincronizador<C> {
     if (mudou) {
       this.conteudo = m.resultado
       this.mostrar(m.resultado)
+      this.atividadeEm = this.relogio()
     }
     await this.completarFotos()
     const veio = m.deFora.length > 0 || m.conflitos.length > 0

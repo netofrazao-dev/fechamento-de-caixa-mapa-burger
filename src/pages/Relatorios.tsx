@@ -32,7 +32,7 @@ export default function Relatorios() {
   const [rascunhos, setRascunhos] = useState<RascunhoAberto[]>(() => rascunhosDoAparelho())
   const [descartando, setDescartando] = useState<string | null>(null)
   // Atualiza sozinha ao voltar para a tela (o que foi feito no outro aparelho aparece).
-  const versaoAuto = useAtualizacaoAutomatica(30_000)
+  const versaoAuto = useAtualizacaoAutomatica(120_000)
   const vistaAuto = useRef(versaoAuto)
 
   useEffect(() => {

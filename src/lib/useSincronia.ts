@@ -11,8 +11,11 @@ import {
 import { idDoAparelho, localNavegador, remotoSupabase } from './sincroniaSupabase'
 import { assinaturaFoto, canonico } from './mesclagem'
 
-/** De quanto em quanto tempo confere o outro aparelho com a tela aberta. */
+/** Com gente mexendo (aqui ou no outro aparelho): confere a cada 4 s. */
 const INTERVALO_MS = 4000
+/** Tela parada: confere a cada 15 s (gasta menos internet). Ao voltar para a tela, confere na hora. */
+const INTERVALO_PARADO_MS = 15_000
+const JANELA_ATIVIDADE_MS = 120_000
 
 const ESTADO_INICIAL: EstadoSincronia = {
   pronto: false,
@@ -78,24 +81,29 @@ export function useSincronia<C>(op: Opcoes<C>) {
     setEstado(motor.estadoAtual)
     motor.iniciar(atual.registro).catch((e) => console.warn('sincronia: não iniciou', e))
 
-    const conferir = () => {
+    let ultima = performance.now()
+    const conferir = (agoraMesmo: boolean) => {
       if (document.visibilityState !== 'visible') return
+      const agora = performance.now()
+      if (!agoraMesmo && !motor.ativo(JANELA_ATIVIDADE_MS) && agora - ultima < INTERVALO_PARADO_MS) return
+      ultima = agora
       motor.puxar().catch((e) => console.warn('sincronia: conferência falhou', e))
     }
+    const conferirJa = () => conferir(true)
     // Saindo da tela (trocou de app, bloqueou o celular): manda já o que está pendente.
     const aoMudarVisibilidade = () => {
-      if (document.visibilityState === 'visible') conferir()
+      if (document.visibilityState === 'visible') conferir(true)
       else motor.enviarAgora().catch(() => undefined)
     }
-    const intervalo = setInterval(conferir, INTERVALO_MS)
+    const intervalo = setInterval(() => conferir(false), INTERVALO_MS)
     document.addEventListener('visibilitychange', aoMudarVisibilidade)
-    window.addEventListener('focus', conferir)
-    window.addEventListener('online', conferir)
+    window.addEventListener('focus', conferirJa)
+    window.addEventListener('online', conferirJa)
     return () => {
       clearInterval(intervalo)
       document.removeEventListener('visibilitychange', aoMudarVisibilidade)
-      window.removeEventListener('focus', conferir)
-      window.removeEventListener('online', conferir)
+      window.removeEventListener('focus', conferirJa)
+      window.removeEventListener('online', conferirJa)
       motor.encerrar()
       if (motorRef.current === motor) motorRef.current = null
     }

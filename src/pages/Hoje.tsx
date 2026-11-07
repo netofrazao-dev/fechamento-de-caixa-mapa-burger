@@ -56,7 +56,7 @@ export default function Hoje() {
   // Muda quando a pessoa toca em "Tentar de novo" (busca outra vez).
   const [tentativa, setTentativa] = useState(0)
   // Atualiza sozinha ao voltar para a tela (o que foi feito no outro aparelho aparece).
-  const versaoAuto = useAtualizacaoAutomatica(30_000)
+  const versaoAuto = useAtualizacaoAutomatica(120_000)
   const vistaAuto = useRef(versaoAuto)
   const [rascunhos, setRascunhos] = useState<RascunhoAberto[]>(() => rascunhosDoAparelho())
   useEffect(() => {
