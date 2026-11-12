@@ -60,4 +60,12 @@ describe('busca do Histórico', () => {
     expect(r[0].fechamento).toBeUndefined()
     expect(r[1].achados.map((a) => a.rotulo).sort()).toEqual(['Comeu na loja', 'Vale'])
   })
+
+  it('acha o suprimento pela observação e as marmitas contadas no relatório', () => {
+    const f = { ...fechamento, suprimento: 50, suprimentoObs: 'troco trazido pelo patrão', marmitas: [] } as unknown as Fechamento
+    const r = { ...relatorio, marmitas: [{ prato: 'Frango Grelhado', quantidade: 4 }] } as unknown as RelatorioDiario
+    const lista = itensDoDia({ fechamentos: [f], relatorio: r, vales: [] })
+    expect(buscarItens(lista, 'patrao')).toEqual([{ rotulo: 'Suprimento', texto: 'troco trazido pelo patrão', valor: 50 }])
+    expect(buscarItens(lista, 'frango')).toEqual([{ rotulo: 'Prato vendido', texto: 'Frango Grelhado (4)' }])
+  })
 })

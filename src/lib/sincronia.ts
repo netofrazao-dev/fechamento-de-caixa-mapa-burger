@@ -1,4 +1,4 @@
-import { assinaturaFoto, ehReferenciaFoto, iguais, type ResultadoMescla } from './mesclagem'
+import { assinaturaFoto, ehReferenciaFoto, iguais, type OpcoesMescla, type ResultadoMescla } from './mesclagem'
 import { ErroAmigavel } from './erros'
 
 /**
@@ -54,7 +54,7 @@ export interface TipoDocumento<C> {
   vazio(data: string): C
   /** Completa campos que faltam (rascunhos antigos). */
   completar(c: unknown, data: string): C
-  mesclar(base: C, meu: C, deles: C): ResultadoMescla<C>
+  mesclar(base: C, meu: C, deles: C, opcoes?: OpcoesMescla): ResultadoMescla<C>
   /** Versão limpa (sem linhas vazias, textos aparados) para saber se há algo não salvo. */
   normalizar(c: C): C
   camposFoto: readonly (keyof C)[]
@@ -592,9 +592,10 @@ export class Sincronizador<C> {
     if (!bancoRef) return env.conteudo
     if (env.banco && env.banco.id === bancoRef.id) {
       if (env.banco.versao === bancoRef.versao) return env.conteudo
-      return tipo.mesclar(env.banco.conteudo, env.conteudo, bancoRef.conteudo).resultado
+      // O registro salvo pode ter vindo deste mesmo rascunho: contagens não são somadas duas vezes.
+      return tipo.mesclar(env.banco.conteudo, env.conteudo, bancoRef.conteudo, { idempotente: true }).resultado
     }
-    return tipo.mesclar(tipo.vazio(dataDocumento), env.conteudo, bancoRef.conteudo).resultado
+    return tipo.mesclar(tipo.vazio(dataDocumento), env.conteudo, bancoRef.conteudo, { idempotente: true }).resultado
   }
 
   // ─── Empurrar ──────────────────────────────────────────────
