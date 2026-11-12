@@ -16,7 +16,7 @@ import { somarValores } from '../lib/vales'
 import { BotaoExcluir, CaixaErro } from '../components/Avisos'
 import BarrasHorizontais from '../components/graficos/BarrasHorizontais'
 import { formasDePagamento } from '../lib/relatorioResumo'
-import type { Fechamento, RegistroAuditoria, Sangria, Vale } from '../types/fechamento'
+import type { Fechamento, MarmitaItem, RegistroAuditoria, Sangria, Vale } from '../types/fechamento'
 
 export default function FechamentoDetalhe() {
   const { id } = useParams<{ id: string }>()
@@ -32,7 +32,7 @@ export default function FechamentoDetalhe() {
   const [dica, setDica] = useState<string | null>(() => (estado?.pdfBaixado ? DICA_PAPEL_80MM : null))
   const [relatorioId, setRelatorioId] = useState<string | null | undefined>(undefined)
   // Sangrias e vales do dia (ficam no relatório do dia e na tabela de vales).
-  const [doDia, setDoDia] = useState<{ sangrias: Sangria[]; vales: Vale[] } | null>(null)
+  const [doDia, setDoDia] = useState<{ sangrias: Sangria[]; vales: Vale[]; marmitas: MarmitaItem[] } | null>(null)
   const [auditoria, setAuditoria] = useState<RegistroAuditoria[] | null>(null)
   const [verAuditoria, setVerAuditoria] = useState(false)
   // Atualiza sozinho ao voltar para a tela (pode ter sido alterado no outro aparelho).
@@ -55,7 +55,7 @@ export default function FechamentoDetalhe() {
           .then(([rel, vales]) => {
             if (!ativo) return
             setRelatorioId(rel?.id ?? null)
-            setDoDia({ sangrias: rel?.sangrias ?? [], vales })
+            setDoDia({ sangrias: rel?.sangrias ?? [], vales, marmitas: rel?.marmitas ?? [] })
           })
           .catch(() => undefined)
       })
@@ -77,7 +77,8 @@ export default function FechamentoDetalhe() {
     setAviso(null)
     try {
       const pdf = await carregarPdf()
-      pdf.gerarPdfFechamento(f)
+      // Recibo com as marmitas contadas no relatório do dia (fechamentos antigos: as daqui).
+      pdf.gerarPdfFechamento(doDia?.marmitas.length ? { ...f, marmitas: doDia.marmitas } : f)
       setDica(DICA_PAPEL_80MM)
     } catch (e) {
       setAviso(mensagemErro(e, 'Não consegui gerar o PDF.'))
@@ -97,6 +98,8 @@ export default function FechamentoDetalhe() {
   if (!f) return <div className="max-w-2xl mx-auto p-4 text-sm text-gray-400 dark:text-gray-500">Carregando...</div>
 
   const totalSangrias = somarValores(f.sangrias.map((s) => s.valor))
+  // Marmitas: contadas no relatório do dia (fechamentos antigos: contadas aqui).
+  const marmitasDoDia = doDia?.marmitas.length ? doDia.marmitas : f.marmitas
   const corDiferenca =
     f.resultado.status === 'fechou'
       ? 'text-green-600 dark:text-green-400'
@@ -178,6 +181,12 @@ export default function FechamentoDetalhe() {
 
       <Bloco titulo="Caixa LC">
         <Linha label="Dinheiro abertura" valor={f.lc.dinheiroAbertura} nota="não entra no total" />
+        {f.suprimento > 0 && (
+          <>
+            <Linha label="Suprimento" valor={f.suprimento} nota="não entra no total" />
+            {f.suprimentoObs && <p className="text-xs text-gray-500 dark:text-gray-400 -mt-0.5 pb-1">{f.suprimentoObs}</p>}
+          </>
+        )}
         <Linha label="Dinheiro fechamento" valor={f.lc.dinheiroFechamento} />
         <Linha label="PIX" valor={f.lc.pix} />
         <Linha label="Débito" valor={f.lc.debito} />
@@ -232,9 +241,11 @@ export default function FechamentoDetalhe() {
         )}
       </Bloco>
 
-      <Bloco titulo={`Marmitas vendidas · ${totalMarmitas(f.marmitas)}`}>
-        {f.marmitas.length === 0 && <p className="text-sm text-gray-400">Nenhuma marmita registrada.</p>}
-        {[...f.marmitas]
+      <Bloco titulo={`Marmitas vendidas · ${totalMarmitas(marmitasDoDia)}`}>
+        {marmitasDoDia.length === 0 && (
+          <p className="text-sm text-gray-400">Nenhuma marmita contada (a contagem fica no relatório do dia).</p>
+        )}
+        {[...marmitasDoDia]
           .sort((a, b) => b.quantidade - a.quantidade)
           .map((m) => (
             <div key={m.prato} className="flex justify-between text-sm py-1">

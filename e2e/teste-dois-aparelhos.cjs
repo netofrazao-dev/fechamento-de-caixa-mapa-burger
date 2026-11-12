@@ -143,7 +143,21 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   await cel.esperar('Tudo salvo')
   await cel.shot('41-celular-sincronizado')
 
-  console.log('4. Fechamento: valores no PC e marmitas no celular')
+  console.log('3b. Marmitas contadas no relatório, no PC e no celular ao mesmo tempo (somam)')
+  await cel.abrir('Marmitas vendidas')
+  await pc.abrir('Marmitas vendidas')
+  for (let i = 0; i < 3; i++) await cel.page.getByRole('button', { name: 'Aumentar Estrogonofe' }).click()
+  for (let i = 0; i < 2; i++) await pc.page.getByRole('button', { name: 'Aumentar Estrogonofe' }).click()
+  await cel.page.getByRole('button', { name: 'Salvar', exact: true }).click()
+  await cel.esperar('Relatório salvo.')
+  await pc.page.getByRole('button', { name: 'Salvar', exact: true }).click()
+  await pc.esperar('Relatório salvo.')
+  ok(await noBanco(() => db.relatorios[0].marmitas?.some((m) => m.prato === 'Estrogonofe' && m.quantidade === 5) && db.relatorios[0].quantidade_vendida === 5, 'marmitas somadas'),
+    'banco: 3 marmitas contadas no celular + 2 no PC = 5 (as contagens somam)')
+  ok(await cel.page.getByText('Total de marmitas').locator('..').getByText('5', { exact: true }).waitFor({ timeout: 15000 }).then(() => true, () => false),
+    'celular: total de marmitas atualiza para 5 sozinho')
+
+  console.log('4. Fechamento: valores no PC e suprimento no celular')
   await pc.page.goto(`${BASE}/novo`)
   await pc.page.getByRole('heading', { name: 'Fechamento do caixa' }).waitFor()
   await pc.preencher(pc.campo('Dinheiro no fechamento'), '150,50')
@@ -153,16 +167,18 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   await cel.page.getByRole('heading', { name: 'Fechamento do caixa' }).waitFor()
   await cel.page.waitForFunction(() => [...document.querySelectorAll('input')].some((i) => i.value === '150,50'), null, { timeout: 15000 })
   ok(true, 'celular: abre o fechamento do dia com os valores que o PC digitou')
-  await cel.abrir('1. Marmitas vendidas')
-  for (let i = 0; i < 3; i++) await cel.page.getByRole('button', { name: 'Aumentar Estrogonofe' }).click()
+  ok(await cel.page.getByRole('button', { name: /Marmitas vendidas/ }).count() === 0, 'fechamento não tem mais o contador de marmitas (fica no relatório)')
+  await cel.preencher(cel.campo('Suprimento'), '30')
+  await cel.page.getByLabel('Observação do suprimento').fill('troco trazido pelo patrão')
   await pc.esperar('Chegou do outro aparelho')
-  ok((await pc.page.getByLabel('Chegou do outro aparelho').innerText()).includes('Marmitas'), 'PC: marmitas contadas no celular chegam no PC')
-  await pc.esperar('Total: 3')
+  await pc.page.waitForFunction(() => document.querySelector('[aria-label="Chegou do outro aparelho"]')?.textContent?.includes('Observação do suprimento'), null, { timeout: 15000 })
+  ok(await pc.page.getByLabel('Observação do suprimento').inputValue() === 'troco trazido pelo patrão', 'PC: suprimento e observação lançados no celular chegam no PC')
   const [pdf] = await Promise.all([pc.page.waitForEvent('download', { timeout: 20000 }), pc.page.getByRole('button', { name: 'Salvar e gerar PDF' }).click()])
   ok(/fechamento_2026-11-03/.test(pdf.suggestedFilename()), 'PC salva o fechamento e baixa o recibo')
   await pc.esperar('Fechamento salvo.')
   const f = db.fechamentos.find((x) => x.data === DIA)
-  ok(f && f.dinheiro_fechamento === 150.5 && f.marmitas.some((m) => m.prato === 'Estrogonofe' && m.quantidade === 3), 'fechamento salvo com os valores do PC e as marmitas do celular')
+  ok(f && f.dinheiro_fechamento === 150.5 && f.suprimento === 30 && f.suprimento_obs === 'troco trazido pelo patrão' && f.total_lc === 150.5,
+    'fechamento salvo com os valores do PC e o suprimento do celular (suprimento não entra no total)')
   await cel.page.getByRole('heading', { name: 'Fechamento de 03/11/2026' }).waitFor({ timeout: 15000 })
   ok(true, 'celular: percebe que o PC salvou o fechamento do dia')
 
@@ -170,7 +186,8 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   await cel.page.goto(`${BASE}/relatorios/${rel3.id}`)
   await cel.esperar('Vem do fechamento do caixa deste dia')
   const dia = (await cel.page.getByLabel('Dados do fechamento do dia').innerText()).replace(/ /g, ' ')
-  ok(/Fechamento\s*R\$ 150,50/.test(dia) && /Marmitas\s*3/.test(dia), 'relatório pega o fechamento e as marmitas salvos no outro aparelho')
+  ok(/Fechamento\s*R\$ 150,50/.test(dia) && /Suprimento\s*R\$ 30,00/.test(dia) && dia.includes('troco trazido pelo patrão'),
+    'relatório mostra o fechamento e o suprimento salvos no outro aparelho')
 
   console.log('6. Rascunho da versão antiga do sistema não se perde')
   await pc.page.evaluate(() => {

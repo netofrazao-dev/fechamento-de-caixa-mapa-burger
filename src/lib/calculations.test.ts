@@ -6,6 +6,7 @@ import {
   calcularStatus,
   calcularTotalBrendi,
   calcularTotalLC,
+  comMarmitasDoRelatorio,
   totalMarmitas,
 } from './calculations'
 import type { DadosBrendi, DadosLC } from '../types/fechamento'
@@ -126,6 +127,26 @@ describe('Marmitas', () => {
       ['Bife Acebolado', 6],
       ['Estrogonofe', 5],
       ['Frango Grelhado', 1],
+    ])
+  })
+})
+
+describe('marmitas contadas no relatório do dia', () => {
+  it('o fechamento passa a usar a contagem do relatório do mesmo dia; dia antigo fica com a do fechamento', () => {
+    const fechamentos = [
+      { data: '2026-11-10', marmitas: [] as { prato: string; quantidade: number }[] },
+      { data: '2026-10-01', marmitas: [{ prato: 'Picadinho', quantidade: 9 }] },
+    ]
+    const relatorios = [
+      { data: '2026-11-10', marmitas: [{ prato: 'Estrogonofe', quantidade: 12 }] },
+      { data: '2026-10-01', marmitas: [] },
+    ]
+    const r = comMarmitasDoRelatorio(fechamentos, relatorios)
+    expect(r[0].marmitas).toEqual([{ prato: 'Estrogonofe', quantidade: 12 }])
+    expect(r[1].marmitas).toEqual([{ prato: 'Picadinho', quantidade: 9 }])
+    expect(agregarVendasPorPrato(r)).toEqual([
+      ['Estrogonofe', 12],
+      ['Picadinho', 9],
     ])
   })
 })

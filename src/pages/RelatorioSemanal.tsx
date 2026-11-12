@@ -14,7 +14,7 @@ import { CaixaErro } from '../components/Avisos'
 import { listarFechamentos } from '../lib/fechamentoService'
 import { listarRelatorios } from '../lib/relatorioService'
 import { listarValesDoMes } from '../lib/valeService'
-import { agregarVendasPorPrato, formatarMoeda } from '../lib/calculations'
+import { agregarVendasPorPrato, comMarmitasDoRelatorio, formatarMoeda } from '../lib/calculations'
 import { formasDePagamento, resumoDoMes, statusPorDiferenca } from '../lib/relatorioResumo'
 import { variacao, type Variacao } from '../lib/comparacao'
 import { compararSemanas, diasDaSemana, fimDaSemana, fraseComparacaoSemana, rotuloSemana, semanaDe, somarSemanas } from '../lib/semana'
@@ -74,7 +74,8 @@ export default function RelatorioSemanal() {
     Promise.all([
       listarFechamentos({ dataInicio: inicio, dataFim: fim }),
       extra(listarFechamentos({ dataInicio: inicioAnt, dataFim: fimDaSemana(inicioAnt) }), [] as Fechamento[]),
-      extra(listarRelatorios({ dataInicio: inicio, dataFim: fim }), [] as RelatorioDiario[]),
+      // Relatórios desta semana e da anterior (as marmitas são contadas neles).
+      extra(listarRelatorios({ dataInicio: inicioAnt, dataFim: fim }), [] as RelatorioDiario[]),
       extra<number | null>(
         Promise.all(meses.map((m) => listarValesDoMes(m))).then((l) =>
           somarValores(l.flat().filter((v) => !v.excluidoEm && v.data >= inicio && v.data <= fim).map((v) => v.valor)),
@@ -84,8 +85,18 @@ export default function RelatorioSemanal() {
       // Dias de loja fechada (folga, feriado): não contam como "sem fechamento".
       extra(listarDiasLojaFechada(inicio, fim), [] as DiaLojaFechada[]),
     ])
-      .then(([fechamentos, anterior, relatorios, totalVales, fechados]) => {
-        if (ativo) setDados({ inicio, fechamentos, anterior, relatorios, totalVales, fechados })
+      .then(([fechamentos, anterior, relatoriosDuasSemanas, totalVales, fechados]) => {
+        if (!ativo) return
+        const relatorios = relatoriosDuasSemanas.filter((r) => r.data >= inicio && r.data <= fim)
+        // Marmitas contam pelo relatório do dia (dias antigos: pelo fechamento).
+        setDados({
+          inicio,
+          fechamentos: comMarmitasDoRelatorio(fechamentos, relatorios),
+          anterior: comMarmitasDoRelatorio(anterior, relatoriosDuasSemanas),
+          relatorios,
+          totalVales,
+          fechados,
+        })
       })
       .catch((e) => ativo && !automatica && setErro({ inicio, mensagem: mensagemErro(e, 'Erro ao carregar a semana.') }))
     return () => {

@@ -188,6 +188,25 @@ set role anon;
 select public.t_deve_falhar('select count(*) from rascunhos', 'permission denied', 'sem login não lê os rascunhos compartilhados');
 reset role;
 
+-- ---------------- Marmitas no relatório e suprimento no fechamento (v10) ----------------
+select public.t_como('dono@teste.com');
+set role authenticated;
+insert into relatorios (data, marmitas) values ('2026-10-24', '[{"prato": "Estrogonofe", "quantidade": 3}]');
+select public.t_confere((select marmitas -> 0 ->> 'prato' = 'Estrogonofe' from relatorios where data = '2026-10-24'), 'relatório guarda as marmitas por prato');
+select public.t_deve_falhar($$update relatorios set marmitas = '{}' where data = '2026-10-24'$$, 'relatorios_marmitas_lista', 'marmitas do relatório têm que ser uma lista');
+insert into fechamentos (data, turno, total_lc, total_brendi, total_caixa, total_sistema, diferenca_original, diferenca_final, status, suprimento, suprimento_obs)
+  values ('2026-10-24', 'manha', 0, 0, 0, 0, 0, 0, 'fechou', 50, 'troco trazido pelo patrão');
+select public.t_confere((select suprimento = 50 and diferenca_final = 0 from fechamentos where data = '2026-10-24'), 'suprimento fica guardado e não mexe na conta do caixa');
+select public.t_deve_falhar($$update fechamentos set suprimento_obs = '  ' where data = '2026-10-24'$$, 'fechamentos_suprimento_valido', 'suprimento sem observação é recusado');
+select public.t_deve_falhar($$update fechamentos set suprimento = -1 where data = '2026-10-24'$$, 'fechamentos_suprimento_valido', 'suprimento negativo é recusado');
+update fechamentos set suprimento = 0, suprimento_obs = null where data = '2026-10-24';
+select public.t_confere((select suprimento = 0 from fechamentos where data = '2026-10-24'), 'sem suprimento não precisa de observação');
+delete from fechamentos where data = '2026-10-24';
+delete from relatorios where data = '2026-10-24';
+reset role;
+select public.t_confere(not exists (select 1 from fechamentos where suprimento <> 0), 'fechamentos antigos ficam com suprimento zero');
+select public.t_confere(not exists (select 1 from relatorios where marmitas <> '[]'::jsonb), 'relatórios antigos ficam sem marmitas (continuam as do fechamento)');
+
 -- ---------------- Cópias de segurança (v6) ----------------
 select public.t_confere((select count(*) >= 1 from copias_seguranca), 'migração já deixa uma cópia pronta');
 set role anon;

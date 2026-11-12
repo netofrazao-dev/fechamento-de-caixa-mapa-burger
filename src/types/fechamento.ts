@@ -92,6 +92,10 @@ export interface Fechamento {
   totalLCSistema: number
   ajuste: Ajuste
   observacoes: string
+  /** Dinheiro colocado no caixa durante o dia. Só informativo (não entra em conta nenhuma). */
+  suprimento: number
+  /** De onde veio o suprimento (obrigatório quando há suprimento). */
+  suprimentoObs: string
 
   resultado: ResultadoCalculado
 }
@@ -107,6 +111,8 @@ export interface NovoFechamentoInput {
   totalLCSistema: number
   ajuste: Ajuste
   observacoes: string
+  suprimento: number
+  suprimentoObs: string
 }
 
 // ============================================================
@@ -143,6 +149,8 @@ export interface RelatorioDiario {
   aberturaCaixa: number
   fechamentoCaixa: number
   quantidadeVendida: number
+  /** Marmitas vendidas por prato (contador do relatório). Relatórios antigos: vazio (contadas no fechamento). */
+  marmitas: MarmitaItem[]
 
   estragou: string[]
   funcionariosQueComeram: string[]
@@ -168,6 +176,7 @@ export interface RelatorioDiarioInput {
   aberturaCaixa: number
   fechamentoCaixa: number
   quantidadeVendida: number
+  marmitas: MarmitaItem[]
   estragou: string[]
   funcionariosQueComeram: string[]
   consumoLojaMensal: ConsumoItem[]

@@ -151,4 +151,23 @@ describe('mesclagem entre aparelhos', () => {
   it('canônico não depende da ordem das chaves', () => {
     expect(canonico({ a: 1, b: [{ y: 2, x: 1 }] })).toBe(canonico({ b: [{ x: 1, y: 2 }], a: 1 }))
   })
+
+  it('relatório: marmitas contadas no PC e no celular ao mesmo tempo somam', () => {
+    const base = rel({ marmitas: [{ prato: 'Estrogonofe', quantidade: 2 }] })
+    const pc = rel({ marmitas: [{ prato: 'Estrogonofe', quantidade: 4 }] })
+    const celular = rel({ marmitas: [{ prato: 'Estrogonofe', quantidade: 3 }, { prato: 'Frango Grelhado', quantidade: 1 }] })
+    const { resultado, deFora } = mesclarRelatorio(base, pc, celular)
+    expect(resultado.marmitas).toEqual([
+      { prato: 'Estrogonofe', quantidade: 5 },
+      { prato: 'Frango Grelhado', quantidade: 1 },
+    ])
+    expect(deFora).toContain('Marmitas')
+  })
+
+  it('fechamento: suprimento e a observação dele vêm do aparelho que mexeu', () => {
+    const base = FECHAMENTO_VAZIO('2026-11-07')
+    const { resultado, deFora } = mesclarFechamento(base, { ...base, lc: { ...base.lc, pix: 10 } }, { ...base, suprimento: 50, suprimentoObs: 'troco do patrão' })
+    expect(resultado).toMatchObject({ suprimento: 50, suprimentoObs: 'troco do patrão', lc: { pix: 10 } })
+    expect(deFora).toEqual(['Suprimento', 'Observação do suprimento'])
+  })
 })

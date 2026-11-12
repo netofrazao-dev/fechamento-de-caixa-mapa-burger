@@ -8,7 +8,7 @@ function f(data: string, vendas: number): Fechamento {
   const lc = { dinheiroAbertura: 0, dinheiroFechamento: vendas, pix: 0, debito: 0, credito: 0, consumoLoja: 0, aPrazo: 0, ticket: 0 }
   const brendi = { pix: 0, debito: 0, credito: 0, creditoOnline: 0, dinheiro: 0 }
   const ajuste = { tipo: null, valor: 0 }
-  return { id: data, data, turno: 'manha', createdAt: '', lc, brendi, sangrias: [], marmitas: [], totalLCSistema: vendas, ajuste, observacoes: '',
+  return { id: data, data, turno: 'manha', createdAt: '', lc, brendi, sangrias: [], marmitas: [], totalLCSistema: vendas, ajuste, observacoes: '', suprimento: 0, suprimentoObs: '',
     resultado: calcularResultado({ lc, brendi, totalLCSistema: vendas, ajuste }) }
 }
 

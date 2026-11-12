@@ -9,7 +9,7 @@ function f(data: string, vendas: number, dif = 0): Fechamento {
   const brendi = { pix: 0, debito: 0, credito: 0, creditoOnline: 0, dinheiro: 0 }
   const ajuste = { tipo: null, valor: 0 }
   return { id: data, data, turno: 'manha', createdAt: '', lc, brendi, sangrias: [], marmitas: [{ prato: 'X', quantidade: 10 }],
-    totalLCSistema: vendas - dif, ajuste, observacoes: '', resultado: calcularResultado({ lc, brendi, totalLCSistema: vendas - dif, ajuste }) }
+    totalLCSistema: vendas - dif, ajuste, observacoes: '', suprimento: 0, suprimentoObs: '', resultado: calcularResultado({ lc, brendi, totalLCSistema: vendas - dif, ajuste }) }
 }
 
 describe('variacao', () => {

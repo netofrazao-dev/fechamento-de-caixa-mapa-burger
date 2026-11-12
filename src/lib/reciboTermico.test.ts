@@ -20,7 +20,7 @@ function fechamentoDaFoto(): Fechamento {
       { prato: 'carne assada de panela', quantidade: 3 },
       { prato: 'parmegiana de frango', quantidade: 2 },
     ],
-    totalLCSistema: 700, ajuste,
+    totalLCSistema: 700, ajuste, suprimento: 0, suprimentoObs: '',
     observacoes: 'o vale da valeria de 100 eu acabei lancando 50 por engano ao inves de 100. por isso acabou faltando 50. ai descontando, fica sobrando 1$ no caixa final.',
     resultado: calcularResultado({ lc, brendi, totalLCSistema: 700, ajuste }),
   }

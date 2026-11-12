@@ -4,11 +4,10 @@ import { Info } from 'lucide-react'
 import LCForm from '../components/LCForm'
 import BrendiForm from '../components/BrendiForm'
 import ResultadoCard from '../components/ResultadoCard'
-import ContadorPratos from '../components/ContadorPratos'
-import Secao from '../components/Secao'
 import { CaixaErro, PainelAvisos } from '../components/Avisos'
 import { AvisosSincronia, LinhaSincronia } from '../components/StatusSincronia'
-import { calcularResultado, formatarMoeda, STATUS_LABEL, totalMarmitas } from '../lib/calculations'
+import { calcularResultado, comMarmitasDoRelatorio, formatarMoeda, STATUS_LABEL, totalMarmitas } from '../lib/calculations'
+import { buscarRelatorioDoDia } from '../lib/relatorioService'
 import {
   adaptadorFechamento,
   buscarFechamentoPorId,
@@ -58,6 +57,8 @@ export default function NovoFechamento() {
   const [totalLCSistema, setTotalLCSistema] = useState(0)
   const [ajuste, setAjuste] = useState<Ajuste>(AJUSTE_VAZIO)
   const [observacoes, setObservacoes] = useState('')
+  const [suprimento, setSuprimento] = useState(0)
+  const [suprimentoObs, setSuprimentoObs] = useState('')
 
   const [registro, setRegistro] = useState<RegistroBanco<ConteudoFechamento> | null>(null)
   const [carregando, setCarregando] = useState(editando)
@@ -89,7 +90,7 @@ export default function NovoFechamento() {
 
   // Sincronia com o outro aparelho (rascunho do dia na nuvem + fechamento salvo).
   const dataDocumento = editando ? (registro?.data ?? null) : diaDoLink
-  const conteudo: ConteudoFechamento = { data, lc, brendi, sangrias, marmitas, totalLCSistema, ajuste, observacoes }
+  const conteudo: ConteudoFechamento = { data, lc, brendi, sangrias, marmitas, totalLCSistema, ajuste, observacoes, suprimento, suprimentoObs }
   const aplicar = useCallback((c: ConteudoFechamento) => {
     setData(c.data)
     setLc({ ...LC_VAZIO, ...c.lc })
@@ -99,6 +100,8 @@ export default function NovoFechamento() {
     setTotalLCSistema(c.totalLCSistema ?? 0)
     setAjuste(c.ajuste?.tipo ? c.ajuste : AJUSTE_VAZIO)
     setObservacoes(c.observacoes ?? '')
+    setSuprimento(c.suprimento ?? 0)
+    setSuprimentoObs(c.suprimentoObs ?? '')
   }, [])
   const sinc = useSincronia<ConteudoFechamento>({
     chave: dataDocumento && !erroCarregar && !carregando ? chaveFechamentoDoDia(dataDocumento, turno) : null,
@@ -133,7 +136,7 @@ export default function NovoFechamento() {
   )
 
   function montarInput(): NovoFechamentoInput {
-    return { data, turno, lc, brendi, sangrias, marmitas, totalLCSistema, ajuste, observacoes }
+    return { data, turno, lc, brendi, sangrias, marmitas, totalLCSistema, ajuste, observacoes, suprimento, suprimentoObs }
   }
 
   function mostrarAlertas() {
@@ -207,8 +210,13 @@ export default function NovoFechamento() {
       }
       let pdfBaixado = false
       try {
-        const [fechamento, pdf] = await Promise.all([buscarFechamentoPorId(r.registro.id), carregarPdf()])
-        pdf.gerarPdfFechamento(fechamento)
+        const [fechamento, pdf, relatorio] = await Promise.all([
+          buscarFechamentoPorId(r.registro.id),
+          carregarPdf(),
+          buscarRelatorioDoDia(r.registro.data).catch(() => null),
+        ])
+        // Marmitas do recibo: as contadas no relatório do dia.
+        pdf.gerarPdfFechamento(comMarmitasDoRelatorio([fechamento], relatorio ? [relatorio] : [])[0])
         pdfBaixado = true
       } catch {
         // Salvo mesmo sem PDF; dá pra gerar depois na tela do fechamento.
@@ -297,15 +305,28 @@ export default function NovoFechamento() {
         )}
       </section>
 
-      <Secao
-        titulo="1. Marmitas vendidas"
-        resumo={`Total: ${totalMarmitas(marmitas)}`}
-        ajuda="Toque no + de cada prato vendido."
-      >
-        <ContadorPratos value={marmitas} onChange={setMarmitas} />
-      </Secao>
+      {marmitas.length > 0 && (
+        // Fechamentos antigos têm as marmitas contadas aqui. Agora a contagem fica no Relatório do dia.
+        <p className="flex gap-2 rounded-2xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 p-3.5 text-sm text-blue-900 dark:text-blue-200">
+          <Info size={16} className="shrink-0 mt-0.5" />
+          <span>
+            Este fechamento tem {totalMarmitas(marmitas)} marmita(s) contada(s) aqui (antes da mudança). Agora as marmitas são
+            contadas no <strong>Relatório do dia</strong>.
+          </span>
+        </p>
+      )}
 
-      <LCForm value={lc} onChange={setLc} defaultAberto />
+      <LCForm
+        value={lc}
+        onChange={setLc}
+        defaultAberto
+        suprimento={suprimento}
+        suprimentoObs={suprimentoObs}
+        onSuprimentoChange={(v, obs) => {
+          setSuprimento(v)
+          setSuprimentoObs(obs)
+        }}
+      />
       <BrendiForm value={brendi} onChange={setBrendi} />
       {sangrias.length > 0 && (
         // Fechamentos antigos podem ter sangrias lançadas aqui. Agora elas ficam só no Relatório do dia.

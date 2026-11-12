@@ -13,6 +13,8 @@ const base: NovoFechamentoInput = {
   totalLCSistema: 500,
   ajuste: { tipo: null, valor: 0 },
   observacoes: '',
+  suprimento: 0,
+  suprimentoObs: '',
 }
 const res = (i: NovoFechamentoInput) => calcularResultado(i)
 
@@ -87,5 +89,11 @@ describe('avisosValoresFora (valor fora do normal)', () => {
   it('entra nos avisos do fechamento (pede confirmação)', () => {
     const errado = { ...base, lc: { ...base.lc, pix: 140000 }, totalLCSistema: 140500 }
     expect(avisosFechamento(errado, res(errado), '2026-11-03', historico).some((a) => a.startsWith('PIX (LC)'))).toBe(true)
+  })
+
+  it('suprimento precisa de observação; sem suprimento, não', () => {
+    expect(errosFechamento({ ...base, suprimento: 50, suprimentoObs: ' ' })[0]).toMatch(/suprimento precisa de uma observação/)
+    expect(errosFechamento({ ...base, suprimento: 50, suprimentoObs: 'troco do patrão' })).toEqual([])
+    expect(errosFechamento({ ...base, suprimento: 0, suprimentoObs: '' })).toEqual([])
   })
 })
