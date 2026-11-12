@@ -46,8 +46,12 @@ function criarDb2() {
   for (const nome of ['Estrogonofe', 'Frango Grelhado', 'Bife Acebolado']) db.pratos.push({ id: uid(), nome, ativo: true })
   db.produtos_estoque = ['Coca KS', 'Sprite 350ml', 'Monster Azul', 'Água S/G 330ml'].map((nome, i) => ({ id: uid(), nome, ativo: true, ordem: i + 1 }))
   db.funcionarios.forEach((f) => (f.ativo = true))
-  db.usuarios = { 'dono@teste.com': 'senha-forte-123', 'intruso@teste.com': 'senha-forte-123' }
+  db.usuarios = { 'dono@teste.com': 'senha-forte-123', 'intruso@teste.com': 'senha-forte-123', 'cozinha@teste.com': 'senha-forte-123' }
   db.autorizados = new Set(['dono@teste.com'])
+  // Login da cozinha (v11): só lança o que estragou.
+  db.papeis = { 'cozinha@teste.com': 'cozinha' }
+  db.nomes = { 'cozinha@teste.com': 'Maria' }
+  db.estragos_cozinha = []
   db.sessaoEmail = null
   return db
 }
@@ -75,6 +79,24 @@ function handle2(db, method, path, params, body, wantsObject, hooks) {
   if (path.startsWith('/auth/v1/user')) return { status: 200, body: { id: 'u1', email: db.sessaoEmail, aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {} } }
   const t = path.replace(/^\/rest\/v1\//, '')
   if (t === 'rpc/usuario_autorizado') return { status: 200, body: db.autorizados.has(db.sessaoEmail) }
+  if (t === 'rpc/papel_usuario') return { status: 200, body: db.papeis?.[db.sessaoEmail] ?? (db.autorizados.has(db.sessaoEmail) ? 'dono' : null) }
+  if (t === 'estragos_cozinha' && db.estragos_cozinha) {
+    const cozinha = db.papeis?.[db.sessaoEmail] === 'cozinha'
+    const dono = db.autorizados.has(db.sessaoEmail)
+    // Regras do banco (v11): a cozinha só vê e apaga os dela (e só o que ainda não entrou no relatório).
+    const visiveis = () => db.estragos_cozinha.filter((e) => dono || (cozinha && e.usuario === db.sessaoEmail))
+    if (method === 'GET') return responder(filtrar(visiveis(), params).sort((a, b) => a.criado_em.localeCompare(b.criado_em)))
+    if (method === 'POST') {
+      if (!dono && !cozinha) return { status: 403, body: { code: '42501', message: 'new row violates row-level security policy' } }
+      const e = { id: uid(), data: body.data, texto: String(body.texto).trim().replace(/\s+/g, ' '), criado_em: new Date().toISOString(), usuario: db.sessaoEmail, nome: db.nomes?.[db.sessaoEmail] ?? null, importado_em: null }
+      db.estragos_cozinha.push(e); return responder([e], 201)
+    }
+    if (method === 'DELETE') {
+      const alvo = filtrar(visiveis(), params).filter((e) => dono || !e.importado_em)
+      db.estragos_cozinha = db.estragos_cozinha.filter((e) => !alvo.includes(e)); return responder(alvo)
+    }
+    if (method === 'PATCH') { const alvo = dono ? filtrar(db.estragos_cozinha, params) : []; alvo.forEach((e) => Object.assign(e, body)); return responder(alvo) }
+  }
   const h = hooks?.(method, t, params); if (h) return h
 
   if (t === 'rascunhos') {

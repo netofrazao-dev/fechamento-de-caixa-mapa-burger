@@ -56,3 +56,19 @@ export function veioDaAtualizacao(vista: { current: number }, versao: number): b
   vista.current = versao
   return veio
 }
+
+/**
+ * Mensagem de "salvo" que veio na navegação: aparece agora, mas não volta se
+ * a pessoa recarregar a página (tira do histórico do navegador sem mexer na tela).
+ */
+export function useEsquecerAvisoDaNavegacao(temAviso: boolean): void {
+  useEffect(() => {
+    if (!temAviso) return
+    try {
+      const atual = window.history.state as Record<string, unknown> | null
+      if (atual && 'usr' in atual) window.history.replaceState({ ...atual, usr: null }, '')
+    } catch {
+      // sem acesso ao histórico: nada a fazer
+    }
+  }, [temAviso])
+}

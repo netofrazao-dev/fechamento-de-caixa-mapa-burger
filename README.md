@@ -50,6 +50,13 @@ continuam com a contagem feita no fechamento) e o fechamento ganha o **supriment
 no caixa durante o dia: só informativo, como a abertura, com observação obrigatória). **Precisa dessa
 migração** para salvar relatórios e fechamentos nesta versão.
 
+**J. Login da cozinha (estragos):** rode `migration_v11_cozinha_estragos.sql` (depois da v10). Cria o
+acesso "cozinha": a pessoa entra (pode instalar no celular como aplicativo) e só vê a tela **"O que
+estragou hoje"** — o banco não deixa ela ver caixa, relatórios, vales nem mais nada. O que ela lança
+entra sozinho no "Estragou" do relatório do dia (e a tela Hoje avisa). Para dar o acesso: crie o login
+dela em *Authentication → Users → Add user* (marque *Auto Confirm User*) e rode
+`insert into public.usuarios_autorizados (email, nome, papel) values ('email-dela@exemplo.com', 'Nome', 'cozinha');`
+
 Para incluir alguém depois: crie o login (passo B) e rode
 `insert into public.usuarios_autorizados (email, nome) values ('email@exemplo.com', 'Nome');`
 Para tirar o acesso: `update public.usuarios_autorizados set ativo = false where email = '...';`

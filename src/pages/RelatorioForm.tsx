@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Camera, CheckCircle2, ImagePlus, Images, Info, Loader2, Printer, X } from 'lucide-react'
+import { Camera, CheckCircle2, ChefHat, ImagePlus, Images, Info, Loader2, Printer, X } from 'lucide-react'
+import { listarEstragosDoDia, marcarEstragosNoRelatorio, type EstragoCozinha } from '../lib/estragoService'
 import {
   adaptadorRelatorio,
   buscarIdRelatorioPorData,
@@ -19,7 +20,7 @@ import { buscarAcerto } from '../lib/acertoService'
 import { listarValesDoDia } from '../lib/valeService'
 import type { Funcionario } from '../types/fechamento'
 import { useSincronia } from '../lib/useSincronia'
-import { useAtualizarAoVoltar } from '../lib/useAtualizarAoVoltar'
+import { useAtualizarAoVoltar, useEsquecerAvisoDaNavegacao } from '../lib/useAtualizarAoVoltar'
 import { levarParaOutroDia, type RegistroBanco } from '../lib/sincronia'
 import { localNavegador } from '../lib/sincroniaSupabase'
 import { chaveRelatorioDoDia, DOC_RELATORIO } from '../lib/documentos'
@@ -166,6 +167,44 @@ export default function RelatorioForm() {
   // Muda para buscar de novo (ao voltar para a tela e de tempos em tempos: o fechamento pode ser feito no outro aparelho).
   const [versaoDia, setVersaoDia] = useState(0)
   useAtualizarAoVoltar(() => setVersaoDia((v) => v + 1), 20_000)
+
+  // O que a cozinha lançou como estragado (pelo login da cozinha): entra sozinho no "Estragou".
+  const [estragosCozinha, setEstragosCozinha] = useState<{ data: string; lista: EstragoCozinha[] } | null>(null)
+  const [chegouCozinha, setChegouCozinha] = useState<string[] | null>(null)
+  // Já colocados neste formulário (não volta se a pessoa tirar da lista antes de salvar).
+  const vistosCozinha = useRef(new Set<string>())
+  const prontoSinc = sinc.estado.pronto
+  useEffect(() => {
+    if (!dataValida(data) || !prontoSinc) return
+    let ativo = true
+    listarEstragosDoDia(data)
+      .then((lista) => {
+        if (!ativo) return
+        setEstragosCozinha({ data, lista })
+        const novos = lista.filter((e) => !e.importadoEm && !vistosCozinha.current.has(e.id))
+        if (novos.length === 0) return
+        novos.forEach((e) => vistosCozinha.current.add(e.id))
+        const chave = (t: string) => t.trim().replace(/\s+/g, ' ').toLowerCase()
+        setEstragou((atual) => {
+          const tem = new Set(atual.map(chave))
+          const entrar: string[] = []
+          for (const e of novos) {
+            if (tem.has(chave(e.texto))) continue
+            tem.add(chave(e.texto))
+            entrar.push(e.texto)
+          }
+          return entrar.length > 0 ? [...atual.filter((t) => t.trim()), ...entrar] : atual
+        })
+        setChegouCozinha(novos.map((e) => e.texto))
+      })
+      .catch(() => {
+        // sem internet: tenta de novo na próxima atualização
+      })
+    return () => {
+      ativo = false
+    }
+  }, [data, versaoDia, prontoSinc])
+  const cozinhaDoDia = estragosCozinha?.data === data ? estragosCozinha.lista : []
   useEffect(() => {
     if (!dataValida(data)) return
     let ativo = true
@@ -288,6 +327,9 @@ export default function RelatorioForm() {
     try {
       // Junta com o que o outro aparelho fez e grava só se ninguém gravou no meio.
       const r = await sinc.salvar(comValoresDoFechamento)
+      // O que veio da cozinha agora está no relatório (a cozinha não apaga mais).
+      void marcarEstragosNoRelatorio([...vistosCozinha.current]).catch(() => undefined)
+      setChegouCozinha(null)
       const aviso = textoJuntou(r.juntou, r.conflitos)
       if (!editando) {
         navigate(`/relatorios/${r.registro.id}`, { replace: true, state: { salvo: true, aviso } })
@@ -356,6 +398,9 @@ export default function RelatorioForm() {
     }
   }
 
+  // "Relatório salvo." vindo da navegação não volta ao recarregar a página.
+  useEsquecerAvisoDaNavegacao(Boolean((location.state as { salvo?: boolean } | null)?.salvo))
+
   const descartarAlteracoes = useCallback(async () => {
     await sinc.descartar()
     window.location.reload()
@@ -401,6 +446,18 @@ export default function RelatorioForm() {
       )}
 
       <AvisosSincronia estado={sinc.estado} nome="relatório" onFecharChegou={sinc.limparAviso} onDescartar={descartarAlteracoes} />
+
+      {chegouCozinha && (
+        <div role="status" aria-label="Chegou da cozinha" className="flex items-start gap-2 rounded-xl bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-900 px-4 py-2.5 text-xs text-orange-900 dark:text-orange-200">
+          <ChefHat size={14} className="shrink-0 mt-0.5" />
+          <p className="flex-1">
+            <strong>Chegou da cozinha (Estragou):</strong> {chegouCozinha.join(', ')}. Já está na lista; é só salvar o relatório.
+          </p>
+          <button type="button" onClick={() => setChegouCozinha(null)} aria-label="Fechar aviso da cozinha" className="shrink-0 -m-1 p-1">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       <section className="rounded-2xl bg-white dark:bg-gray-900 shadow-sm p-4 space-y-3">
         <label className="flex flex-col gap-1">
@@ -510,6 +567,15 @@ export default function RelatorioForm() {
         ajuda="Comida ou produto que foi perdido. Escreva quantidade e o que era."
       >
         <ListaLivre value={estragou} onChange={setEstragou} placeholder="Ex: 400g de arroz" />
+        {cozinhaDoDia.length > 0 && (
+          <p className="flex gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+            <ChefHat size={13} className="shrink-0 mt-px" />
+            <span>
+              Lançado pela cozinha hoje:{' '}
+              {cozinhaDoDia.map((e) => `${e.texto}${e.nome ? ` (${e.nome}, ${horaCurta(e.criadoEm)})` : ` (${horaCurta(e.criadoEm)})`}`).join(' · ')}
+            </span>
+          </p>
+        )}
       </Secao>
 
       <Secao
@@ -830,3 +896,4 @@ function textoJuntou(juntou: string[], conflitos: string[]): string {
   return partes.join(' ')
 }
 
+const horaCurta = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
