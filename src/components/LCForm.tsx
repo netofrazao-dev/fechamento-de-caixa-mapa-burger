@@ -7,16 +7,22 @@ interface Props {
   value: DadosLC
   onChange: (value: DadosLC) => void
   defaultAberto?: boolean
+  /** Suprimento: dinheiro colocado no caixa durante o dia (só informativo, como a abertura). */
+  suprimento: number
+  suprimentoObs: string
+  onSuprimentoChange: (valor: number, observacao: string) => void
 }
 
-export default function LCForm({ value, onChange, defaultAberto }: Props) {
+export default function LCForm({ value, onChange, defaultAberto, suprimento, suprimentoObs, onSuprimentoChange }: Props) {
+  const faltaObs = suprimento > 0 && !suprimentoObs.trim()
   const set = <K extends keyof DadosLC>(key: K, v: number) => onChange({ ...value, [key]: v })
   const total = calcularTotalLC(value)
 
   return (
     <Secao
-      titulo="2. Caixa LC"
-      resumo={`Total LC: ${formatarMoeda(total)}`}
+      titulo="1. Caixa LC"
+      resumo={`Total LC: ${formatarMoeda(total)}${suprimento > 0 ? ` · suprimento ${formatarMoeda(suprimento)}` : ''}`}
+      alerta={faltaObs}
       defaultAberto={defaultAberto}
       ajuda="O que foi apurado no caixa da LC. Use o + ao lado do campo para somar comprovantes um a um."
     >
@@ -28,6 +34,30 @@ export default function LCForm({ value, onChange, defaultAberto }: Props) {
           somavel={false}
           helper="Troco do início do dia. Não entra no total."
         />
+        <CampoMoeda
+          label="Suprimento"
+          value={suprimento}
+          onChange={(v) => onSuprimentoChange(v, suprimentoObs)}
+          somavel={false}
+          helper="Dinheiro colocado no caixa durante o dia. Não entra no total."
+        />
+        {suprimento > 0 && (
+          <label className="col-span-2 flex flex-col gap-1">
+            <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">Observação do suprimento</span>
+            <input
+              type="text"
+              maxLength={300}
+              placeholder="De onde veio o dinheiro (obrigatório)"
+              aria-invalid={faltaObs}
+              className={`w-full min-w-0 rounded-lg border bg-transparent px-3 py-2 text-sm outline-none focus:border-gray-500 ${
+                faltaObs ? 'border-red-400 dark:border-red-700' : 'border-gray-200 dark:border-gray-700'
+              }`}
+              value={suprimentoObs}
+              onChange={(e) => onSuprimentoChange(suprimento, e.target.value)}
+            />
+            {faltaObs && <span className="text-[11px] text-red-600 dark:text-red-400">Escreva de onde veio o suprimento.</span>}
+          </label>
+        )}
         <CampoMoeda
           label="Dinheiro no fechamento"
           value={value.dinheiroFechamento}

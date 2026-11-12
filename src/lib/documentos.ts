@@ -36,6 +36,8 @@ export const DOC_FECHAMENTO: TipoDocumento<ConteudoFechamento> = {
       totalLCSistema: n.totalLCSistema,
       ajuste: n.ajuste,
       observacoes: n.observacoes,
+      suprimento: n.suprimento,
+      suprimentoObs: n.suprimento > 0 ? n.suprimentoObs : '',
     }
   },
   camposFoto: [],

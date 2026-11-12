@@ -44,6 +44,12 @@ renomear, desativar e reativar. Sem essa migração o relatório continua com a 
 loja não abriu (folga, feriado): eles deixam de aparecer como "dia sem fechamento" na tela Hoje, no
 Histórico e nos resumos. Sem essa migração o resto do sistema funciona normalmente.
 
+**I. Marmitas no relatório e suprimento:** rode `migration_v10_marmitas_suprimento.sql` (depois da v9).
+As marmitas passam a ser contadas no **relatório do dia** (os resumos usam essa contagem; dias antigos
+continuam com a contagem feita no fechamento) e o fechamento ganha o **suprimento** (dinheiro colocado
+no caixa durante o dia: só informativo, como a abertura, com observação obrigatória). **Precisa dessa
+migração** para salvar relatórios e fechamentos nesta versão.
+
 Para incluir alguém depois: crie o login (passo B) e rode
 `insert into public.usuarios_autorizados (email, nome) values ('email@exemplo.com', 'Nome');`
 Para tirar o acesso: `update public.usuarios_autorizados set ativo = false where email = '...';`

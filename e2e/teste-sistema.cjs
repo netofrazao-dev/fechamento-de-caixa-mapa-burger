@@ -83,7 +83,14 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   await esperarTexto('SOBROU DINHEIRO R$ 350,50')
   ok(true, 'resultado ao vivo no rodapé: SOBROU DINHEIRO R$ 350,50')
   ok(!(await texto()).includes('Sangrias') && (await page.getByRole('button', { name: 'Adicionar sangria' }).count()) === 0, 'fechamento não tem mais a parte de sangrias')
-  ok((await texto()).includes('4. Conferência com o sistema'), 'seções renumeradas (4. Conferência)')
+  ok((await texto()).includes('3. Conferência com o sistema') && (await page.getByRole('button', { name: /Marmitas vendidas/ }).count()) === 0,
+    'fechamento sem o contador de marmitas (fica no relatório); seções renumeradas (3. Conferência)')
+  // Suprimento: só informação (não entra no total), com observação obrigatória.
+  await preencher(campo('Suprimento'), '50', '50,00')
+  await page.getByRole('button', { name: 'Salvar e gerar PDF' }).click()
+  await esperarTexto('O suprimento precisa de uma observação')
+  ok(db.fechamentos.length === 0 && (await texto()).includes('SOBROU DINHEIRO R$ 350,50'), 'suprimento sem observação não salva e não mexe no resultado')
+  await page.getByLabel('Observação do suprimento').fill('troco trazido pelo patrão')
   await page.getByRole('button', { name: 'Salvar e gerar PDF' }).click()
   await page.getByText('Confira antes de salvar').waitFor()
   ok((await texto()).includes('Total LC Sistema" está zerado'), 'avisa Total LC Sistema zerado')
@@ -100,10 +107,12 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
     const alturaMm = Number(/Page size:\s+[\d.]+ x ([\d.]+)/.exec(info)[1]) * 25.4 / 72
     ok(/Pages:\s+1\b/.test(info) && alturaMm < 200, `recibo: 1 página da altura do conteúdo (${Math.round(alturaMm)} mm, não 297)`)
     ok(/\(PIX +R\$ 200,00\) Tj/.test(bruto) && /\(Dinheiro fechamento +R\$ 150,50\) Tj/.test(bruto), 'recibo: nome e valor na mesma linha, separados por espaços')
+    ok(/\(Suprimento +R\$ 50,00\) Tj/.test(bruto) && bruto.includes('troco trazido pelo patr'), 'recibo: suprimento com a observação')
   }
   await page.getByText('Fechamento salvo.').waitFor()
   const f = db.fechamentos[0]
   ok(f && f.dinheiro_fechamento === 150.5 && f.total_lc === 350.5 && f.status === 'fechou', 'gravado: 150,50 + 200 = 350,50, CAIXA FECHOU')
+  ok(f && f.suprimento === 50 && f.suprimento_obs === 'troco trazido pelo patrão', 'suprimento gravado com a observação (fora do total)')
   ok(db.sangrias.length === 0, 'fechamento salvo sem sangrias')
   await shot('12-detalhe')
 
@@ -187,8 +196,13 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   // Abertura e fechamento do dinheiro vêm sozinhos do fechamento do dia (não se digita de novo).
   await esperarTexto('Vem do fechamento do caixa deste dia')
   const dinheiroDia = (await page.getByLabel('Dados do fechamento do dia').innerText()).replace(/\u00a0/g, ' ')
-  ok(/Fechamento\s*R\$ 150,50/.test(dinheiroDia) && /Abertura\s*R\$ 0,00/.test(dinheiroDia) && /Marmitas\s*0/.test(dinheiroDia),
-    'relatório mostra abertura, fechamento e marmitas do fechamento do dia')
+  ok(/Fechamento\s*R\$ 150,50/.test(dinheiroDia) && /Abertura\s*R\$ 0,00/.test(dinheiroDia) && /Suprimento\s*R\$ 50,00/.test(dinheiroDia) &&
+    dinheiroDia.includes('troco trazido pelo patrão'),
+  'relatório mostra abertura, suprimento (com a observação) e fechamento do fechamento do dia')
+  // Marmitas agora são contadas aqui no relatório.
+  await page.getByRole('button', { name: /^Marmitas vendidas/ }).click()
+  for (let i = 0; i < 2; i++) await page.getByRole('button', { name: 'Aumentar Estrogonofe' }).click()
+  await page.getByRole('button', { name: 'Aumentar Frango Grelhado' }).click()
   ok(await page.getByRole('textbox', { name: 'Fechamento do caixa', exact: true }).count() === 0 &&
     await page.getByRole('textbox', { name: 'Quantidade vendida' }).count() === 0, 'relatório não pede de novo abertura/fechamento nem marmitas')
   await page.getByRole('button', { name: /^Sangrias/ }).click()
@@ -237,6 +251,7 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   await page.getByRole('button', { name: 'Salvar', exact: true }).click()
   await page.getByText('Relatório salvo.').waitFor()
   ok(db.relatorios.length === 1 && db.relatorios[0].fechamento_caixa === 150.5, 'relatório gravado')
+  ok(db.relatorios[0].marmitas?.length === 2 && db.relatorios[0].quantidade_vendida === 3, 'marmitas contadas no relatório gravadas (2 Estrogonofe + 1 Frango = 3)')
   const gravadas = db.relatorios[0].sangrias.map((x) => `${x.tipo}:${x.motivo}:${x.valor}`).sort().join(' | ')
   ok(gravadas === 'compra:pão:12.5 | pagamento:pagamento do gás:30 | pix:carne no açougue:80', 'sangrias gravadas com o tipo: ' + gravadas)
   await shot('15-relatorio')

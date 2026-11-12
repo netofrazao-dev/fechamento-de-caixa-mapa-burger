@@ -11,7 +11,7 @@ function fechamento(): Fechamento {
   const ajuste = { tipo: null, valor: 0 }
   return {
     id: 'f', data: '2026-11-03', turno: 'manha', createdAt: '', lc, brendi, sangrias: [], marmitas: [],
-    totalLCSistema: 4020, ajuste, observacoes: '',
+    totalLCSistema: 4020, ajuste, observacoes: '', suprimento: 0, suprimentoObs: '',
     resultado: calcularResultado({ lc, brendi, totalLCSistema: 4020, ajuste }),
   }
 }

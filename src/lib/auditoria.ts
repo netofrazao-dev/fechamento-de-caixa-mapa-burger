@@ -23,9 +23,11 @@ const CAMPOS_FECHAMENTO: Record<string, string> = {
   diferenca_final: 'Diferença final',
   observacoes: 'Observações',
   marmitas: 'Marmitas',
+  suprimento: 'Suprimento',
+  suprimento_obs: 'Observação do suprimento',
 }
 
-const CAMPOS_TEXTO = new Set(['data', 'ajuste_tipo', 'observacoes', 'marmitas'])
+const CAMPOS_TEXTO = new Set(['data', 'ajuste_tipo', 'observacoes', 'marmitas', 'suprimento_obs'])
 
 function valorLegivel(campo: string, v: unknown): string {
   if (v === null || v === undefined || v === '') return '—'

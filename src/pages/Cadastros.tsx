@@ -496,7 +496,7 @@ export default function Cadastros() {
       />
       <ListaCadastro
         titulo="Pratos (marmitas)"
-        explicacao="Aparecem no contador de marmitas do fechamento. Desativar tira do contador, sem mexer nos fechamentos antigos."
+        explicacao="Aparecem no contador de marmitas do relatório do dia. Desativar tira do contador, sem mexer nos dias antigos."
         rotuloInativo="desativados"
         servico={servicoPratos}
       />

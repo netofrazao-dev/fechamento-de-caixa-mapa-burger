@@ -10,7 +10,8 @@ import {
 import { listarFechamentos } from '../lib/fechamentoService'
 import { carregarPdf, DICA_PAPEL_80MM } from '../lib/pdfSobDemanda'
 import { mensagemErro } from '../lib/erros'
-import { formatarMoeda, totalMarmitas } from '../lib/calculations'
+import { comMarmitasDoRelatorio, formatarMoeda, totalMarmitas } from '../lib/calculations'
+import ContadorPratos from '../components/ContadorPratos'
 import { BotaoExcluir, CaixaErro } from '../components/Avisos'
 import { dataValida } from '../lib/vales'
 import { listarFuncionarios } from '../lib/funcionarioService'
@@ -32,7 +33,7 @@ import ListaConsumo from '../components/ListaConsumo'
 import SangriasRelatorio from '../components/SangriasRelatorio'
 import { resumoSangrias } from '../lib/sangrias'
 import EstoqueForm from '../components/EstoqueForm'
-import type { ConsumoItem, EstoqueSnapshot, Fechamento, Sangria, Vale } from '../types/fechamento'
+import type { ConsumoItem, EstoqueSnapshot, Fechamento, MarmitaItem, Sangria, Vale } from '../types/fechamento'
 import { diaDaSemana, formatarDataBr, hojeLocal as hoje } from '../lib/datas'
 
 const ESTOQUE_VAZIO: EstoqueSnapshot = { itens: [] }
@@ -55,6 +56,7 @@ export default function RelatorioForm() {
   const [aberturaCaixa, setAberturaCaixa] = useState(0)
   const [fechamentoCaixa, setFechamentoCaixa] = useState(0)
   const [quantidadeVendida, setQuantidadeVendida] = useState(0)
+  const [marmitas, setMarmitas] = useState<MarmitaItem[]>([])
   const [estragou, setEstragou] = useState<string[]>([])
   const [funcionariosQueComeram, setFuncionariosQueComeram] = useState<string[]>([])
   const [consumoLojaMensal, setConsumoLojaMensal] = useState<ConsumoItem[]>([])
@@ -116,6 +118,7 @@ export default function RelatorioForm() {
     aberturaCaixa,
     fechamentoCaixa,
     quantidadeVendida,
+    marmitas,
     estragou,
     funcionariosQueComeram,
     consumoLojaMensal,
@@ -131,6 +134,7 @@ export default function RelatorioForm() {
     setAberturaCaixa(c.aberturaCaixa)
     setFechamentoCaixa(c.fechamentoCaixa)
     setQuantidadeVendida(c.quantidadeVendida)
+    setMarmitas(c.marmitas)
     setEstragou(c.estragou)
     setFuncionariosQueComeram(c.funcionariosQueComeram)
     setConsumoLojaMensal(c.consumoLojaMensal)
@@ -178,8 +182,8 @@ export default function RelatorioForm() {
   const aberturaDoDia = fDia ? fDia.lc.dinheiroAbertura : aberturaCaixa
   const fechamentoDoDiaValor = fDia ? fDia.lc.dinheiroFechamento : fechamentoCaixa
 
-  // Marmitas vendidas também vêm do fechamento (o contador de pratos de lá).
-  const marmitasDoDia = fDia ? totalMarmitas(fDia.marmitas) : quantidadeVendida
+  // Dias antigos: as marmitas foram contadas no fechamento (antes da contagem passar para cá).
+  const marmitasNoFechamento = marmitas.length === 0 && fDia ? totalMarmitas(fDia.marmitas) : 0
 
   // Edição com a data trocada: já existe outro relatório nesse dia? Avisa antes de salvar.
   const [outroNaData, setOutroNaData] = useState<{ data: string; id: string | null } | null>(null)
@@ -231,7 +235,9 @@ export default function RelatorioForm() {
       ...c,
       aberturaCaixa: fDia ? fDia.lc.dinheiroAbertura : c.aberturaCaixa,
       fechamentoCaixa: fDia ? fDia.lc.dinheiroFechamento : c.fechamentoCaixa,
-      quantidadeVendida: fDia ? totalMarmitas(fDia.marmitas) : c.quantidadeVendida,
+      // Marmitas: as contadas aqui; dias antigos, as contadas no fechamento.
+      quantidadeVendida:
+        c.marmitas.length > 0 ? totalMarmitas(c.marmitas) : fDia && fDia.marmitas.length > 0 ? totalMarmitas(fDia.marmitas) : c.quantidadeVendida,
     }
   }
 
@@ -313,7 +319,8 @@ export default function RelatorioForm() {
     setProcessando(true)
     try {
       const { c, relatorio } = await relatorioAtual()
-      const [fechamentos, pdf, vales] = await Promise.all([buscarFechamentosDoDia(c.data), carregarPdf(), valesParaPdf(c.data)])
+      const [doDia, pdf, vales] = await Promise.all([buscarFechamentosDoDia(c.data), carregarPdf(), valesParaPdf(c.data)])
+      const fechamentos = comMarmitasDoRelatorio(doDia, [c])
       pdf.imprimirDiaCompleto({ relatorio, fechamentos, vales })
       // Com papel "Carta"/A4 a impressora térmica solta uma folha inteira de papel em branco.
       setInfo(DICA_PAPEL_80MM)
@@ -330,7 +337,8 @@ export default function RelatorioForm() {
     setProcessando(true)
     try {
       const { c, relatorio } = await relatorioAtual()
-      const [fechamentos, pdf] = await Promise.all([buscarFechamentosDoDia(c.data), carregarPdf()])
+      const [doDia, pdf] = await Promise.all([buscarFechamentosDoDia(c.data), carregarPdf()])
+      const fechamentos = comMarmitasDoRelatorio(doDia, [c])
       const vales = await valesParaPdf(c.data)
       const resultado = await pdf.gerarPdfWhatsApp({
         relatorio,
@@ -439,14 +447,17 @@ export default function RelatorioForm() {
                   <p className="text-base font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatarMoeda(aberturaDoDia)}</p>
                 </div>
                 <div>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Suprimento</p>
+                  <p className="text-base font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatarMoeda(fDia.suprimento)}</p>
+                </div>
+                <div>
                   <p className="text-[11px] text-gray-500 dark:text-gray-400">Fechamento</p>
                   <p className="text-base font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatarMoeda(fechamentoDoDiaValor)}</p>
                 </div>
-                <div>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Marmitas</p>
-                  <p className="text-base font-semibold tabular-nums text-gray-900 dark:text-gray-100">{marmitasDoDia}</p>
-                </div>
               </div>
+              {fDia.suprimento > 0 && fDia.suprimentoObs && (
+                <p className="text-[11px] text-gray-600 dark:text-gray-300">Suprimento: {fDia.suprimentoObs}</p>
+              )}
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
                 Vem do fechamento do caixa deste dia, sem precisar digitar de novo. Para mudar,{' '}
                 <Link to={`/fechamento/${fDia.id}`} className="font-semibold underline">
@@ -461,7 +472,7 @@ export default function RelatorioForm() {
                 {fechamentoAtual.erro
                   ? 'Não consegui buscar o fechamento do dia agora (sem internet?).'
                   : `Ainda não há fechamento do caixa em ${formatarDataBr(data)}.`}{' '}
-                A abertura, o fechamento do dinheiro e as marmitas vendidas vêm de lá automaticamente.
+                A abertura, o suprimento e o fechamento do dinheiro vêm de lá automaticamente.
               </p>
               {!fechamentoAtual.erro && (
                 <Link to={`/novo?data=${data}`} className="inline-block text-sm font-semibold text-gray-900 dark:text-gray-100 underline">
@@ -478,6 +489,20 @@ export default function RelatorioForm() {
           )}
         </div>
       </section>
+
+      <Secao
+        titulo="Marmitas vendidas"
+        resumo={`Total: ${totalMarmitas(marmitas)}`}
+        ajuda="Toque no + de cada prato vendido. Dá para ir contando durante o dia, no PC ou no celular (os dois somam)."
+      >
+        {marmitasNoFechamento > 0 && (
+          <p className="rounded-lg bg-blue-50 dark:bg-blue-950/40 px-3 py-2 text-xs text-blue-900 dark:text-blue-200">
+            Neste dia as marmitas foram contadas no fechamento do caixa: {marmitasNoFechamento}. É esse número que vale enquanto
+            não contar aqui.
+          </p>
+        )}
+        <ContadorPratos value={marmitas} onChange={setMarmitas} />
+      </Secao>
 
       <Secao
         titulo="Estragou"

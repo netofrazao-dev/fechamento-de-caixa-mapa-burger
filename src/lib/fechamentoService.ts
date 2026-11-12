@@ -48,6 +48,8 @@ interface FechamentoRow {
   status: 'fechou' | 'sobrou' | 'faltou'
   observacoes: string | null
   marmitas: MarmitaItem[]
+  suprimento?: number | null
+  suprimento_obs?: string | null
   sangrias?: { id: string; valor: number; motivo: string }[]
 }
 
@@ -80,6 +82,8 @@ function rowToFechamento(row: FechamentoRow): Fechamento {
     totalLCSistema: row.total_lc_sistema,
     ajuste: { tipo: row.ajuste_tipo, valor: row.ajuste_valor },
     observacoes: row.observacoes ?? '',
+    suprimento: Number(row.suprimento) || 0,
+    suprimentoObs: row.suprimento_obs ?? '',
     resultado: {
       totalLC: row.total_lc,
       totalBrendi: row.total_brendi,
@@ -123,6 +127,8 @@ function montarLinha(input: NovoFechamentoInput, resultado: ResultadoCalculado) 
     status: resultado.status,
     observacoes: input.observacoes || null,
     marmitas: input.marmitas,
+    suprimento: input.suprimento || 0,
+    suprimento_obs: input.suprimento > 0 ? input.suprimentoObs || null : null,
   }
 }
 
@@ -273,6 +279,8 @@ export function conteudoDoFechamento(f: Fechamento): ConteudoFechamento {
     totalLCSistema: f.totalLCSistema,
     ajuste: f.ajuste.tipo ? { tipo: f.ajuste.tipo, valor: f.ajuste.valor } : { tipo: null, valor: 0 },
     observacoes: f.observacoes,
+    suprimento: f.suprimento,
+    suprimentoObs: f.suprimentoObs,
   }
 }
 

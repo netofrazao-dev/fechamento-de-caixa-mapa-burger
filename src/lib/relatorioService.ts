@@ -6,7 +6,7 @@ import { ErroAmigavel } from './erros'
 import { formatarDataBr } from './datas'
 import type { AdaptadorBanco, RegistroBanco } from './sincronia'
 import type { ConteudoRelatorio } from './mesclagem'
-import type { ConsumoItem, EstoqueSnapshot, RelatorioDiario, RelatorioDiarioInput, Sangria } from '../types/fechamento'
+import type { ConsumoItem, EstoqueSnapshot, MarmitaItem, RelatorioDiario, RelatorioDiarioInput, Sangria } from '../types/fechamento'
 
 export { normalizarRelatorio }
 
@@ -16,6 +16,7 @@ interface RelatorioRow {
   abertura_caixa: number
   fechamento_caixa: number
   quantidade_vendida: number
+  marmitas?: MarmitaItem[]
   estragou: string[]
   funcionarios_que_comeram: string[]
   consumo_loja_mensal: ConsumoItem[]
@@ -38,6 +39,7 @@ function rowToRelatorio(row: RelatorioRow): RelatorioDiario {
     aberturaCaixa: row.abertura_caixa ?? 0,
     fechamentoCaixa: row.fechamento_caixa ?? 0,
     quantidadeVendida: row.quantidade_vendida ?? 0,
+    marmitas: row.marmitas ?? [],
     estragou: row.estragou ?? [],
     funcionariosQueComeram: row.funcionarios_que_comeram ?? [],
     consumoLojaMensal: row.consumo_loja_mensal ?? [],
@@ -54,7 +56,7 @@ function rowToRelatorio(row: RelatorioRow): RelatorioDiario {
 
 /** Colunas para listas: tudo menos as imagens (que são pesadas). */
 const COLUNAS_LISTA =
-  'id, data, abertura_caixa, fechamento_caixa, quantidade_vendida, estragou, funcionarios_que_comeram, ' +
+  'id, data, abertura_caixa, fechamento_caixa, quantidade_vendida, marmitas, estragou, funcionarios_que_comeram, ' +
   'consumo_loja_mensal, consumo_loja_motoboys, cortesia_clientes, sangrias, estoque_quente, created_at, updated_at'
 
 function inputToRow(entrada: RelatorioDiarioInput) {
@@ -64,6 +66,7 @@ function inputToRow(entrada: RelatorioDiarioInput) {
     abertura_caixa: input.aberturaCaixa,
     fechamento_caixa: input.fechamentoCaixa,
     quantidade_vendida: input.quantidadeVendida,
+    marmitas: input.marmitas,
     estragou: input.estragou,
     funcionarios_que_comeram: input.funcionariosQueComeram,
     consumo_loja_mensal: input.consumoLojaMensal,
@@ -151,6 +154,7 @@ export function conteudoDoRelatorio(r: RelatorioDiario): ConteudoRelatorio {
     aberturaCaixa: r.aberturaCaixa,
     fechamentoCaixa: r.fechamentoCaixa,
     quantidadeVendida: r.quantidadeVendida,
+    marmitas: r.marmitas,
     estragou: r.estragou,
     funcionariosQueComeram: r.funcionariosQueComeram,
     consumoLojaMensal: r.consumoLojaMensal,

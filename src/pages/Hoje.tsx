@@ -16,7 +16,7 @@ import { listarRelatorios } from '../lib/relatorioService'
 import { listarValesDoMes } from '../lib/valeService'
 import { buscarAcerto } from '../lib/acertoService'
 import { copiaAtrasada as calcularCopiaAtrasada, ultimaCopiaBaixada } from '../lib/copiaService'
-import { formatarMoeda, STATUS_COLOR, STATUS_LABEL } from '../lib/calculations'
+import { comMarmitasDoRelatorio, formatarMoeda, STATUS_COLOR, STATUS_LABEL } from '../lib/calculations'
 import { compararMeses, variacao } from '../lib/comparacao'
 import GraficoVendasDia from '../components/GraficoVendasDia'
 import { statusPorDiferenca } from '../lib/relatorioResumo'
@@ -108,10 +108,12 @@ export default function Hoje() {
       if (automatica && r.some((x) => x.status === 'rejected')) return
       const ok = <T,>(i: number, padrao: T): T => (r[i].status === 'fulfilled' ? (r[i] as PromiseFulfilledResult<T>).value : padrao)
       if (r[0].status === 'rejected' || r[2].status === 'rejected') setFalhou(true)
+      const relatorios = ok<RelatorioDiario[]>(2, [])
       setDados({
-        fechamentos: ok<Fechamento[]>(0, []),
-        fechamentosAnterior: ok<Fechamento[]>(1, []),
-        relatorios: ok<RelatorioDiario[]>(2, []),
+        // Marmitas contam pelo relatório do dia (dias antigos: pelo fechamento).
+        fechamentos: comMarmitasDoRelatorio(ok<Fechamento[]>(0, []), relatorios),
+        fechamentosAnterior: comMarmitasDoRelatorio(ok<Fechamento[]>(1, []), relatorios),
+        relatorios,
         vales: ok<Vale[] | null>(3, null),
         valesAnterior: ok<Vale[] | null>(4, null),
         acertoAnterior: r[5].status === 'fulfilled' ? (r[5] as PromiseFulfilledResult<AcertoFechado | null>).value : 'indisponivel',

@@ -21,6 +21,9 @@ export function errosFechamento(input: NovoFechamentoInput): string[] {
     erros.push('Quando há ajuste manual, escreva uma observação explicando o motivo.')
   }
   if (input.observacoes.length > 2000) erros.push('As observações passam de 2000 letras.')
+  if (input.suprimento > 0 && !input.suprimentoObs.trim()) {
+    erros.push('O suprimento precisa de uma observação (de onde veio o dinheiro colocado no caixa).')
+  }
   return erros
 }
 

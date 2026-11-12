@@ -15,7 +15,7 @@ sed "s/COLOQUE_SEU_EMAIL_AQUI/dono@teste.com/" migration_v4_seguranca.sql > /tmp
 for rodada in 1 2; do
   for f in migration_vales.sql migration_rascunhos.sql migration_vales_v2.sql migration_v3_cadastros_integridade.sql \
            migration_v5_manter_ativo.sql /tmp/v4_teste.sql migration_v6_copias_seguranca.sql migration_v7_acerto_mes.sql \
-           migration_v8_produtos_estoque.sql migration_v9_loja_fechada.sql; do
+           migration_v8_produtos_estoque.sql migration_v9_loja_fechada.sql migration_v10_marmitas_suprimento.sql; do
     # Cada arquivo vai como um comando só, igual ao SQL Editor do Supabase.
     $PSQL -c "$(cat "$f")" >/dev/null 2>&1 || { echo "ERRO na migração $f (rodada $rodada)"; $PSQL -c "$(cat "$f")"; exit 1; }
   done

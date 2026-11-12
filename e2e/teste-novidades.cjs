@@ -103,8 +103,9 @@ const vale = (f, data, valor) => ({ id: uid(), funcionario: f.nome, funcionario_
   await esperar('Vem do fechamento do caixa deste dia')
   {
     const dia = (await page.getByLabel('Dados do fechamento do dia').innerText()).replace(/\u00a0/g, ' ')
-    ok(/Abertura\s*R\$ 150,00/.test(dia) && /Fechamento\s*R\$ 4\.000,00/.test(dia) && /Marmitas\s*20/.test(dia),
-      'relatório pega abertura, fechamento e 20 marmitas do fechamento do dia')
+    ok(/Abertura\s*R\$ 150,00/.test(dia) && /Fechamento\s*R\$ 4\.000,00/.test(dia), 'relatório pega abertura e fechamento do fechamento do dia')
+    await page.getByRole('button', { name: /^Marmitas vendidas/ }).click()
+    ok((await texto()).includes('marmitas foram contadas no fechamento do caixa: 20'), 'dia antigo: avisa que as 20 marmitas foram contadas no fechamento')
   }
   await page.getByRole('button', { name: /Consumo de funcionários/ }).click()
   await esperar('acerto deste mês já foi fechado')

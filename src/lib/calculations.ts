@@ -122,6 +122,23 @@ export function totalMarmitas(itens: { quantidade: number }[]): number {
   return itens.reduce((acc, m) => acc + (m.quantidade || 0), 0)
 }
 
+/**
+ * As marmitas passaram a ser contadas no relatório do dia. Para os resumos e PDFs,
+ * cada fechamento usa a contagem do relatório do mesmo dia; nos dias antigos
+ * (relatório sem contagem) continua valendo a que foi feita no fechamento.
+ */
+export function comMarmitasDoRelatorio<F extends { data: string; marmitas: { prato: string; quantidade: number }[] }>(
+  fechamentos: F[],
+  relatorios: { data: string; marmitas?: { prato: string; quantidade: number }[] }[],
+): F[] {
+  const porDia = new Map<string, { prato: string; quantidade: number }[]>()
+  for (const r of relatorios) if (r.marmitas && r.marmitas.length > 0) porDia.set(r.data, r.marmitas)
+  return fechamentos.map((f) => {
+    const doRelatorio = porDia.get(f.data)
+    return doRelatorio ? { ...f, marmitas: doRelatorio } : f
+  })
+}
+
 /** Soma as vendas de cada prato entre vários fechamentos, do mais vendido pro menos vendido. */
 export function agregarVendasPorPrato(fechamentos: { marmitas: { prato: string; quantidade: number }[] }[]): [string, number][] {
   const mapa = new Map<string, number>()

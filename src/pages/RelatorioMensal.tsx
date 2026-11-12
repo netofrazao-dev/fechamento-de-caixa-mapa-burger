@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, FileDown, FileText, Share2 } from 'lucide-re
 import { listarFechamentos } from '../lib/fechamentoService'
 import { listarRelatorios } from '../lib/relatorioService'
 import { listarValesDoMes } from '../lib/valeService'
-import { agregarVendasPorPrato, formatarMoeda } from '../lib/calculations'
+import { agregarVendasPorPrato, comMarmitasDoRelatorio, formatarMoeda } from '../lib/calculations'
 import type { LinhaRelatorioMensal } from '../lib/pdf'
 import { carregarPdf } from '../lib/pdfSobDemanda'
 import { podeCompartilharArquivos } from '../lib/arquivos'
@@ -89,6 +89,7 @@ export default function RelatorioMensal() {
     // Atualização automática que falhar não mexe na tela (nem troca dados por listas vazias).
     const automatica = veioDaAtualizacao(vistaAuto, versaoAuto)
     const extra = <T,>(p: Promise<T>, padrao: T): Promise<T> => (automatica ? p : p.catch(() => padrao))
+    const ant = limitesDoMes(somarMeses(mes, -1))
     Promise.all([
       listarFechamentos({ dataInicio: inicio, dataFim: fim }),
       listarRelatorios({ dataInicio: inicio, dataFim: fim }),
@@ -98,15 +99,23 @@ export default function RelatorioMensal() {
         null,
       ),
       // Mês anterior, para comparar (se falhar, só não mostra a comparação).
-      (() => {
-        const ant = limitesDoMes(somarMeses(mes, -1))
-        return extra(listarFechamentos({ dataInicio: ant.inicio, dataFim: ant.fim }), [] as Fechamento[])
-      })(),
+      extra(listarFechamentos({ dataInicio: ant.inicio, dataFim: ant.fim }), [] as Fechamento[]),
       // Dias de loja fechada (folga, feriado): não contam como "sem fechamento".
       extra(listarDiasLojaFechada(inicio, fim), [] as DiaLojaFechada[]),
+      // Relatórios do mês anterior: as marmitas de lá (para comparar).
+      extra(listarRelatorios({ dataInicio: ant.inicio, dataFim: ant.fim }), [] as RelatorioDiario[]),
     ])
-      .then(([fechamentos, relatorios, totalVales, fechamentosAnterior, fechados]) => {
-        if (ativo) setDados({ mes, fechamentos, relatorios, totalVales, fechamentosAnterior, fechados })
+      .then(([fechamentos, relatorios, totalVales, fechamentosAnterior, fechados, relatoriosAnterior]) => {
+        // Marmitas contam pelo relatório do dia (dias antigos: pelo fechamento).
+        if (ativo)
+          setDados({
+            mes,
+            fechamentos: comMarmitasDoRelatorio(fechamentos, relatorios),
+            relatorios,
+            totalVales,
+            fechamentosAnterior: comMarmitasDoRelatorio(fechamentosAnterior, relatoriosAnterior),
+            fechados,
+          })
       })
       .catch((e) => {
         if (ativo && !automatica) setErro({ mes, mensagem: mensagemErro(e, 'Erro ao carregar o relatório do mês.') })

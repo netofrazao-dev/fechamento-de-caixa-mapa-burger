@@ -35,6 +35,8 @@ export interface ConteudoRelatorio {
   aberturaCaixa: number
   fechamentoCaixa: number
   quantidadeVendida: number
+  /** Marmitas vendidas por prato (contador do relatório). */
+  marmitas: MarmitaItem[]
   estragou: string[]
   funcionariosQueComeram: string[]
   consumoLojaMensal: ConsumoItem[]
@@ -58,6 +60,9 @@ export interface ConteudoFechamento {
   totalLCSistema: number
   ajuste: Ajuste
   observacoes: string
+  /** Dinheiro colocado no caixa durante o dia (só informativo). */
+  suprimento: number
+  suprimentoObs: string
 }
 
 export interface ResultadoMescla<C> {
@@ -73,6 +78,7 @@ export const RELATORIO_VAZIO = (data: string): ConteudoRelatorio => ({
   aberturaCaixa: 0,
   fechamentoCaixa: 0,
   quantidadeVendida: 0,
+  marmitas: [],
   estragou: [],
   funcionariosQueComeram: [],
   consumoLojaMensal: [],
@@ -106,6 +112,8 @@ export const FECHAMENTO_VAZIO = (data: string): ConteudoFechamento => ({
   totalLCSistema: 0,
   ajuste: { ...AJUSTE_VAZIO },
   observacoes: '',
+  suprimento: 0,
+  suprimentoObs: '',
 })
 
 // ─── Comparação ───────────────────────────────────────────────
@@ -296,6 +304,7 @@ export const ROTULOS_RELATORIO: Record<keyof ConteudoRelatorio, string> = {
   aberturaCaixa: 'Abertura anotada',
   fechamentoCaixa: 'Fechamento anotado',
   quantidadeVendida: 'Marmitas anotadas',
+  marmitas: 'Marmitas',
   estragou: 'Estragou',
   funcionariosQueComeram: 'Funcionários que comeram',
   consumoLojaMensal: 'Consumo de funcionários',
@@ -316,6 +325,7 @@ export function completarRelatorio(c: Partial<ConteudoRelatorio> | null | undefi
     aberturaCaixa: Number(x.aberturaCaixa) || 0,
     fechamentoCaixa: Number(x.fechamentoCaixa) || 0,
     quantidadeVendida: Number(x.quantidadeVendida) || 0,
+    marmitas: Array.isArray(x.marmitas) ? x.marmitas : [],
     estragou: Array.isArray(x.estragou) ? x.estragou : [],
     funcionariosQueComeram: Array.isArray(x.funcionariosQueComeram) ? x.funcionariosQueComeram : [],
     consumoLojaMensal: Array.isArray(x.consumoLojaMensal) ? x.consumoLojaMensal : [],
@@ -336,6 +346,7 @@ export function mesclarRelatorio(base: ConteudoRelatorio, meu: ConteudoRelatorio
     aberturaCaixa: a.campo(R.aberturaCaixa, mesclarValor(base.aberturaCaixa, meu.aberturaCaixa, deles.aberturaCaixa)),
     fechamentoCaixa: a.campo(R.fechamentoCaixa, mesclarValor(base.fechamentoCaixa, meu.fechamentoCaixa, deles.fechamentoCaixa)),
     quantidadeVendida: a.campo(R.quantidadeVendida, mesclarValor(base.quantidadeVendida, meu.quantidadeVendida, deles.quantidadeVendida)),
+    marmitas: a.campo(R.marmitas, mesclarMarmitas(base.marmitas, meu.marmitas, deles.marmitas)),
     estragou: a.campo(R.estragou, mesclarLista(base.estragou, meu.estragou, deles.estragou, textoChave)),
     funcionariosQueComeram: a.campo(
       R.funcionariosQueComeram,
@@ -386,6 +397,8 @@ export function completarFechamento(c: Partial<ConteudoFechamento> | null | unde
     totalLCSistema: Number(x.totalLCSistema) || 0,
     ajuste: x.ajuste && x.ajuste.tipo ? { tipo: x.ajuste.tipo, valor: Number(x.ajuste.valor) || 0 } : { ...AJUSTE_VAZIO },
     observacoes: typeof x.observacoes === 'string' ? x.observacoes : '',
+    suprimento: Number(x.suprimento) || 0,
+    suprimentoObs: typeof x.suprimentoObs === 'string' ? x.suprimentoObs : '',
   }
 }
 
@@ -421,6 +434,11 @@ export function mesclarFechamento(base: ConteudoFechamento, meu: ConteudoFechame
     totalLCSistema: a.campo('Total LC Sistema', mesclarValor(base.totalLCSistema, meu.totalLCSistema, deles.totalLCSistema)),
     ajuste: a.campo('Ajuste', mesclarValor(base.ajuste, meu.ajuste, deles.ajuste)),
     observacoes: a.campo('Observações', mesclarValor(base.observacoes, meu.observacoes, deles.observacoes, (x, y) => x.trim() === y.trim())),
+    suprimento: a.campo('Suprimento', mesclarValor(base.suprimento, meu.suprimento, deles.suprimento)),
+    suprimentoObs: a.campo(
+      'Observação do suprimento',
+      mesclarValor(base.suprimentoObs, meu.suprimentoObs, deles.suprimentoObs, (x, y) => x.trim() === y.trim()),
+    ),
   }
   return { resultado, deFora: a.deFora, conflitos: a.conflitos }
 }

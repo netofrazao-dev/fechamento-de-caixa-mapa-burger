@@ -122,6 +122,7 @@ function escreverFechamento(r: ReciboTermico, f: Fechamento) {
 
   r.linha('LC', { negrito: true })
   r.linhaValor('Dinheiro abertura', f.lc.dinheiroAbertura)
+  if (f.suprimento > 0) r.linhaValor('Suprimento', f.suprimento)
   r.linhaValor('Dinheiro fechamento', f.lc.dinheiroFechamento)
   r.linhaValor('PIX', f.lc.pix)
   r.linhaValor('Debito', f.lc.debito)
@@ -162,7 +163,12 @@ function escreverFechamento(r: ReciboTermico, f: Fechamento) {
   r.linha(STATUS_LABEL[f.resultado.status], { negrito: true, centro: true, tamanho: 11 })
   r.separador()
   // Impressão enxuta: só o total de marmitas (o detalhe por prato fica na tela e no PDF do WhatsApp).
-  r.linhaTexto('Marmitas vendidas', String(totalMarmitas(f.marmitas)), { negrito: true })
+  if (totalMarmitas(f.marmitas) > 0) r.linhaTexto('Marmitas vendidas', String(totalMarmitas(f.marmitas)), { negrito: true })
+  if (f.suprimento > 0 && f.suprimentoObs) {
+    r.separador()
+    r.linha('Suprimento:', { negrito: true })
+    r.paragrafo(f.suprimentoObs)
+  }
 
   if (f.observacoes) {
     r.separador()
@@ -1238,7 +1244,14 @@ export async function gerarPdfWhatsApp(params: {
       lc,
       f.resultado.totalLC,
       margem,
-      f.lc.dinheiroAbertura ? `Troco de abertura: ${formatarMoeda(f.lc.dinheiroAbertura)} (não entra no total).` : undefined,
+      [
+        f.lc.dinheiroAbertura ? `Troco de abertura: ${formatarMoeda(f.lc.dinheiroAbertura)} (não entra no total).` : '',
+        f.suprimento > 0
+          ? `Suprimento: ${formatarMoeda(f.suprimento)}${f.suprimentoObs ? ` (${f.suprimentoObs})` : ''} — não entra no total.`
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' ') || undefined,
     )
     const fimBrendi = tabelaLado(
       'Brendi',

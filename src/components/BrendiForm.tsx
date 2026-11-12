@@ -15,7 +15,7 @@ export default function BrendiForm({ value, onChange, defaultAberto }: Props) {
 
   return (
     <Secao
-      titulo="3. Brendi"
+      titulo="2. Brendi"
       resumo={`Total Brendi: ${formatarMoeda(total)}`}
       defaultAberto={defaultAberto}
       ajuda="Vendas do Brendi (delivery). O dinheiro do Brendi entra só no Total Sistema."

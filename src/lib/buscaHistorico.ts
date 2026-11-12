@@ -16,10 +16,12 @@ export function itensDoDia(dia: { fechamentos: Fechamento[]; relatorio?: Relator
   for (const f of dia.fechamentos) {
     if (f.observacoes.trim()) itens.push({ rotulo: 'Observação do caixa', texto: f.observacoes.trim() })
     for (const s of f.sangrias) itens.push({ rotulo: 'Sangria (no fechamento)', texto: s.motivo || '—', valor: s.valor })
-    for (const m of f.marmitas) itens.push({ rotulo: 'Prato vendido', texto: `${m.prato} (${m.quantidade})` })
+    // Dias antigos: marmitas contadas no fechamento (agora ficam no relatório).
+    if (!dia.relatorio?.marmitas?.length) for (const m of f.marmitas) itens.push({ rotulo: 'Prato vendido', texto: `${m.prato} (${m.quantidade})` })
   }
   const r = dia.relatorio
   if (r) {
+    for (const m of r.marmitas ?? []) itens.push({ rotulo: 'Prato vendido', texto: `${m.prato} (${m.quantidade})` })
     for (const s of r.sangrias) {
       itens.push({ rotulo: `Sangria — ${infoTipoSangria(tipoDaSangria(s)).rotulo}`, texto: s.motivo || '—', valor: s.valor })
     }
