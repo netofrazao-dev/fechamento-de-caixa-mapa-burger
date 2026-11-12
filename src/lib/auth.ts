@@ -11,8 +11,6 @@ export interface EstadoAuth {
    * Antes da migração v4 (sem lista), todo usuário logado é aceito.
    */
   autorizado: boolean | null
-  /** dono = acesso total; cozinha = só a tela de lançar o que estragou. */
-  papel: Papel | null
   entrar: (email: string, senha: string) => Promise<void>
   sair: () => Promise<void>
   trocarSenha: (novaSenha: string) => Promise<void>
@@ -21,8 +19,6 @@ export interface EstadoAuth {
   /** Entra com o token que veio no link do e-mail de redefinição. */
   entrarComLinkDeRecuperacao: (accessToken: string, refreshToken: string) => Promise<void>
 }
-
-export type Papel = 'dono' | 'cozinha'
 
 export const AuthContext = createContext<EstadoAuth | null>(null)
 

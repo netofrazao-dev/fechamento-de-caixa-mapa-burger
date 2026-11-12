@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import { AuthContext, limparDadosLocais, traduzirErroLogin, type EstadoAuth, type Papel } from '../lib/auth'
+import { AuthContext, limparDadosLocais, traduzirErroLogin, type EstadoAuth } from '../lib/auth'
 
 async function verificarAutorizacao(): Promise<boolean> {
   const { data, error } = await supabase.rpc('usuario_autorizado')
@@ -13,36 +13,10 @@ async function verificarAutorizacao(): Promise<boolean> {
   return data === true
 }
 
-const chavePapel = (usuarioId: string) => `mapa-burger-papel-${usuarioId}`
-
-/** Papel de quem entrou: dono (tudo), cozinha (só lança estragos) ou null (fora da lista). */
-async function verificarPapel(usuarioId: string): Promise<Papel | null> {
-  const { data, error, status } = await supabase.rpc('papel_usuario')
-  if (!error) {
-    const papel: Papel | null = data === 'cozinha' ? 'cozinha' : data === 'dono' ? 'dono' : null
-    try {
-      if (papel) localStorage.setItem(chavePapel(usuarioId), papel)
-    } catch {
-      // sem armazenamento
-    }
-    return papel
-  }
-  // Banco ainda sem a v11 (função não existe): vale a verificação antiga (todos são donos).
-  if (status === 404 || ['PGRST202', '42883'].includes(error.code ?? '')) return (await verificarAutorizacao()) ? 'dono' : null
-  // Sem internet: o último papel conhecido neste aparelho (o banco bloqueia o resto de qualquer jeito).
-  try {
-    const guardado = localStorage.getItem(chavePapel(usuarioId))
-    if (guardado === 'cozinha' || guardado === 'dono') return guardado
-  } catch {
-    // sem armazenamento
-  }
-  return 'dono'
-}
-
 export default function AuthProvider({ children }: { children: ReactNode }) {
   const [sessao, setSessao] = useState<Session | null>(null)
   const [carregando, setCarregando] = useState(true)
-  const [papel, setPapel] = useState<Papel | null | undefined>(undefined)
+  const [autorizado, setAutorizado] = useState<boolean | null>(null)
 
   useEffect(() => {
     let ativo = true
@@ -70,8 +44,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!usuarioId) return
     let ativo = true
-    verificarPapel(usuarioId).then((p) => {
-      if (ativo) setPapel(p)
+    verificarAutorizacao().then((ok) => {
+      if (ativo) setAutorizado(ok)
     })
     return () => {
       ativo = false
@@ -85,7 +59,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const sair = useCallback(async () => {
     limparDadosLocais()
-    setPapel(undefined)
+    setAutorizado(null)
     await supabase.auth.signOut({ scope: 'local' })
   }, [])
 
@@ -117,15 +91,14 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       carregando,
       sessao,
       email: sessao?.user.email ?? null,
-      autorizado: sessao && papel !== undefined ? papel !== null : null,
-      papel: sessao ? (papel ?? null) : null,
+      autorizado: sessao ? autorizado : null,
       entrar,
       sair,
       trocarSenha,
       enviarRedefinicao,
       entrarComLinkDeRecuperacao,
     }),
-    [carregando, sessao, papel, entrar, sair, trocarSenha, enviarRedefinicao, entrarComLinkDeRecuperacao],
+    [carregando, sessao, autorizado, entrar, sair, trocarSenha, enviarRedefinicao, entrarComLinkDeRecuperacao],
   )
 
   return <AuthContext.Provider value={valor}>{children}</AuthContext.Provider>

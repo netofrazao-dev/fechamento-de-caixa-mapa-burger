@@ -207,40 +207,15 @@ reset role;
 select public.t_confere(not exists (select 1 from fechamentos where suprimento <> 0), 'fechamentos antigos ficam com suprimento zero');
 select public.t_confere(not exists (select 1 from relatorios where marmitas <> '[]'::jsonb), 'relatórios antigos ficam sem marmitas (continuam as do fechamento)');
 
--- ---------------- Login da cozinha: só lança o que estragou (v11) ----------------
-insert into usuarios_autorizados (email, nome, papel) values ('cozinha@teste.com', 'Maria', 'cozinha') on conflict (email) do update set papel = 'cozinha', nome = 'Maria', ativo = true;
-select public.t_deve_falhar($$insert into usuarios_autorizados (email, papel) values ('x@teste.com', 'gerente')$$, 'usuarios_autorizados_papel_valido', 'papel só pode ser dono ou cozinha');
-select public.t_como('cozinha@teste.com');
-set role authenticated;
-select public.t_confere(public.papel_usuario() = 'cozinha' and not public.usuario_autorizado(), 'cozinha entra com papel "cozinha" e sem acesso total');
-select public.t_confere((select count(*) = 0 from fechamentos) and (select count(*) = 0 from relatorios) and (select count(*) = 0 from vales) and (select count(*) = 0 from rascunhos),
-  'cozinha não enxerga fechamentos, relatórios, vales nem rascunhos');
-select public.t_deve_falhar($$insert into relatorios (data) values ('2026-10-25')$$, 'row-level security', 'cozinha não cria relatório');
-insert into estragos_cozinha (data, texto, usuario) values (current_date, '  2   pães ', 'outra@pessoa.com');
-select public.t_confere((select texto = '2 pães' and usuario = 'cozinha@teste.com' and nome = 'Maria' from estragos_cozinha), 'cozinha lança estrago (texto limpo, quem lançou vem do login)');
-select public.t_deve_falhar($$insert into estragos_cozinha (data, texto) values (current_date - 10, 'velho')$$, 'row-level security', 'cozinha não lança em dia antigo');
-select public.t_deve_falhar($$insert into estragos_cozinha (data, texto) values (current_date, '   ')$$, 'check', 'estrago vazio é recusado');
-insert into estragos_cozinha (data, texto) values (current_date, '1 alface');
-delete from estragos_cozinha where texto = '1 alface';
-select public.t_confere((select count(*) = 1 from estragos_cozinha), 'cozinha apaga o que lançou (antes de entrar no relatório)');
-reset role;
+-- ---------------- Login da cozinha removido (v12) ----------------
+select public.t_confere(to_regclass('public.estragos_cozinha') is null and to_regprocedure('public.papel_usuario()') is null
+  and to_regprocedure('public.usuario_cozinha()') is null, 'login da cozinha removido (tabela e funções)');
+select public.t_confere(not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'usuarios_autorizados' and column_name = 'papel'),
+  'lista de acesso sem o papel "cozinha"');
 select public.t_como('dono@teste.com');
 set role authenticated;
-select public.t_confere((select count(*) = 1 and bool_and(nome = 'Maria') from estragos_cozinha where data = current_date), 'dono vê o que a cozinha lançou, com o nome de quem lançou');
-update estragos_cozinha set importado_em = now() where data = current_date;
+select public.t_confere(public.usuario_autorizado(), 'quem está na lista continua com acesso total');
 reset role;
-select public.t_como('cozinha@teste.com');
-set role authenticated;
-with u as (delete from estragos_cozinha where texto = '2 pães' returning 1)
-  select public.t_confere((select count(*) from u) = 0, 'depois que entrou no relatório, a cozinha não apaga mais');
-with u as (update estragos_cozinha set texto = 'mudado' returning 1)
-  select public.t_confere((select count(*) from u) = 0, 'cozinha não altera estrago');
-reset role;
-set role anon;
-select public.t_deve_falhar('select count(*) from estragos_cozinha', 'permission denied', 'sem login não lê os estragos');
-reset role;
-delete from estragos_cozinha;
-select public.t_confere((select count(*) >= 2 from auditoria where tabela = 'estragos_cozinha'), 'auditoria registra os estragos');
 
 -- ---------------- Cópias de segurança (v6) ----------------
 select public.t_confere((select count(*) >= 1 from copias_seguranca), 'migração já deixa uma cópia pronta');
