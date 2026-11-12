@@ -65,6 +65,15 @@ export interface ConteudoFechamento {
   suprimentoObs: string
 }
 
+/**
+ * idempotente = os dois lados podem já conter as mesmas contagens (rascunho
+ * compartilhado e o registro salvo a partir dele): contagens diferentes ficam
+ * com a maior, em vez de somar.
+ */
+export interface OpcoesMescla {
+  idempotente?: boolean
+}
+
 export interface ResultadoMescla<C> {
   resultado: C
   /** Partes em que entrou algo que veio do outro aparelho (para avisar na tela). */
@@ -260,7 +269,12 @@ function mesclarFoto(base: string | null, meu: string | null, deles: string | nu
 }
 
 /** Marmitas prato por prato: se os dois contaram o mesmo prato, soma as duas contagens. */
-function mesclarMarmitas(base: MarmitaItem[], meu: MarmitaItem[], deles: MarmitaItem[]): { valor: MarmitaItem[]; origem: Origem } {
+function mesclarMarmitas(
+  base: MarmitaItem[],
+  meu: MarmitaItem[],
+  deles: MarmitaItem[],
+  idempotente = false,
+): { valor: MarmitaItem[]; origem: Origem } {
   const mapa = (l: MarmitaItem[]) => new Map((l ?? []).map((i) => [normalizarNome(i.prato), i]))
   const mb = mapa(base)
   const mm = mapa(meu)
@@ -275,7 +289,8 @@ function mesclarMarmitas(base: MarmitaItem[], meu: MarmitaItem[], deles: Marmita
     const r = mesclarValor(b, m, d)
     let q = r.valor
     if (r.origem === 'conflito') {
-      q = Math.max(0, m + d - b) // os dois contaram: junta as duas contagens
+      // Os dois contaram: junta as duas contagens (ou fica a maior, se podem ser a mesma contagem).
+      q = idempotente ? Math.max(m, d) : Math.max(0, m + d - b)
       deFora = true
     } else if (r.origem === 'deles') deFora = true
     else if (r.origem === 'meu') mudouMeu = true
@@ -338,7 +353,12 @@ export function completarRelatorio(c: Partial<ConteudoRelatorio> | null | undefi
   }
 }
 
-export function mesclarRelatorio(base: ConteudoRelatorio, meu: ConteudoRelatorio, deles: ConteudoRelatorio): ResultadoMescla<ConteudoRelatorio> {
+export function mesclarRelatorio(
+  base: ConteudoRelatorio,
+  meu: ConteudoRelatorio,
+  deles: ConteudoRelatorio,
+  opcoes: OpcoesMescla = {},
+): ResultadoMescla<ConteudoRelatorio> {
   const a = new Anotacoes()
   const R = ROTULOS_RELATORIO
   const resultado: ConteudoRelatorio = {
@@ -346,7 +366,7 @@ export function mesclarRelatorio(base: ConteudoRelatorio, meu: ConteudoRelatorio
     aberturaCaixa: a.campo(R.aberturaCaixa, mesclarValor(base.aberturaCaixa, meu.aberturaCaixa, deles.aberturaCaixa)),
     fechamentoCaixa: a.campo(R.fechamentoCaixa, mesclarValor(base.fechamentoCaixa, meu.fechamentoCaixa, deles.fechamentoCaixa)),
     quantidadeVendida: a.campo(R.quantidadeVendida, mesclarValor(base.quantidadeVendida, meu.quantidadeVendida, deles.quantidadeVendida)),
-    marmitas: a.campo(R.marmitas, mesclarMarmitas(base.marmitas, meu.marmitas, deles.marmitas)),
+    marmitas: a.campo(R.marmitas, mesclarMarmitas(base.marmitas, meu.marmitas, deles.marmitas, opcoes.idempotente)),
     estragou: a.campo(R.estragou, mesclarLista(base.estragou, meu.estragou, deles.estragou, textoChave)),
     funcionariosQueComeram: a.campo(
       R.funcionariosQueComeram,
@@ -422,7 +442,12 @@ function mesclarCampos<T extends object>(
   return saida
 }
 
-export function mesclarFechamento(base: ConteudoFechamento, meu: ConteudoFechamento, deles: ConteudoFechamento): ResultadoMescla<ConteudoFechamento> {
+export function mesclarFechamento(
+  base: ConteudoFechamento,
+  meu: ConteudoFechamento,
+  deles: ConteudoFechamento,
+  opcoes: OpcoesMescla = {},
+): ResultadoMescla<ConteudoFechamento> {
   const a = new Anotacoes()
   const chaveSangriaAntiga = (s: Sangria) => [numeroChave(s.valor), textoChave(s.motivo)].join('|')
   const resultado: ConteudoFechamento = {
@@ -430,7 +455,7 @@ export function mesclarFechamento(base: ConteudoFechamento, meu: ConteudoFechame
     lc: mesclarCampos(a, ROTULOS_LC, 'Valores do LC', base.lc, meu.lc, deles.lc),
     brendi: mesclarCampos(a, ROTULOS_BRENDI, 'Valores do Brendi', base.brendi, meu.brendi, deles.brendi),
     sangrias: a.campo('Sangrias antigas', mesclarLista(base.sangrias, meu.sangrias, deles.sangrias, chaveSangriaAntiga)),
-    marmitas: a.campo('Marmitas', mesclarMarmitas(base.marmitas, meu.marmitas, deles.marmitas)),
+    marmitas: a.campo('Marmitas', mesclarMarmitas(base.marmitas, meu.marmitas, deles.marmitas, opcoes.idempotente)),
     totalLCSistema: a.campo('Total LC Sistema', mesclarValor(base.totalLCSistema, meu.totalLCSistema, deles.totalLCSistema)),
     ajuste: a.campo('Ajuste', mesclarValor(base.ajuste, meu.ajuste, deles.ajuste)),
     observacoes: a.campo('Observações', mesclarValor(base.observacoes, meu.observacoes, deles.observacoes, (x, y) => x.trim() === y.trim())),

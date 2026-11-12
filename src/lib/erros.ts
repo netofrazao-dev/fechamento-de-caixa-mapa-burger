@@ -45,6 +45,9 @@ export function mensagemErro(e: unknown, padrao = 'Algo deu errado. Tente de nov
   }
   if (codigo === 'PGRST116') return 'Registro não encontrado (pode ter sido excluído).'
   if (codigo === '23505') return 'Já existe um registro igual (por exemplo, na mesma data ou com o mesmo nome).'
+  if (codigo === '23514' && /suprimento/i.test(msg)) {
+    return 'O suprimento precisa de uma observação (de onde veio o dinheiro). Escreva no campo "Observação do suprimento" e salve de novo.'
+  }
   if (codigo === '23514') {
     return 'O banco recusou os valores porque as contas não batem ou há valor inválido. Confira os campos e tente de novo.'
   }

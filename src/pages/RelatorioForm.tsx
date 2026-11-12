@@ -159,7 +159,7 @@ export default function RelatorioForm() {
   const idRegistro = id ?? sinc.estado.banco?.id ?? null
   const jaSalvo = Boolean(sinc.estado.banco)
 
-  // Abertura e fechamento do dinheiro e marmitas vendidas vêm do fechamento do caixa do mesmo dia
+  // Abertura, suprimento e fechamento do dinheiro vêm do fechamento do caixa do mesmo dia
   // (não se digita de novo aqui).
   // undefined = buscando; null = não há fechamento salvo nesse dia.
   const [fechamentoDoDia, setFechamentoDoDia] = useState<{ data: string; f: Fechamento | null; erro?: boolean } | undefined>(undefined)
@@ -482,10 +482,11 @@ export default function RelatorioForm() {
                   Fazer o fechamento do caixa
                 </Link>
               )}
-              {(aberturaCaixa > 0 || fechamentoCaixa > 0 || quantidadeVendida > 0) && (
+              {/* Relatórios antigos tinham esses valores digitados aqui (antes de virem do fechamento). */}
+              {(aberturaCaixa > 0 || fechamentoCaixa > 0 || (quantidadeVendida > 0 && marmitas.length === 0)) && (
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                  Anotado antes neste relatório: abertura {formatarMoeda(aberturaCaixa)} · fechamento {formatarMoeda(fechamentoCaixa)} ·{' '}
-                  {quantidadeVendida} marmitas.
+                  Anotado antes neste relatório: abertura {formatarMoeda(aberturaCaixa)} · fechamento {formatarMoeda(fechamentoCaixa)}
+                  {marmitas.length === 0 && ` · ${quantidadeVendida} marmitas`}.
                 </p>
               )}
             </>

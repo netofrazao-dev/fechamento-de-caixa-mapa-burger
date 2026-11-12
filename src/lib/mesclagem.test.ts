@@ -170,4 +170,12 @@ describe('mesclagem entre aparelhos', () => {
     expect(resultado).toMatchObject({ suprimento: 50, suprimentoObs: 'troco do patrão', lc: { pix: 10 } })
     expect(deFora).toEqual(['Suprimento', 'Observação do suprimento'])
   })
+
+  it('rascunho e registro salvo da mesma contagem (idempotente): fica a maior, sem somar duas vezes', () => {
+    const vazio = rel()
+    const rascunho = rel({ marmitas: [{ prato: 'Estrogonofe', quantidade: 5 }] })
+    const salvo = rel({ marmitas: [{ prato: 'Estrogonofe', quantidade: 6 }] })
+    expect(mesclarRelatorio(vazio, rascunho, salvo, { idempotente: true }).resultado.marmitas).toEqual([{ prato: 'Estrogonofe', quantidade: 6 }])
+    expect(mesclarRelatorio(vazio, rascunho, salvo).resultado.marmitas).toEqual([{ prato: 'Estrogonofe', quantidade: 11 }])
+  })
 })

@@ -1052,7 +1052,9 @@ export async function gerarPdfWhatsApp(params: {
   const sangriasCaixaRel = [...resumoRel.compras, ...resumoRel.pagamentos]
   const sangrias = sangriasCaixaRel.length > 0 ? sangriasCaixaRel : sangriasDoFechamento
   const totalSangrias = somaCentavos([...sangrias.map((s) => s.valor), resumoRel.totalVales])
-  const marmitas = fechamentos.reduce((acc, f) => acc + totalMarmitas(f.marmitas), 0)
+  // Marmitas: contadas no relatório do dia (dias antigos: no fechamento).
+  const marmitasDoDia = rel.marmitas?.length ? [{ marmitas: rel.marmitas }] : fechamentos
+  const marmitas = marmitasDoDia.reduce((acc, f) => acc + totalMarmitas(f.marmitas), 0)
 
   if (fechamentos.length === 0) {
     y = faixaSituacao(doc, margem, y, larguraUtil, 'SEM FECHAMENTO DE CAIXA', null, 'O fechamento de caixa deste dia não foi salvo no sistema.')
@@ -1119,6 +1121,9 @@ export async function gerarPdfWhatsApp(params: {
       destaques.push(`Ajuste manual no caixa: ${f.resultado.ajusteAplicado > 0 ? '+' : '-'}${formatarMoeda(Math.abs(f.resultado.ajusteAplicado))}.`)
     }
     if (f.observacoes.trim()) destaques.push(`Observação do caixa: ${f.observacoes.trim()}`)
+    if (f.suprimento > 0) {
+      destaques.push(`Suprimento no caixa: ${formatarMoeda(f.suprimento)}${f.suprimentoObs ? ` (${f.suprimentoObs})` : ''} — não entra no total.`)
+    }
   }
   if (rel.estragou.length > 0) destaques.push(`Perdas (estragou): ${rel.estragou.join('; ')}.`)
   const consumoFunc = somaCentavos(rel.consumoLojaMensal.map((c) => c.valor))
@@ -1138,7 +1143,7 @@ export async function gerarPdfWhatsApp(params: {
   y = listaComMarcadores(doc, destaques, margem, y + 1, larguraUtil, quebra)
   y += 3
 
-  const vendasPorPrato = agregarVendasPorPrato(fechamentos)
+  const vendasPorPrato = agregarVendasPorPrato(marmitasDoDia)
   if (vendasPorPrato.length > 0) {
     garantir(22 + vendasPorPrato.length * 6)
     y = tituloSecaoPdf(doc, 'Marmitas vendidas por prato', y, margem, larguraUtil)

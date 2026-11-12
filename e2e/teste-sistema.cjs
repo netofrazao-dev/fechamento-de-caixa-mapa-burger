@@ -267,6 +267,8 @@ const CSP = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Po
   ok(/COMPRAS NO PIX DO PATRÃO/i.test(textoDia) && textoDia.includes('carne no açougue') && /Total no PIX \(fora do total de sangrias\)\s+R\$ 80,00/.test(textoDia),
     'PDF do dia: compras no PIX separadas, fora do total')
   ok(textoDia.includes('Caixa LC') && textoDia.includes('150,50'), 'PDF do dia: fechamento completo junto')
+  ok(/MARMITAS VENDIDAS POR PRATO/i.test(textoDia) && /Frango Grelhado\s+1/.test(textoDia) && textoDia.includes('Suprimento no caixa: R$ 50,00'),
+    'PDF do dia: marmitas contadas no relatório (por prato) e o suprimento nos destaques')
   await page.goto(`${BASE}/relatorios/novo?data=${f.data}`)
   await esperarTexto('Este dia já tem relatório salvo')
   ok(await page.getByRole('heading', { name: `Relatório de ${f.data.split('-').reverse().join('/')}` }).count() === 1,

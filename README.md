@@ -141,12 +141,13 @@ pagamento, pratos, dia a dia e PDF (botão Enviar no celular).
 
 ## 4. Usar
 - `npm run dev` e abra http://localhost:5173
-- **Fechamento**: o caixa do dia, em 5 passos numerados; o resultado aparece ao vivo no rodapé e o
+- **Fechamento**: o caixa do dia (Caixa LC com abertura e suprimento, Brendi e conferência); o resultado aparece ao vivo no rodapé e o
   sistema avisa antes de salvar se algo parecer errado (Total LC Sistema zerado, data de outro dia,
   diferença grande sem observação). Valores aceitam vírgula ("12,50").
 - **Histórico**: dias com fechamento/relatório, atalhos de período e dias sem fechamento.
 - **Mensal**: totais do mês, dias sem fechamento, pratos mais vendidos e PDF.
-- **Relatórios**: relatório escrito do dia (um por data), com botão para puxar valores do fechamento.
+- **Relatórios**: relatório escrito do dia (um por data): marmitas por prato, estragos, consumo, sangrias e
+  vales, estoque e prints. Abertura, suprimento e fechamento do dinheiro vêm sozinhos do fechamento do dia.
 - **Vales**: adiantamentos por funcionário (veja abaixo).
 - **Menu (ícone de pessoa)**: Cadastros (funcionários e pratos: renomear/desativar), trocar senha,
   tema e Sair.

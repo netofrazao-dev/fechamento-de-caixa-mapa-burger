@@ -15,6 +15,7 @@ export function itensDoDia(dia: { fechamentos: Fechamento[]; relatorio?: Relator
   const itens: Achado[] = []
   for (const f of dia.fechamentos) {
     if (f.observacoes.trim()) itens.push({ rotulo: 'Observação do caixa', texto: f.observacoes.trim() })
+    if (f.suprimento > 0) itens.push({ rotulo: 'Suprimento', texto: f.suprimentoObs?.trim() || 'Suprimento', valor: f.suprimento })
     for (const s of f.sangrias) itens.push({ rotulo: 'Sangria (no fechamento)', texto: s.motivo || '—', valor: s.valor })
     // Dias antigos: marmitas contadas no fechamento (agora ficam no relatório).
     if (!dia.relatorio?.marmitas?.length) for (const m of f.marmitas) itens.push({ rotulo: 'Prato vendido', texto: `${m.prato} (${m.quantidade})` })
