@@ -25,7 +25,6 @@ import { listarDiasLojaFechada, marcarLojaFechada, semDiasFechados, type DiaLoja
 import { mensagemErro } from '../lib/erros'
 import { caixaDoRascunho, listarRascunhosAbertos, rascunhosDoAparelho, type RascunhoAberto } from '../lib/rascunhosAbertos'
 import { formatarHoraRascunho } from '../lib/draft'
-import { listarEstragosDoDia } from '../lib/estragoService'
 import { useAtualizacaoAutomatica, veioDaAtualizacao } from '../lib/useAtualizarAoVoltar'
 import { nomeMes, rotuloMes, somarMeses, somarValores } from '../lib/vales'
 import { datasEntre, diaAnterior, diaDaSemana, formatarDataBr, formatarDiaMes, hojeLocal, limitesDoMes } from '../lib/datas'
@@ -63,17 +62,6 @@ export default function Hoje() {
   useEffect(() => {
     let ativo = true
     listarRascunhosAbertos().then((l) => ativo && setRascunhos(l))
-    return () => {
-      ativo = false
-    }
-  }, [tentativa, versaoAuto])
-  // O que a cozinha lançou hoje e ainda não entrou no relatório.
-  const [cozinhaPendente, setCozinhaPendente] = useState(0)
-  useEffect(() => {
-    let ativo = true
-    listarEstragosDoDia(hojeLocal())
-      .then((l) => ativo && setCozinhaPendente(l.filter((e) => !e.importadoEm).length))
-      .catch(() => undefined)
     return () => {
       ativo = false
     }
@@ -199,13 +187,6 @@ export default function Hoje() {
 
   const ontemLojaFechada = Boolean(dados?.fechados.some((f) => f.data === ontem))
   const pendencias: { texto: string; link: string; acao: string; lojaFechada?: string }[] = []
-  if (cozinhaPendente > 0) {
-    pendencias.push({
-      texto: `A cozinha lançou ${cozinhaPendente} item(ns) que estragou hoje. Entram sozinhos no relatório do dia; é só abrir e salvar.`,
-      link: relatorioHoje ? `/relatorios/${relatorioHoje.id}` : '/relatorios/novo',
-      acao: 'Abrir',
-    })
-  }
   if (dados && !fechamentoOntem && !ontemLojaFechada) {
     pendencias.push({ texto: `Ontem (${formatarDiaMes(ontem)}) ficou sem fechamento de caixa.`, link: `/novo?data=${ontem}`, acao: 'Lançar', lojaFechada: ontem })
   }

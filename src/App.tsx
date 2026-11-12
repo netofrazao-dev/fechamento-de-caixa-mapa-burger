@@ -37,7 +37,6 @@ const Vales = lazy(() => import('./pages/Vales'))
 const NovoVale = lazy(() => import('./pages/NovoVale'))
 const Cadastros = lazy(() => import('./pages/Cadastros'))
 const Acerto = lazy(() => import('./pages/Acerto'))
-const Cozinha = lazy(() => import('./pages/Cozinha'))
 
 // Formulário novo aberto por link de um dia (?data=...): cada dia é uma tela nova
 // (sem levar valores nem rascunho de um dia para o outro).
@@ -267,7 +266,7 @@ function Sistema() {
 }
 
 export default function App() {
-  const { carregando, sessao, autorizado, papel, sair } = useAuth()
+  const { carregando, sessao, autorizado, sair } = useAuth()
   const { pathname, hash } = useLocation()
 
   if (!supabaseConfigurado) {
@@ -282,7 +281,6 @@ export default function App() {
   if (pathname === '/redefinir-senha' || /type=recovery|error_code=/.test(hash)) return <RedefinirSenha />
   if (carregando) return <Carregando />
   if (!sessao) return <Login />
-  if (autorizado === null) return <Carregando />
   if (autorizado === false) {
     return (
       <TelaAviso
@@ -294,14 +292,6 @@ export default function App() {
           </button>
         }
       />
-    )
-  }
-  // Login da cozinha: só a tela de lançar o que estragou (qualquer endereço cai nela).
-  if (papel === 'cozinha') {
-    return (
-      <Suspense fallback={<Carregando />}>
-        <Cozinha />
-      </Suspense>
     )
   }
   return <Sistema />
