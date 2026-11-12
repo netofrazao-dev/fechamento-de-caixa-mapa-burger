@@ -10,7 +10,7 @@ import { mudancasFechamento, ROTULO_OPERACAO_AUDITORIA } from '../lib/auditoria'
 import { formatarMoeda, STATUS_COLOR, STATUS_LABEL, totalMarmitas } from '../lib/calculations'
 import { carregarPdf, DICA_PAPEL_80MM } from '../lib/pdfSobDemanda'
 import { mensagemErro } from '../lib/erros'
-import { useAtualizacaoAutomatica, veioDaAtualizacao } from '../lib/useAtualizarAoVoltar'
+import { useAtualizacaoAutomatica, useEsquecerAvisoDaNavegacao, veioDaAtualizacao } from '../lib/useAtualizarAoVoltar'
 import { diaDaSemana, formatarDataBr, formatarDataHora } from '../lib/datas'
 import { somarValores } from '../lib/vales'
 import { BotaoExcluir, CaixaErro } from '../components/Avisos'
@@ -24,6 +24,8 @@ export default function FechamentoDetalhe() {
   const location = useLocation()
   const estado = location.state as { salvo?: string; pdfBaixado?: boolean } | null
   const salvo = estado?.salvo
+  // "Fechamento salvo." vindo da navegação não volta ao recarregar a página.
+  useEsquecerAvisoDaNavegacao(Boolean(salvo))
 
   const [f, setF] = useState<Fechamento | null>(null)
   const [erro, setErro] = useState<string | null>(null)
